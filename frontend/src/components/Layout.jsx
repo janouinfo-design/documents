@@ -4,8 +4,6 @@ import {
   LayoutDashboard,
   Truck,
   CalendarClock,
-  Radio,
-  History,
   Menu,
   X,
   Layers3,
@@ -17,11 +15,6 @@ const NAV = [
   { to: "/", label: "Tableau de bord", icon: LayoutDashboard, testId: "nav-dashboard" },
   { to: "/vehicules", label: "Véhicules", icon: Truck, testId: "nav-vehicles" },
   { to: "/timeline", label: "Échéances", icon: CalendarClock, testId: "nav-timeline" },
-];
-
-const NAV_SECONDARY = [
-  { to: "/suivi-live", label: "Suivi Live", icon: Radio, testId: "nav-live" },
-  { to: "/historique", label: "Historique", icon: History, testId: "nav-history" },
 ];
 
 function NavItems({ onNavigate }) {
@@ -59,7 +52,6 @@ function NavItems({ onNavigate }) {
   return (
     <nav className="flex flex-col gap-1 px-3">
       {renderGroup(NAV, "Administration")}
-      {renderGroup(NAV_SECONDARY, "LogiTrak")}
     </nav>
   );
 }

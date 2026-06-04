@@ -6,7 +6,6 @@ import Layout from "@/components/Layout";
 import Dashboard from "@/pages/Dashboard";
 import Vehicles from "@/pages/Vehicles";
 import TimelinePage from "@/pages/TimelinePage";
-import FleetView from "@/pages/FleetView";
 
 function App() {
   return (
@@ -18,8 +17,6 @@ function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/vehicules" element={<Vehicles />} />
               <Route path="/timeline" element={<TimelinePage />} />
-              <Route path="/suivi-live" element={<FleetView mode="live" />} />
-              <Route path="/historique" element={<FleetView mode="history" />} />
             </Routes>
           </Layout>
           <Toaster position="top-right" richColors closeButton />
