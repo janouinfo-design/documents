@@ -59,6 +59,17 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - [x] Retrait des pages « Suivi Live » et « Historique » (gérées par Navixy).
 - [x] Tests: backend 8/8 Navixy + régression admin OK, frontend 100% pass.
 
+## Implemented — Itération 3 · OCR + Alertes + Planificateur (2026-06-04)
+- [x] OCR carte grise via OpenAI GPT-4o vision (emergentintegrations / clé Emergent) : extraction plaque, VIN, date mise en circulation, poids total, places. Zone scan + bloc « Données extraites » + bouton Appliquer dans l'onglet Carte grise.
+- [x] Moteur d'alertes d'échéances : seuils leasing 180/90/30, assurance 90/60/30, contrôle 90/60/30/7 + récapitulatif quotidien. Déduplication par (vehicle_id, type, seuil, due_date) + dédup récap par jour. Index DB ajoutés.
+- [x] Page « Alertes » (KPI, liste actionnable cliquable, journal des envois, bannière statut e-mail).
+- [x] Envoi e-mail : abstraction provider-agnostique (Resend/SendGrid prêts) — **MOCKÉ** (status 'mocked') tant qu'aucun EMAIL_PROVIDER/EMAIL_API_KEY/EMAIL_FROM n'est fourni.
+- [x] Planificateur APScheduler : sync Navixy + run alertes **1×/jour** + run initial au démarrage.
+- [x] Tests: backend 24/24 pytest, frontend 100% pass.
+
+## Pending integration (en attente d'accès utilisateur)
+- Envoi e-mail RÉEL : fournir EMAIL_PROVIDER (resend|sendgrid), EMAIL_API_KEY, EMAIL_FROM (vérifié), ALERT_RECIPIENTS dans backend/.env → bascule automatique de 'mocked' vers 'sent'.
+
 ## Backlog (prioritized)
 - P1: OCR carte grise (lecture plaque/VIN/date/poids/places + pré-remplissage) via IA vision.
 - P1: Alertes/notifications proactives (email/in-app) sur échéances 180/90/30/7.

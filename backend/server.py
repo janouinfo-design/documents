@@ -1098,6 +1098,12 @@ async def seed_data():
 @app.on_event("startup")
 async def startup():
     try:
+        await db.alerts.create_index([("vehicle_id", 1), ("type", 1), ("threshold", 1), ("due_date", 1)])
+        await db.alerts.create_index([("kind", 1), ("digest_date", 1)])
+        await db.vehicles.create_index("navixy_tracker_id")
+    except Exception as e:
+        logger.error(f"Index creation failed: {e}")
+    try:
         init_storage()
         logger.info("Storage initialized")
     except Exception as e:
