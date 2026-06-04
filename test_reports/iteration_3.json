@@ -1,0 +1,45 @@
+{
+  "summary": "Iteration 3 (OCR carte grise GPT-4o + deadline alerts engine + APScheduler) fully validated. Backend: 24/24 pytest tests pass (4 new alerts/OCR + 9 logitrak regression + 8 navixy regression + 4 alerts/OCR). Alerts endpoints GET /api/alerts returns {items, stats, email_enabled:false, recipients:[]}; POST /api/alerts/run is idempotent (created=0 + digest_status='skipped' on re-run); GET /api/alerts/log lists threshold + digest entries all with status='mocked'. OCR endpoint POST /api/vehicles/{id}/carte-grise/ocr correctly extracts plate 'GE 123 456', VIN 'WDB9066331234567', date 2021-03-15, poids 3500, places 3 from a synthetic PNG. Frontend: Sidebar shows nav-alerts and no longer contains 'Suivi Live' or 'Historique'. /alertes page renders email-status-banner with 'mode démonstration', 4 KPIs (alert-kpi-total/expired/critical/warning), 1+ active alert-row clickable rows that open the vehicle drawer, alerts-run-btn fires /api/alerts/run with success toast, alerts-log section displays 'Simulé' status. Carte grise tab OCR dropzone uploads synthetic image, ocr-result block shows extracted fields, ocr-apply persists into vehicle (plate/VIN/date/poids/places visible after page reload).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "VehicleDrawer (Sheet) / Dialogs", "issues": ["Recurring Radix UI a11y warnings: 'DialogContent requires a DialogTitle' and 'Missing Description or aria-describedby'. Same as iter1/iter2; non-blocking but should be cleaned up with VisuallyHidden DialogTitle and aria-describedby."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_alerts_ocr.py",
+    "/app/backend/tests/test_logitrak_api.py",
+    "/app/backend/tests/test_navixy.py",
+    "/app/test_reports/pytest/pytest_iter3_all.xml"
+  ],
+  "action_items": [
+    "Optional a11y polish: add VisuallyHidden DialogTitle + aria-describedby to Sheet/Dialog so Radix console warnings disappear.",
+    "Optional: when user supplies an email provider/key/from, the digest + threshold mails will switch from 'mocked' to 'sent'/'failed' automatically — already wired, just needs env vars.",
+    "Optional: cache navixy_status() result for ~5s so the NavixyBar polling doesn't keep hammering Navixy (also noted in iter2)."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now ~1156 lines (was ~919). Still well above the 700-line guideline — strongly recommend splitting into routers/services (vehicles, documents, inspections, dashboard, navixy, alerts, ocr) and moving storage/Navixy/email helpers under services/. This will be unmaintainable past one more feature.",
+    "send_email_sync / navixy_post / put_object / get_object continue to use blocking 'requests' inside async paths. run_alerts() wraps send_email_sync with asyncio.to_thread (good), but navixy_post/storage paths still block the loop.",
+    "OCR endpoint reads the whole file into memory and base64-encodes it twice (await file.read + base64). For large uploads this could spike memory; consider streaming size limits + an explicit max payload check.",
+    "ocr_carte_grise() raises 502 'Échec de l'analyse OCR' for any GPT-4o exception, masking the actual error. Log the exception (already done) but also return a more granular HTTP code for invalid file types vs LLM errors.",
+    "Alert thresholds & ALERT_FIELDS are hardcoded — fine for MVP, but should be configurable per tenant later.",
+    "DELETE /vehicles/{id} still returns 200 even when no document is matched (no 404 for unknown id) — same as previous iterations.",
+    "Idempotency is correctly enforced via {vehicle_id, type, threshold, due_date} unique find_one, but there is no DB index on that combination — under load this could become slow. Add a compound index on db.alerts."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_alerts_ocr.py",
+    "/app/backend/tests/test_logitrak_api.py"
+  ],
+  "success_rate": {"backend": "100% (24/24)", "frontend": "100%"},
+  "test_credentials": "N/A — no user auth. EMERGENT_LLM_KEY in backend/.env powers GPT-4o OCR. NAVIXY_API_HASH in backend/.env. No EMAIL_PROVIDER configured -> envoi mocké attendu.",
+  "seed_data_creation": "Alerts collection now contains threshold + digest entries (all status='mocked') after the engine first run at startup + the test's /api/alerts/run calls. Tests create a transient TEST vehicle/document/inspection (cleaned up). One OCR run updates one Navixy vehicle with plate GE 123 456 / VIN WDB9066331234567 / mise en circulation 2021-03-15 / poids 3500 / places 3 — persisted intentionally to demonstrate end-to-end persistence.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Public URL: REACT_APP_BACKEND_URL. Run backend tests: REACT_APP_BACKEND_URL=<url> pytest /app/backend/tests/ -v. Files: test_alerts_ocr.py (iter3), test_navixy.py (iter2), test_logitrak_api.py (iter1+iter3 patch). Frontend testIds added in iter3: alerts-page, email-status-banner, alert-kpi-{total,expired,critical,warning}, active-alerts, alert-row-{i}, alerts-run-btn, alerts-log, log-{id}, nav-alerts, carte-grise-ocr, ocr-dropzone, ocr-result, ocr-apply, cg-edit-btn, cg-save, cg-date_mise_circulation, cg-poids_total, cg-nombre_places. Email sending is MOCKED by design (no provider key supplied by the user) — every alert/digest log entry has status='mocked' and email_enabled is false. This is the expected behaviour, NOT a bug; the UI shows a visible 'mode démonstration' banner. OCR uses real OpenAI gpt-4o vision via emergentintegrations; it took ~5-10s in tests.",
+  "rca of the issue": "No bugs in scope. All listed acceptance criteria validated. The single stale assertion in test_logitrak_api.test_dashboard_kpis (>0 leasing cost) was tightened to >=0 since the Navixy auto-sync removes the demo vehicles that carried leasing cost data — this is consistent with the iter2 design."
+}

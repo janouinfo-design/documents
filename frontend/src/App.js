@@ -6,6 +6,7 @@ import Layout from "@/components/Layout";
 import Dashboard from "@/pages/Dashboard";
 import Vehicles from "@/pages/Vehicles";
 import TimelinePage from "@/pages/TimelinePage";
+import AlertsPage from "@/pages/AlertsPage";
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/vehicules" element={<Vehicles />} />
               <Route path="/timeline" element={<TimelinePage />} />
+              <Route path="/alertes" element={<AlertsPage />} />
             </Routes>
           </Layout>
           <Toaster position="top-right" richColors closeButton />

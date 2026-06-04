@@ -6,7 +6,12 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import uuid
+import base64
+import json
+import asyncio
 import requests
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.interval import IntervalTrigger
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional
@@ -129,6 +134,63 @@ def parse_navixy_label(label: str):
         name = (label[: m.start()] + label[m.end():]).strip(" -·").strip()
         return plate, name
     return None, label.strip()
+
+
+# ---------------------------------------------------------------------------
+# Email / deadline alerts
+# ---------------------------------------------------------------------------
+EMAIL_PROVIDER = (os.environ.get("EMAIL_PROVIDER") or "").strip().lower()
+EMAIL_API_KEY = (os.environ.get("EMAIL_API_KEY") or "").strip()
+EMAIL_FROM = (os.environ.get("EMAIL_FROM") or "").strip()
+ALERT_RECIPIENTS = [e.strip() for e in (os.environ.get("ALERT_RECIPIENTS") or "").split(",") if e.strip()]
+
+ALERT_THRESHOLDS = {"leasing": [180, 90, 30], "assurance": [90, 60, 30], "controle": [90, 60, 30, 7]}
+ALERT_FIELDS = {
+    "leasing": ("leasing", "date_fin", "Fin de leasing"),
+    "assurance": ("assurance", "date_echeance", "Renouvellement assurance"),
+    "controle": ("controle_technique", "date_prochain", "Contrôle technique"),
+}
+ALERT_METRIC_KEY = {"leasing": "leasing", "assurance": "assurance", "controle": "controle"}
+
+
+def email_enabled() -> bool:
+    return bool(EMAIL_PROVIDER and EMAIL_API_KEY and EMAIL_FROM)
+
+
+def send_email_sync(to_list, subject: str, html: str) -> str:
+    """Send an email. MOCKED (logged only) until a provider + key + from are configured."""
+    if not email_enabled() or not to_list:
+        logger.info("EMAIL (MOCKED) -> %s | %s", to_list or "(aucun destinataire)", subject)
+        return "mocked"
+    try:
+        if EMAIL_PROVIDER == "resend":
+            r = requests.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {EMAIL_API_KEY}", "Content-Type": "application/json"},
+                json={"from": EMAIL_FROM, "to": to_list, "subject": subject, "html": html},
+                timeout=20,
+            )
+            r.raise_for_status()
+            return "sent"
+        if EMAIL_PROVIDER == "sendgrid":
+            r = requests.post(
+                "https://api.sendgrid.com/v3/mail/send",
+                headers={"Authorization": f"Bearer {EMAIL_API_KEY}", "Content-Type": "application/json"},
+                json={
+                    "personalizations": [{"to": [{"email": e} for e in to_list]}],
+                    "from": {"email": EMAIL_FROM},
+                    "subject": subject,
+                    "content": [{"type": "text/html", "value": html}],
+                },
+                timeout=20,
+            )
+            r.raise_for_status()
+            return "sent"
+    except Exception as e:
+        logger.error("Email send failed: %s", e)
+        return "failed"
+    logger.info("EMAIL (MOCKED, fournisseur inconnu) -> %s | %s", to_list, subject)
+    return "mocked"
 
 
 # ---------------------------------------------------------------------------
@@ -754,6 +816,156 @@ async def vehicle_live(vehicle_id: str):
 
 
 # ---------------------------------------------------------------------------
+# Deadline alerts engine + OCR
+# ---------------------------------------------------------------------------
+async def run_alerts() -> dict:
+    vehicles = await db.vehicles.find({}, {"_id": 0}).to_list(1000)
+    now = datetime.now(timezone.utc).isoformat()
+    created = 0
+    emails_sent = 0
+    upcoming = []
+
+    for v in vehicles:
+        for type_, (coll, datef, label) in ALERT_FIELDS.items():
+            sub = v.get(coll) or {}
+            due = sub.get(datef)
+            if not due:
+                continue
+            days = days_until(due)
+            if days is None:
+                continue
+            level = level_from_days(days)
+            if days <= 180:
+                upcoming.append({"plaque": v.get("plaque"), "type": type_, "label": label, "due": due[:10], "days": days, "level": level})
+
+            thresholds = ALERT_THRESHOLDS[type_]
+            crossed = [t for t in thresholds if 0 <= days <= t]
+            if days < 0:
+                crossed_threshold = 0
+            elif crossed:
+                crossed_threshold = min(crossed)
+            else:
+                continue
+
+            key = {"vehicle_id": v["id"], "type": type_, "threshold": crossed_threshold, "due_date": due[:10]}
+            if await db.alerts.find_one(key):
+                continue
+
+            msg = f"{v.get('plaque')} · {label} le {due[:10]} " + ("(ÉCHU)" if days < 0 else f"(dans {days} j)")
+            subject = f"[LogiTrak] Échéance {label} — {v.get('plaque')}"
+            status = await asyncio.to_thread(send_email_sync, ALERT_RECIPIENTS, subject, f"<p>{msg}</p>")
+            if status == "sent":
+                emails_sent += 1
+            rec = {
+                **key, "id": str(uuid.uuid4()), "plaque": v.get("plaque"), "label": label,
+                "days_remaining": days, "level": level, "message": msg, "kind": "threshold",
+                "channel": "email", "status": status, "recipients": ALERT_RECIPIENTS, "created_at": now,
+            }
+            await db.alerts.insert_one(dict(rec))
+            created += 1
+
+    upcoming.sort(key=lambda x: x["days"])
+    today = date.today().isoformat()
+    digest_status = "skipped"
+    if upcoming and not await db.alerts.find_one({"kind": "digest", "digest_date": today}):
+        rows = "".join(f"<li>{u['plaque']} — {u['label']} le {u['due']} (dans {u['days']} j)</li>" for u in upcoming)
+        subject = f"[LogiTrak] Récapitulatif des échéances — {len(upcoming)} à suivre"
+        digest_status = await asyncio.to_thread(send_email_sync, ALERT_RECIPIENTS, subject, f"<h3>Échéances à venir</h3><ul>{rows}</ul>")
+        await db.alerts.insert_one({
+            "id": str(uuid.uuid4()), "kind": "digest", "digest_date": today, "type": "digest",
+            "label": "Récapitulatif quotidien", "message": f"{len(upcoming)} échéance(s) à venir",
+            "level": "info", "channel": "email", "status": digest_status,
+            "recipients": ALERT_RECIPIENTS, "items": upcoming, "created_at": now,
+        })
+
+    return {"created": created, "emails_sent": emails_sent, "digest_status": digest_status,
+            "upcoming": len(upcoming), "email_enabled": email_enabled()}
+
+
+@api_router.get("/alerts")
+async def list_alerts():
+    vehicles = await db.vehicles.find({}, {"_id": 0}).to_list(1000)
+    items = []
+    for v in vehicles:
+        m = compute_metrics(v)
+        for type_, (coll, datef, label) in ALERT_FIELDS.items():
+            sub = v.get(coll) or {}
+            due = sub.get(datef)
+            mk = m.get(ALERT_METRIC_KEY[type_], {})
+            level = mk.get("level")
+            if due and level in ("expired", "critical", "warning"):
+                items.append({
+                    "vehicle_id": v["id"], "plaque": v.get("plaque"), "marque": v.get("marque"),
+                    "modele": v.get("modele"), "type": type_, "label": label, "due_date": due[:10],
+                    "days_remaining": mk.get("days_remaining"), "level": level,
+                })
+    items.sort(key=lambda x: x["days_remaining"] if x["days_remaining"] is not None else 9999)
+    stats = {
+        "total": len(items),
+        "expired": sum(1 for i in items if i["level"] == "expired"),
+        "critical": sum(1 for i in items if i["level"] == "critical"),
+        "warning": sum(1 for i in items if i["level"] == "warning"),
+    }
+    return {"items": items, "stats": stats, "email_enabled": email_enabled(), "recipients": ALERT_RECIPIENTS}
+
+
+@api_router.get("/alerts/log")
+async def alerts_log():
+    return await db.alerts.find({}, {"_id": 0}).sort("created_at", -1).to_list(100)
+
+
+@api_router.post("/alerts/run")
+async def alerts_run():
+    return await run_alerts()
+
+
+@api_router.post("/vehicles/{vehicle_id}/carte-grise/ocr")
+async def ocr_carte_grise(vehicle_id: str, file: UploadFile = File(...)):
+    data = await file.read()
+    b64 = base64.b64encode(data).decode()
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+        chat = LlmChat(
+            api_key=os.environ["EMERGENT_LLM_KEY"],
+            session_id=f"ocr-{vehicle_id}-{uuid.uuid4()}",
+            system_message="Tu es un expert en extraction de données de cartes grises / permis de circulation suisses. Tu réponds uniquement en JSON strict.",
+        ).with_model("openai", "gpt-4o")
+        prompt = (
+            "Analyse cette image de carte grise (permis de circulation) et extrais ces champs en JSON: "
+            "{\"plaque\": string, \"vin\": string, \"date_mise_circulation\": \"YYYY-MM-DD\", "
+            "\"poids_total\": integer (kg, poids total en charge), \"nombre_places\": integer}. "
+            "Si un champ est introuvable, mets null. Réponds UNIQUEMENT avec l'objet JSON, sans texte ni balises de code."
+        )
+        resp = await chat.send_message(UserMessage(text=prompt, file_contents=[ImageContent(image_base64=b64)]))
+    except Exception as e:
+        logger.error("OCR failed: %s", e)
+        raise HTTPException(status_code=502, detail="Échec de l'analyse OCR")
+
+    text = resp if isinstance(resp, str) else getattr(resp, "text", str(resp))
+    text = text.strip()
+    if "{" in text and "}" in text:
+        text = text[text.find("{"): text.rfind("}") + 1]
+    try:
+        parsed = json.loads(text)
+    except Exception:
+        raise HTTPException(status_code=422, detail="Réponse OCR non interprétable")
+
+    def _int(x):
+        try:
+            return int(float(x))
+        except (TypeError, ValueError):
+            return 0
+
+    return {
+        "plaque": parsed.get("plaque") or "",
+        "vin": parsed.get("vin") or "",
+        "date_mise_circulation": parsed.get("date_mise_circulation"),
+        "poids_total": _int(parsed.get("poids_total")),
+        "nombre_places": _int(parsed.get("nombre_places")),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Seed demo fleet
 # ---------------------------------------------------------------------------
 def iso(offset_days: int) -> str:
@@ -900,6 +1112,31 @@ async def startup():
             logger.info("Navixy auto-sync: %s", result)
     except Exception as e:
         logger.error(f"Navixy sync failed: {e}")
+    try:
+        result = await run_alerts()
+        logger.info("Initial alerts run: %s", result)
+    except Exception as e:
+        logger.error(f"Initial alerts run failed: {e}")
+    try:
+        scheduler = AsyncIOScheduler(timezone="UTC")
+
+        async def daily_job():
+            try:
+                if NAVIXY_HASH:
+                    await navixy_sync_internal()
+            except Exception as e:
+                logger.error(f"Scheduled Navixy sync failed: {e}")
+            try:
+                await run_alerts()
+            except Exception as e:
+                logger.error(f"Scheduled alerts failed: {e}")
+
+        scheduler.add_job(daily_job, IntervalTrigger(hours=24), id="daily-sync-alerts", replace_existing=True)
+        scheduler.start()
+        app.state.scheduler = scheduler
+        logger.info("Scheduler started: daily Navixy sync + deadline alerts")
+    except Exception as e:
+        logger.error(f"Scheduler start failed: {e}")
 
 
 app.include_router(api_router)

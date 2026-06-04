@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { Pencil, Loader2, ScrollText, Calendar, Weight, Users, ScanLine } from "lucide-react";
-import { updateVehicle } from "@/lib/api";
+import { Pencil, Loader2, ScrollText, Calendar, Weight, Users, Sparkles, Check } from "lucide-react";
+import { updateVehicle, ocrCarteGrise } from "@/lib/api";
 import { dateFr } from "@/lib/format";
 import { Stat, SectionCard, FormRow } from "@/components/Field";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import DocFolderSection from "@/components/DocFolderSection";
+import DropZone from "@/components/DropZone";
 
 const F = ["date_mise_circulation", "poids_total", "nombre_places"];
 const pick = (c = {}) => Object.fromEntries(F.map((k) => [k, c[k] ?? ""]));
@@ -17,6 +18,41 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
   const [form, setForm] = useState(() => pick(c));
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const [ocrBusy, setOcrBusy] = useState(false);
+  const [ocr, setOcr] = useState(null);
+
+  const runOcr = async (files) => {
+    setOcrBusy(true);
+    try {
+      const res = await ocrCarteGrise(vehicle.id, files[0]);
+      setOcr(res);
+      toast.success("Carte grise analysée");
+    } catch {
+      toast.error("Échec de l'analyse OCR");
+    } finally {
+      setOcrBusy(false);
+    }
+  };
+
+  const applyOcr = async () => {
+    try {
+      await updateVehicle(vehicle.id, {
+        plaque: ocr.plaque || vehicle.plaque,
+        vin: ocr.vin || vehicle.vin,
+        carte_grise: {
+          date_mise_circulation: ocr.date_mise_circulation || c.date_mise_circulation || null,
+          poids_total: ocr.poids_total || c.poids_total || 0,
+          nombre_places: ocr.nombre_places || c.nombre_places || 0,
+        },
+      });
+      toast.success("Champs pré-remplis appliqués");
+      setOcr(null);
+      onSaved?.();
+    } catch {
+      toast.error("Erreur lors de l'application");
+    }
+  };
 
   const save = async () => {
     setSaving(true);
@@ -40,13 +76,48 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-start gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800">
-        <ScanLine className="mt-0.5 h-5 w-5 shrink-0 text-sky-500" />
-        <div>
-          <p className="font-semibold">OCR automatique — bientôt disponible</p>
-          <p className="text-sky-700">La lecture automatique (plaque, VIN, mise en circulation, poids, places) pré-remplira ces champs. Pour la V1, saisissez-les manuellement.</p>
-        </div>
-      </div>
+      <SectionCard
+        title="OCR automatique — Scanner la carte grise"
+        description="Déposez une photo du recto : plaque, VIN, mise en circulation, poids et places sont lus automatiquement (GPT-4o)."
+        testId="carte-grise-ocr"
+      >
+        <DropZone
+          onFiles={runOcr}
+          multiple={false}
+          busy={ocrBusy}
+          accept="image/*"
+          label="Déposer une photo de la carte grise"
+          hint="JPG · PNG · WEBP"
+          testId="ocr-dropzone"
+        />
+        {ocr && (
+          <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4" data-testid="ocr-result">
+            <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-emerald-800">
+              <Sparkles className="h-4 w-4" /> Données extraites
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+              {[
+                ["Plaque", ocr.plaque],
+                ["VIN", ocr.vin],
+                ["Mise en circ.", ocr.date_mise_circulation],
+                ["Poids total", ocr.poids_total ? `${ocr.poids_total} kg` : null],
+                ["Places", ocr.nombre_places || null],
+              ].map(([k, v]) => (
+                <div key={k}>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-emerald-600">{k}</p>
+                  <p className="font-medium text-slate-800">{v || "—"}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 flex gap-2">
+              <Button size="sm" onClick={applyOcr} data-testid="ocr-apply" className="gap-1.5 bg-emerald-600 hover:bg-emerald-700">
+                <Check className="h-3.5 w-3.5" /> Appliquer aux champs
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setOcr(null)}>Ignorer</Button>
+            </div>
+          </div>
+        )}
+      </SectionCard>
 
       {edit ? (
         <SectionCard title="Modifier la carte grise" testId="carte-grise-edit">

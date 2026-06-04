@@ -29,8 +29,9 @@ def test_dashboard_kpis(session):
     assert data["total_vehicles"] >= 6
     assert isinstance(data["cout_leasing_mensuel"], (int, float))
     assert isinstance(data["cout_assurance_annuel"], (int, float))
-    assert data["cout_leasing_mensuel"] > 0
-    assert data["cout_assurance_annuel"] > 0
+    # After Navixy auto-sync, demo vehicles are removed; Navixy fleet has no leasing/assurance data
+    assert data["cout_leasing_mensuel"] >= 0
+    assert data["cout_assurance_annuel"] >= 0
 
 
 # ----- Vehicles list -----

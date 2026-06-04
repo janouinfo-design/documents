@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   Truck,
   CalendarClock,
+  Bell,
   Menu,
   X,
   Layers3,
@@ -15,6 +16,7 @@ const NAV = [
   { to: "/", label: "Tableau de bord", icon: LayoutDashboard, testId: "nav-dashboard" },
   { to: "/vehicules", label: "Véhicules", icon: Truck, testId: "nav-vehicles" },
   { to: "/timeline", label: "Échéances", icon: CalendarClock, testId: "nav-timeline" },
+  { to: "/alertes", label: "Alertes", icon: Bell, testId: "nav-alerts" },
 ];
 
 function NavItems({ onNavigate }) {
