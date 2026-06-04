@@ -1,0 +1,58 @@
+name: logitrak-fleet
+
+# Stack 100% isolé : conteneurs, réseau et volumes préfixés "logitrak-fleet_".
+# Aucun partage avec vos autres apps (Navixy, dashboard, etc.).
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: logitrak-fleet_mongo
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - internal
+
+  backend:
+    build:
+      context: ../backend
+    container_name: logitrak-fleet_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      MONGO_URL: mongodb://mongo:27017
+      DB_NAME: ${DB_NAME:-logitrak_fleet}
+      STORAGE_BACKEND: local
+      LOCAL_STORAGE_DIR: /data/storage
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+    volumes:
+      - storage_data:/data/storage
+    depends_on:
+      - mongo
+    networks:
+      - internal
+
+  web:
+    build:
+      context: ../frontend
+      args:
+        REACT_APP_BACKEND_URL: ${REACT_APP_BACKEND_URL:-}
+    container_name: logitrak-fleet_web
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8090}:80"
+    depends_on:
+      - backend
+    networks:
+      - internal
+
+networks:
+  internal:
+    name: logitrak-fleet_net
+
+volumes:
+  mongo_data:
+    name: logitrak-fleet_mongo_data
+  storage_data:
+    name: logitrak-fleet_storage_data

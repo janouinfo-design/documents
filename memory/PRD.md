@@ -70,6 +70,12 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 ## Pending integration (en attente d'accès utilisateur)
 - Envoi e-mail RÉEL : fournir EMAIL_PROVIDER (resend|sendgrid), EMAIL_API_KEY, EMAIL_FROM (vérifié), ALERT_RECIPIENTS dans backend/.env → bascule automatique de 'mocked' vers 'sent'.
 
+## Déploiement VPS isolé (2026-06-04)
+- [x] Stockage pluggable: STORAGE_BACKEND=emergent (aperçu) | local (VPS, volume disque dédié). Garde-fou anti path-traversal.
+- [x] Package Docker isolé `deploy/`: docker-compose (préfixe logitrak-fleet_, réseau/volumes dédiés, MongoDB dédié), Dockerfiles backend/frontend, gateway Nginx (SPA + proxy /api), .env.example, vhost Nginx hôte exemple, README pas-à-pas.
+- [x] Frontend same-origin (/api) → un seul port publié (APP_PORT, défaut 8090) derrière le Nginx hôte (sous-domaine dédié). Aucun mélange avec Navixy/autres apps.
+- Note: build Docker non testé dans le pod (Docker indisponible) ; logique stockage local validée + aperçu Emergent non régressé.
+
 ## Backlog (prioritized)
 - P1: OCR carte grise (lecture plaque/VIN/date/poids/places + pré-remplissage) via IA vision.
 - P1: Alertes/notifications proactives (email/in-app) sur échéances 180/90/30/7.

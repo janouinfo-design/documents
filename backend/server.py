@@ -39,6 +39,8 @@ STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
 EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
 APP_NAME = "logitrak-fleet"
 storage_key = None
+STORAGE_BACKEND = (os.environ.get("STORAGE_BACKEND") or "emergent").lower()
+LOCAL_STORAGE_DIR = os.environ.get("LOCAL_STORAGE_DIR", "/data/storage")
 
 EXT_MIME = {
     "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
@@ -52,8 +54,19 @@ EXT_MIME = {
 }
 
 
+def _local_path(path: str) -> str:
+    base = os.path.abspath(LOCAL_STORAGE_DIR)
+    full = os.path.abspath(os.path.join(base, path))
+    if full != base and not full.startswith(base + os.sep):
+        raise HTTPException(status_code=400, detail="Chemin invalide")
+    return full
+
+
 def init_storage():
     global storage_key
+    if STORAGE_BACKEND == "local":
+        os.makedirs(LOCAL_STORAGE_DIR, exist_ok=True)
+        return "local"
     if storage_key:
         return storage_key
     resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
@@ -63,6 +76,14 @@ def init_storage():
 
 
 def put_object(path: str, data: bytes, content_type: str) -> dict:
+    if STORAGE_BACKEND == "local":
+        full = _local_path(path)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "wb") as f:
+            f.write(data)
+        with open(full + ".meta", "w") as f:
+            f.write(content_type or "application/octet-stream")
+        return {"path": path, "size": len(data)}
     key = init_storage()
     resp = requests.put(
         f"{STORAGE_URL}/objects/{path}",
@@ -74,6 +95,17 @@ def put_object(path: str, data: bytes, content_type: str) -> dict:
 
 
 def get_object(path: str):
+    if STORAGE_BACKEND == "local":
+        full = _local_path(path)
+        if not os.path.exists(full):
+            raise FileNotFoundError(path)
+        with open(full, "rb") as f:
+            data = f.read()
+        ctype = guess_mime(path)
+        if os.path.exists(full + ".meta"):
+            with open(full + ".meta") as f:
+                ctype = f.read().strip() or ctype
+        return data, ctype
     key = init_storage()
     resp = requests.get(
         f"{STORAGE_URL}/objects/{path}",
