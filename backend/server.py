@@ -84,6 +84,54 @@ def guess_mime(filename: str, fallback: str = "application/octet-stream") -> str
 
 
 # ---------------------------------------------------------------------------
+# Navixy integration (GPS fleet tracking) — EU cluster, hash auth
+# ---------------------------------------------------------------------------
+import re
+
+NAVIXY_BASE_URL = os.environ.get("NAVIXY_BASE_URL", "https://api.eu.navixy.com/v2")
+NAVIXY_HASH = os.environ.get("NAVIXY_API_HASH")
+
+
+class NavixyError(Exception):
+    pass
+
+
+def navixy_post(path: str, payload: dict = None) -> dict:
+    if not NAVIXY_HASH:
+        raise NavixyError("Clé API Navixy non configurée")
+    body = {"hash": NAVIXY_HASH}
+    if payload:
+        body.update(payload)
+    try:
+        resp = requests.post(f"{NAVIXY_BASE_URL}{path}", json=body, timeout=30)
+    except requests.RequestException as exc:
+        raise NavixyError(f"Erreur réseau Navixy: {exc}")
+    try:
+        data = resp.json()
+    except ValueError:
+        raise NavixyError(f"Réponse Navixy invalide (HTTP {resp.status_code})")
+    if isinstance(data, dict) and data.get("success") is False:
+        status = data.get("status", {}) or {}
+        raise NavixyError(status.get("description") or "Erreur Navixy")
+    return data
+
+
+_PLATE_RE = re.compile(r"\b([A-Z]{2})\s?(\d{1,3}(?:\s?\d{2,3}){1,2})\b")
+
+
+def parse_navixy_label(label: str):
+    """Extract a Swiss plate and a clean name from a tracker label."""
+    if not label:
+        return None, ""
+    m = _PLATE_RE.search(label)
+    if m:
+        plate = f"{m.group(1)} {m.group(2)}".replace("  ", " ").strip()
+        name = (label[: m.start()] + label[m.end():]).strip(" -·").strip()
+        return plate, name
+    return None, label.strip()
+
+
+# ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
 class Leasing(BaseModel):
@@ -140,6 +188,9 @@ class VehicleBase(BaseModel):
     tracker_gps: Optional[str] = ""
     prochaine_maintenance: Optional[str] = None
     prochaine_expertise: Optional[str] = None
+    source: Optional[str] = "manual"
+    navixy_tracker_id: Optional[int] = None
+    navixy_vehicle_id: Optional[int] = None
 
 
 class VehicleCreate(VehicleBase):
@@ -562,6 +613,147 @@ async def timeline():
 
 
 # ---------------------------------------------------------------------------
+# Navixy endpoints (import fleet, sync odometer, live state)
+# ---------------------------------------------------------------------------
+def _empty_nested():
+    return {
+        "leasing": Leasing().model_dump(),
+        "assurance": Assurance().model_dump(),
+        "carte_grise": CarteGrise().model_dump(),
+        "controle_technique": ControleTechnique().model_dump(),
+    }
+
+
+async def navixy_sync_internal() -> dict:
+    trackers = navixy_post("/tracker/list").get("list", [])
+    tracker_ids = [t["id"] for t in trackers]
+    odometer = {}
+    if tracker_ids:
+        cres = navixy_post("/tracker/counter/value/list", {"type": "odometer", "trackers": tracker_ids})
+        odometer = cres.get("value", {}) or {}
+    vehicles_remote = navixy_post("/vehicle/list").get("list", [])
+    veh_by_tracker = {v["tracker_id"]: v for v in vehicles_remote if v.get("tracker_id")}
+
+    now = datetime.now(timezone.utc).isoformat()
+    created = updated = 0
+
+    for t in trackers:
+        tid = t["id"]
+        label = t.get("label") or ""
+        linked = veh_by_tracker.get(tid, {})
+        plate_from_label, name = parse_navixy_label(label)
+        km_val = odometer.get(str(tid))
+        km = round(km_val) if isinstance(km_val, (int, float)) else 0
+        source_obj = t.get("source") or {}
+        model = (linked.get("model") or "").strip()
+        if len(model) <= 2 or model.isdigit():
+            model = ""
+        plaque = (linked.get("reg_number") or plate_from_label or label or "").strip()
+        full = (model or name or label).strip()
+        parts = full.split(" ", 1)
+        marque = parts[0]
+        modele = parts[1] if len(parts) > 1 else ""
+
+        navixy_fields = {
+            "plaque": plaque,
+            "marque": marque,
+            "modele": modele,
+            "vin": linked.get("vin") or "",
+            "annee": linked.get("manufacture_year") or 0,
+            "kilometrage": km,
+            "tracker_gps": source_obj.get("device_id") or label,
+            "navixy_tracker_id": tid,
+            "navixy_vehicle_id": linked.get("id"),
+            "source": "navixy",
+            "updated_at": now,
+        }
+
+        existing = await db.vehicles.find_one({"navixy_tracker_id": tid})
+        if existing:
+            await db.vehicles.update_one({"navixy_tracker_id": tid}, {"$set": navixy_fields})
+            updated += 1
+        else:
+            doc = {
+                "id": str(uuid.uuid4()),
+                "photo_url": "",
+                "groupe": "",
+                "base": "",
+                "responsable": "",
+                "prochaine_maintenance": None,
+                "prochaine_expertise": None,
+                "created_at": now,
+                **_empty_nested(),
+                **navixy_fields,
+            }
+            await db.vehicles.insert_one(dict(doc))
+            created += 1
+
+    removed = await db.vehicles.delete_many({"source": {"$in": ["demo", None]}})
+    return {"synced": len(trackers), "created": created, "updated": updated, "removed_demo": removed.deleted_count}
+
+
+@api_router.get("/navixy/status")
+async def navixy_status():
+    if not NAVIXY_HASH:
+        return {"connected": False, "configured": False}
+    try:
+        trackers = navixy_post("/tracker/list").get("list", [])
+        info = navixy_post("/user/get_info")
+    except NavixyError as e:
+        return {"connected": False, "configured": True, "error": str(e)}
+    account = (info.get("paas_settings", {}) or {}).get("service_title") or "Navixy"
+    imported = await db.vehicles.count_documents({"source": "navixy"})
+    return {
+        "connected": True,
+        "configured": True,
+        "trackers_count": len(trackers),
+        "imported_count": imported,
+        "account": account,
+    }
+
+
+@api_router.post("/navixy/sync")
+async def navixy_sync():
+    try:
+        result = await navixy_sync_internal()
+    except NavixyError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return result
+
+
+@api_router.get("/vehicles/{vehicle_id}/live")
+async def vehicle_live(vehicle_id: str):
+    v = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
+    if not v:
+        raise HTTPException(status_code=404, detail="Véhicule introuvable")
+    tid = v.get("navixy_tracker_id")
+    if not tid:
+        raise HTTPException(status_code=400, detail="Véhicule non lié à un tracker Navixy")
+    try:
+        states = navixy_post("/tracker/get_states", {"trackers": [tid]}).get("states", {}) or {}
+        cres = navixy_post("/tracker/counter/value/list", {"type": "odometer", "trackers": [tid]}).get("value", {}) or {}
+    except NavixyError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    st = states.get(str(tid)) or {}
+    gps = st.get("gps") or {}
+    loc = gps.get("location") or {}
+    odo = cres.get(str(tid))
+    return {
+        "tracker_id": tid,
+        "connection_status": st.get("connection_status"),
+        "movement_status": st.get("movement_status"),
+        "lat": loc.get("lat"),
+        "lng": loc.get("lng"),
+        "speed": gps.get("speed"),
+        "heading": gps.get("heading"),
+        "last_update": st.get("last_update"),
+        "gsm_network": (st.get("gsm") or {}).get("network_name"),
+        "battery_level": st.get("battery_level"),
+        "odometer_km": round(odo) if isinstance(odo, (int, float)) else None,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Seed demo fleet
 # ---------------------------------------------------------------------------
 def iso(offset_days: int) -> str:
@@ -600,6 +792,7 @@ async def seed_data():
         debut = (date.fromisoformat(iso(lfin)) - timedelta(days=duree * 30)).isoformat()
         vehicles.append({
             "id": str(uuid.uuid4()),
+            "source": "demo",
             "photo_url": VAN_PHOTOS[photo],
             "plaque": plaque,
             "marque": marque,
@@ -701,6 +894,12 @@ async def startup():
         await seed_data()
     except Exception as e:
         logger.error(f"Seed failed: {e}")
+    try:
+        if NAVIXY_HASH and await db.vehicles.count_documents({"source": "navixy"}) == 0:
+            result = await navixy_sync_internal()
+            logger.info("Navixy auto-sync: %s", result)
+    except Exception as e:
+        logger.error(f"Navixy sync failed: {e}")
 
 
 app.include_router(api_router)

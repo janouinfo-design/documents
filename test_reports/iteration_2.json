@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 2 (Navixy integration + removal of Suivi Live/Historique) tested end-to-end. Backend: 8/8 pytest tests pass (status connected with 12 trackers/LOGITRAK, sync imports 12 vehicles all source=navixy with odometer (9/12 km>0), live endpoint returns real GPS state, manual vehicle returns 400, PUT recalcs metrics, documents/dashboard/timeline regressions OK). Frontend: sidebar no longer shows Suivi Live nor Historique (only nav-dashboard, nav-vehicles, nav-timeline). NavixyBar shows 'Connecté · LOGITRAK' and '12/12 véhicules importés'. Sync button works. Drawer opens via plate-link, NavixyLiveCard renders movement/odometer/network/GPS/battery/last_update with working Voir sur la carte link and refresh button. Leasing tab shows metrics, Assurance edit→save persists ('Assurance enregistrée' toast), Documents tab dropzone visible.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "VehicleDrawer (Sheet) / Dialogs", "issues": ["Recurring Radix UI a11y warnings still in console: 'DialogContent requires a DialogTitle' and 'Missing Description or aria-describedby'. Same finding as iteration 1; not blocking but should be fixed for accessibility."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_navixy.py", "/app/backend/tests/test_logitrak_api.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Optional a11y polish: add DialogTitle/SheetTitle (wrap in VisuallyHidden if visually hidden) and Description to Sheet/Dialog components to clear Radix console warnings."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now ~919 lines (was ~720). Past the 700-line guideline — recommend splitting into routers: routers/vehicles.py, routers/documents.py, routers/inspections.py, routers/dashboard.py, routers/navixy.py. Storage helpers can move to services/storage.py and Navixy client to services/navixy.py.",
+    "navixy_post() and put_object()/get_object() use blocking 'requests' inside async endpoints — under concurrency this will block the event loop. Wrap with asyncio.to_thread or migrate to httpx.AsyncClient.",
+    "navixy_sync_internal() runs three Navixy POSTs sequentially with synchronous requests; could be parallelised with asyncio.gather + to_thread to speed up.",
+    "DELETE /vehicles/{id} still returns 200 even when no document was deleted (no 404 for unknown id) — same as previous iteration.",
+    "Auto-sync only triggers when there are zero source=='navixy' vehicles at startup. If trackers change in Navixy after the first sync, the count won't refresh until POST /api/navixy/sync is called. Consider periodic background sync or webhook.",
+    "navixy_status() makes two synchronous Navixy POSTs on every call (tracker/list + user/get_info). The frontend NavixyBar polls this — consider caching for a few seconds to avoid hammering Navixy.",
+    "Frontend: NavixyLiveCard fetches live each time the drawer general tab mounts; for offline trackers this is fine but for many simultaneous opens a debounce or cache would help.",
+    "navixy_sync_internal() removes vehicles with source in ['demo', None] — this also removes manually-created vehicles whose source defaults to 'manual' only if VehicleCreate is used. New manual creates set source='manual', so they survive sync (verified). Good. But existing legacy docs with source=None are deleted; harmless here but worth noting."
+  ],
+  "updated_files": ["/app/backend/tests/test_navixy.py"],
+  "success_rate": {"backend": "100% (8/8 navixy + previously 9/9 logitrak)", "frontend": "100%"},
+  "test_credentials": "N/A — no user auth. Navixy API hash in backend/.env, account LOGITRAK, EU region.",
+  "seed_data_creation": "Backend auto-sync at startup imports 12 trackers from Navixy LOGITRAK account. Tests create/delete a transient TEST NAV 001 manual vehicle and a TEST document; all cleaned up.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Public URL: REACT_APP_BACKEND_URL. Backend tests in /app/backend/tests/test_navixy.py (Navixy iteration 2) + /app/backend/tests/test_logitrak_api.py (admin iteration 1). Run with: REACT_APP_BACKEND_URL=<url> pytest /app/backend/tests/ -v. Navixy is a real third-party live API; live endpoint depends on Navixy availability. The 12 trackers include real iPhones/Tab Samsung devices used as trackers (expected). Frontend testIds: navixy-bar, navixy-sync-btn, navixy-live-card, navixy-live-map-link, navixy-live-refresh, nav-dashboard/vehicles/timeline (Suivi Live & Historique are removed). Drawer testIds: vehicle-drawer, tab-general/leasing/assurance/carte-grise/etat-des-lieux/controle/documents, assurance-edit-btn / assurance-save, vehicle-plate-link-<id>.",
+  "rca of the issue": "No bugs in scope. All listed feature acceptance criteria validated."
+}

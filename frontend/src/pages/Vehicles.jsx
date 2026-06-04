@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import StatusBadge from "@/components/StatusBadge";
 import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
 import NewVehicleDialog from "@/components/NewVehicleDialog";
+import NavixyBar from "@/components/NavixyBar";
 import { lvl } from "@/lib/status";
 import { cn } from "@/lib/utils";
 
@@ -49,6 +50,8 @@ export default function Vehicles() {
           </Button>
         </div>
       </div>
+
+      <NavixyBar />
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
@@ -92,7 +95,7 @@ export default function Vehicles() {
                           >
                             {v.plaque}
                           </button>
-                          <p className="text-xs text-slate-500">{v.marque} {v.modele} · {v.annee}</p>
+                          <p className="text-xs text-slate-500">{[v.marque, v.modele].filter(Boolean).join(" ")}{v.annee ? ` · ${v.annee}` : ""}</p>
                         </div>
                       </div>
                     </td>
