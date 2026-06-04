@@ -6,7 +6,7 @@ Tout est préfixé `logitrak-fleet_` → **aucun conflit** avec vos autres apps 
 
 ```
 ┌─────────────── VPS ───────────────┐
-│ Nginx hôte (flotte.VOTRE_DOMAINE) │
+│ Nginx hôte (documents.logitrak.ch) │
 │        │ proxy → 127.0.0.1:8090   │
 │  ┌─────▼──── docker (logitrak-fleet) ─────┐
 │  │  web (Nginx+SPA)  →  backend (FastAPI) │
@@ -20,7 +20,7 @@ Tout est préfixé `logitrak-fleet_` → **aucun conflit** avec vos autres apps 
 ## 1. Prérequis (sur le VPS)
 - Docker + plugin Compose : `docker --version` et `docker compose version`
 - Nginx hôte déjà en place (vos autres apps l'utilisent)
-- Un sous-domaine **libre** pointant vers le VPS (ex : `flotte.VOTRE_DOMAINE`)
+- Un sous-domaine **libre** pointant vers le VPS (ex : `documents.logitrak.ch`)
 
 ## 2. Récupérer le code
 Poussez le projet sur GitHub depuis Emergent (bouton **Save to GitHub**) puis :
@@ -52,13 +52,13 @@ curl http://127.0.0.1:8090/api/vehicles   # doit répondre du JSON
 
 ## 5. Exposer via votre Nginx hôte
 ```bash
-sudo cp nginx-host.conf.example /etc/nginx/sites-available/flotte
-sudo nano /etc/nginx/sites-available/flotte      # remplacez flotte.VOTRE_DOMAINE + APP_PORT
-sudo ln -s /etc/nginx/sites-available/flotte /etc/nginx/sites-enabled/
+sudo cp nginx-host.conf.example /etc/nginx/sites-available/documents
+sudo nano /etc/nginx/sites-available/documents      # remplacez documents.logitrak.ch + APP_PORT
+sudo ln -s /etc/nginx/sites-available/documents /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d flotte.VOTRE_DOMAINE     # SSL Let's Encrypt
+sudo certbot --nginx -d documents.logitrak.ch     # SSL Let's Encrypt
 ```
-➡️ L'app est accessible sur `https://flotte.VOTRE_DOMAINE`.
+➡️ L'app est accessible sur `https://documents.logitrak.ch`.
 
 ## 6. Isolation garantie
 | Élément | Nom dédié |
