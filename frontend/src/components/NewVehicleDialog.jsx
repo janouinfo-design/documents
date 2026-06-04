@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Truck, Loader2 } from "lucide-react";
 import { createVehicle, uploadFile } from "@/lib/api";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { FormRow } from "@/components/Field";
@@ -66,6 +66,7 @@ export default function NewVehicleDialog({ open, onOpenChange }) {
           <DialogTitle className="flex items-center gap-2">
             <Truck className="h-5 w-5" /> Nouveau véhicule
           </DialogTitle>
+          <DialogDescription className="sr-only">Formulaire de création d'un nouveau véhicule</DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <FormRow label="Plaque *">

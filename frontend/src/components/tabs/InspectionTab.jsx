@@ -5,7 +5,7 @@ import { Plus, Loader2, Trash2, Calendar, User, Gauge, GitCompareArrows, ImageOf
 import { getInspections, createInspection, deleteInspection, uploadFile, mediaSrc } from "@/lib/api";
 import { dateFr, fmtKm } from "@/lib/format";
 import { SectionCard, FormRow } from "@/components/Field";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -68,7 +68,10 @@ function AddDialog({ open, onOpenChange, vehicleId, onCreated }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto" data-testid="inspection-dialog">
-        <DialogHeader><DialogTitle>Nouvel état des lieux</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>Nouvel état des lieux</DialogTitle>
+          <DialogDescription className="sr-only">Formulaire d'ajout d'un état des lieux avec galerie photos</DialogDescription>
+        </DialogHeader>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <FormRow label="Date"><Input data-testid="ins-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></FormRow>
           <FormRow label="Responsable"><Input data-testid="ins-responsable" value={responsable} onChange={(e) => setResponsable(e.target.value)} placeholder="Nom" /></FormRow>

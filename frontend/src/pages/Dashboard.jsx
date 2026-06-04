@@ -20,6 +20,8 @@ import KpiCard from "@/components/KpiCard";
 import StatusBadge from "@/components/StatusBadge";
 import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
 
+const tabForType = (t) => (["leasing", "assurance", "controle"].includes(t) ? t : "general");
+
 export default function Dashboard() {
   const { openVehicle } = useVehicleDrawer();
   const { data: kpi, isLoading } = useQuery({ queryKey: ["dashboard"], queryFn: getDashboard });
@@ -85,7 +87,7 @@ export default function Dashboard() {
               return (
                 <button
                   key={`${e.vehicle_id}-${e.type}-${i}`}
-                  onClick={() => openVehicle(e.vehicle_id, e.type === "leasing" ? "leasing" : e.type === "assurance" ? "assurance" : "controle")}
+                  onClick={() => openVehicle(e.vehicle_id, tabForType(e.type))}
                   data-testid={`deadline-row-${i}`}
                   className="flex w-full items-center gap-4 px-6 py-3.5 text-left transition-colors hover:bg-slate-50"
                 >

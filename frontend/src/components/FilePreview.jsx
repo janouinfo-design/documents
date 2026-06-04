@@ -1,5 +1,5 @@
 import { Download } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { fileUrl, mediaSrc } from "@/lib/api";
 
 const isImage = (ct) => (ct || "").startsWith("image/");
@@ -17,6 +17,7 @@ export default function FilePreview({ open, onOpenChange, file }) {
       <DialogContent className="max-w-3xl" data-testid="file-preview-dialog">
         <DialogHeader>
           <DialogTitle className="truncate pr-8 text-base">{file.original_filename || "Aperçu"}</DialogTitle>
+          <DialogDescription className="sr-only">Aperçu du document</DialogDescription>
         </DialogHeader>
         <div className="max-h-[70vh] overflow-auto rounded-lg bg-slate-50">
           {isImage(ct) || (!ct && src) ? (
