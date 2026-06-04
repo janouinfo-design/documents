@@ -1,0 +1,116 @@
+{
+  "theme": "light",
+  "archetype": "Swiss & High-Contrast",
+  "design_context": "Dashboard / SaaS App",
+  "typography": {
+    "primary_font_family": "Cabinet Grotesk, sans-serif",
+    "secondary_font_family": "Satoshi, sans-serif",
+    "font_imports": [
+      "@import url('https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@400,500,700,800,900&f[]=satoshi@300,400,500,700,900&display=swap');"
+    ],
+    "headings": {
+      "h1": "text-4xl sm:text-5xl font-bold tracking-tight text-slate-900",
+      "h2": "text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900",
+      "h3": "text-xl sm:text-2xl font-medium tracking-tight text-slate-900",
+      "h4": "text-lg sm:text-xl font-medium tracking-tight text-slate-900"
+    },
+    "body": "text-sm sm:text-base text-slate-600 font-normal leading-relaxed",
+    "labels": "text-xs font-semibold uppercase tracking-[0.2em] text-slate-500"
+  },
+  "colors": {
+    "background": "bg-slate-50",
+    "surface": "bg-white",
+    "primary": "bg-slate-900 text-white",
+    "secondary": "bg-slate-100 text-slate-900",
+    "border": "border-slate-200",
+    "status": {
+      "expired": {
+        "bg": "bg-red-50",
+        "text": "text-red-700",
+        "border": "border-red-200",
+        "icon": "text-red-600",
+        "semantic_name": "rouge expiré"
+      },
+      "warning": {
+        "bg": "bg-amber-50",
+        "text": "text-amber-700",
+        "border": "border-amber-200",
+        "icon": "text-amber-500",
+        "semantic_name": "orange bientôt expiré"
+      },
+      "compliant": {
+        "bg": "bg-emerald-50",
+        "text": "text-emerald-700",
+        "border": "border-emerald-200",
+        "icon": "text-emerald-600",
+        "semantic_name": "vert conforme"
+      }
+    }
+  },
+  "spacing_and_layout": {
+    "container_padding": "p-6 sm:p-8 md:p-12",
+    "gap": "gap-6",
+    "border_radius": "rounded-none sm:rounded-sm",
+    "cards": "bg-white border border-slate-200 p-6 shadow-sm",
+    "grid_system": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6"
+  },
+  "components": {
+    "navigation": "Top bar and side rail architecture. Clean lines, 1px border. Fixed layout with content scrolling independently.",
+    "kpi_cards": "Flat design with 1px border. Prominent value (text-3xl font-bold tracking-tight). Top-left metric focus. Color-coded left-border (4px) or badge for status (Red, Amber, Green).",
+    "tabs": "Shadcn UI tabs. Overridden styling to be clean, border-bottom focused instead of pills. Active state: border-slate-900 text-slate-900.",
+    "buttons": "Square or very slightly rounded (rounded-sm). Primary: bg-slate-900 text-white hover:bg-slate-800. Secondary: border border-slate-200 bg-white text-slate-900 hover:bg-slate-50.",
+    "tables": "Dense layout. Header font-semibold uppercase text-xs tracking-wider. Row hover: hover:bg-slate-50. Clickable items (plaques, pièces jointes) should use font-medium text-slate-900 underline decoration-slate-300 hover:decoration-slate-900 transition-colors.",
+    "drawer_detail_view": "Can be a max-w-4xl right-side drawer or full page. Must contain vehicle header (photo, plaque, VIN, tags) and below, a tabbed interface for Leasing, Assurance, etc.",
+    "progress_bars": "For leasing usage (months/km). Thin (h-2). Track: bg-slate-100. Fill: dynamic color based on % used (green -> amber -> red).",
+    "drag_drop_zone": "Dashed 2px border (border-slate-300 hover:border-slate-500). bg-slate-50 hover:bg-slate-100 transition-colors. Center icon (lucide-react UploadCloud).",
+    "timeline": "Vertical left-bordered steps for history. Horizontal gantt or calendar view for dashboard deadlines."
+  },
+  "interactive_states": {
+    "hover": "Subtle shifts. Borders darken (border-slate-300 to border-slate-400), backgrounds slightly dim (bg-white to bg-slate-50).",
+    "focus": "focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2",
+    "motion": "Fast, functional transitions. transition-all duration-200 ease-in-out."
+  },
+  "media": {
+    "icons_library": "lucide-react (functional, clean line icons). Need to import UploadCloud, Car, FileText, AlertTriangle, CheckCircle, Clock, Calendar, Image, MoreVertical.",
+    "images": {
+      "vehicle_placeholder": {
+        "url": "https://images.unsplash.com/photo-1695222833131-54ee679ae8e5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA3MDR8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBmbGVldCUyMHRydWNrJTIwd2hpdGUlMjBiYWNrZ3JvdW5kfGVufDB8fHx8MTc4MDU1ODYxMHww&ixlib=rb-4.1.0&q=85",
+        "description": "Clean white semi-truck to be used as default vehicle photo in header."
+      },
+      "damage_inspection_1": {
+        "url": "https://images.unsplash.com/photo-1654027197679-84c14708d5de?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzR8MHwxfHNlYXJjaHw0fHxjYXIlMjBpbnNwZWN0aW9uJTIwZGFtYWdlfGVufDB8fHx8MTc4MDU1ODYxMHww&ixlib=rb-4.1.0&q=85",
+        "description": "Car with dented bumper for etat des lieux examples."
+      },
+      "damage_inspection_2": {
+        "url": "https://images.unsplash.com/photo-1673187139211-1e7ec3dd60ec?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzR8MHwxfHNlYXJjaHwyfHxjYXIlMjBpbnNwZWN0aW9uJTIwZGFtYWdlfGVufDB8fHx8MTc4MDU1ODYxMHww&ixlib=rb-4.1.0&q=85",
+        "description": "Car on tow truck for accident/damage reporting."
+      }
+    }
+  },
+  "accessibility": {
+    "contrast": "Ensure all text against colored badges passes WCAG AA. Red/Amber/Green text on light backgrounds.",
+    "aria_labels": "Required on all icon buttons and drag-drop zones.",
+    "data_testid": "MANDATORY on all interactive elements (e.g., data-testid='vehicle-plate-link', data-testid='kpi-expired-card', data-testid='tab-leasing')."
+  },
+  "pages_to_build": [
+    {
+      "name": "Dashboard Administratif",
+      "description": "Main overview page. High-level KPIs (expired leases, upcoming inspections) using the 3-color status system. Timeline visualization for deadlines. Fleet health summary."
+    },
+    {
+      "name": "Fiche Véhicule Administrative",
+      "description": "Detailed view (Drawer or Page). Header with vehicle details + photo. Tabs: Leasing, Assurance, Carte Grise, État des lieux, Contrôles techniques, Documents. All interactions open this context."
+    }
+  ],
+  "instructions_to_main_agent": [
+    "Ensure standard HTML input/selects are NOT used; rely on customized Shadcn components.",
+    "Implement the Layout with a Side Navbar and a Top Header.",
+    "Use data-testid on all interactive buttons, links, tabs, and form elements.",
+    "KPI values must be large (text-4xl) and use the primary tracking-tight font.",
+    "Empty states for folders/documents should show a minimalist grayed-out icon and an actionable 'Upload' prompt.",
+    "Alerts (180/90/30 days) should map to colors: >90 days = Green (conforme), <90 days = Amber (bientôt expiré), <30 days or expired = Red (expiré).",
+    "All pricing/currency formatted as CHF (Swiss Francs). Language: French.",
+    "Ensure 'Cabinet Grotesk' is applied to Headings and 'Satoshi' to body by updating tailwind.config.js and index.css.",
+    "The UI should look extremely premium, mimicking SaaS leaders like Motive, Fleetio, and Samsara (dense, flat, high-contrast, data-heavy but clean)."
+  ]
+}
