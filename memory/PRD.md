@@ -50,6 +50,15 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - [x] Pages Suivi Live / Historique avec bouton Administration.
 - [x] Tests: backend 9/9 pytest, frontend 11 flux — 100% pass.
 
+## Implemented — Itération 2 · Compatibilité Navixy (2026-06-04)
+- [x] Intégration RÉELLE Navixy User API v2 (EU, auth par hash) — clé dans backend/.env (NAVIXY_API_HASH).
+- [x] Import flotte: `tracker/list` + `vehicle/list` + odomètre `tracker/counter/value/list` → Navixy = source de vérité (remplace la liste locale, démos supprimés). 12 trackers réels du compte LOGITRAK importés.
+- [x] Synchronisation du cumul de km (odomètre) dans `kilometrage` ; association véhicule ↔ tracker (navixy_tracker_id, device_id IMEI).
+- [x] Endpoints: GET /api/navixy/status, POST /api/navixy/sync, GET /api/vehicles/{id}/live (état GPS + mouvement + batterie + réseau + odomètre). Auto-sync au démarrage.
+- [x] UI: barre Navixy (statut + bouton Synchroniser) sur la page Véhicules ; carte « Suivi Navixy en direct » dans l'onglet Général (position, mouvement, odomètre, batterie, lien carte).
+- [x] Retrait des pages « Suivi Live » et « Historique » (gérées par Navixy).
+- [x] Tests: backend 8/8 Navixy + régression admin OK, frontend 100% pass.
+
 ## Backlog (prioritized)
 - P1: OCR carte grise (lecture plaque/VIN/date/poids/places + pré-remplissage) via IA vision.
 - P1: Alertes/notifications proactives (email/in-app) sur échéances 180/90/30/7.
