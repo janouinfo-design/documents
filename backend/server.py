@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Form, Query
+from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Form, Query, Request
 from fastapi.responses import Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -40,7 +40,12 @@ EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
 APP_NAME = "logitrak-fleet"
 storage_key = None
 STORAGE_BACKEND = (os.environ.get("STORAGE_BACKEND") or "emergent").lower()
-LOCAL_STORAGE_DIR = os.environ.get("LOCAL_STORAGE_DIR", "/data/storage")
+LOCAL_STORAGE_DIR = os.environ.get("ADMIN_DOCS_STORAGE_PATH") or os.environ.get("LOCAL_STORAGE_DIR") or "/data/storage"
+MAX_FILE_SIZE_MB = int(os.environ.get("ADMIN_DOCS_MAX_FILE_SIZE_MB", "25"))
+MAX_FILE_SIZE = MAX_FILE_SIZE_MB * 1024 * 1024
+_DEFAULT_DOC_TYPES = "pdf,jpg,jpeg,png,webp,docx,doc,xls,xlsx,zip,csv"
+ALLOWED_DOC_EXTS = {e.strip().lower().lstrip(".") for e in (os.environ.get("ADMIN_DOCS_ALLOWED_TYPES") or _DEFAULT_DOC_TYPES).split(",") if e.strip()}
+ALLOWED_MEDIA_EXTS = ALLOWED_DOC_EXTS | {"jpg", "jpeg", "png", "webp", "gif", "mp4", "mov", "webm"}
 
 EXT_MIME = {
     "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
@@ -118,6 +123,18 @@ def get_object(path: str):
 def guess_mime(filename: str, fallback: str = "application/octet-stream") -> str:
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     return EXT_MIME.get(ext, fallback)
+
+
+def _ext_of(filename: str) -> str:
+    return filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+
+def validate_upload(filename: str, size: int, allowed: set):
+    ext = _ext_of(filename)
+    if ext not in allowed:
+        raise HTTPException(status_code=400, detail=f"Type de fichier non autorisé: .{ext or '?'}")
+    if size > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail=f"Fichier trop volumineux (max {MAX_FILE_SIZE_MB} Mo)")
 
 
 # ---------------------------------------------------------------------------
@@ -424,6 +441,26 @@ def compute_metrics(v: dict) -> dict:
 def clean(doc: dict) -> dict:
     doc.pop("_id", None)
     return doc
+
+
+async def audit(action: str, entity: str, request: Request = None, entity_id: str = None,
+                vehicle_id: str = None, detail: str = ""):
+    """Append an audit-trail entry (create/modify/delete/download)."""
+    rec = {
+        "id": str(uuid.uuid4()),
+        "action": action,
+        "entity": entity,
+        "entity_id": entity_id,
+        "vehicle_id": vehicle_id,
+        "detail": detail,
+        "user": "anonymous",  # no authentication in current version
+        "ip": (request.client.host if request and request.client else None),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        await db.audit_logs.insert_one(dict(rec))
+    except Exception as e:
+        logger.error("Audit log failed: %s", e)
 
 
 # ---------------------------------------------------------------------------
