@@ -68,6 +68,9 @@ export const getNavixyStatus = () => http.get("/navixy/status").then((r) => r.da
 export const navixySync = () => http.post("/navixy/sync").then((r) => r.data);
 export const getVehicleLive = (id) => http.get(`/vehicles/${id}/live`).then((r) => r.data);
 
+// Demo data
+export const fillDemoAdmin = () => http.post("/demo/fill-admin").then((r) => r.data);
+
 // Alerts
 export const getAlerts = () => http.get("/alerts").then((r) => r.data);
 export const getAlertsLog = () => http.get("/alerts/log").then((r) => r.data);

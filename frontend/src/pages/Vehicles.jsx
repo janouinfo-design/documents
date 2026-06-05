@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Search, Plus, ChevronRight, Truck } from "lucide-react";
-import { getVehicles } from "@/lib/api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { Search, Plus, ChevronRight, Truck, Sparkles, Loader2 } from "lucide-react";
+import { getVehicles, fillDemoAdmin } from "@/lib/api";
 import { fmtKm } from "@/lib/format";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -14,9 +15,30 @@ import { cn } from "@/lib/utils";
 
 export default function Vehicles() {
   const { openVehicle } = useVehicleDrawer();
+  const qc = useQueryClient();
   const [q, setQ] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [seeding, setSeeding] = useState(false);
   const { data: vehicles = [], isLoading } = useQuery({ queryKey: ["vehicles"], queryFn: getVehicles });
+
+  const onFillDemo = async () => {
+    setSeeding(true);
+    try {
+      const r = await fillDemoAdmin();
+      if (r.enriched > 0) {
+        toast.success(`${r.enriched} véhicule${r.enriched > 1 ? "s" : ""} enrichi${r.enriched > 1 ? "s" : ""} avec des données de démo`);
+      } else {
+        toast.info("Tous les véhicules ont déjà des données administratives.");
+      }
+      ["vehicles", "dashboard", "timeline", "alerts"].forEach((k) =>
+        qc.invalidateQueries({ queryKey: [k] })
+      );
+    } catch {
+      toast.error("Échec du remplissage des données de démo");
+    } finally {
+      setSeeding(false);
+    }
+  };
 
   const filtered = vehicles.filter((v) => {
     const hay = `${v.plaque} ${v.marque} ${v.modele} ${v.responsable} ${v.base} ${v.groupe}`.toLowerCase();
@@ -47,6 +69,16 @@ export default function Vehicles() {
           </div>
           <Button data-testid="add-vehicle-btn" onClick={() => setCreateOpen(true)} className="gap-2 bg-slate-900 hover:bg-slate-800">
             <Plus className="h-4 w-4" /> Véhicule
+          </Button>
+          <Button
+            data-testid="fill-demo-btn"
+            onClick={onFillDemo}
+            disabled={seeding}
+            variant="outline"
+            className="gap-2 border-slate-300 text-slate-700 hover:bg-slate-50"
+          >
+            {seeding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-amber-500" />}
+            Données démo
           </Button>
         </div>
       </div>

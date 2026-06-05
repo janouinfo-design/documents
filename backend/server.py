@@ -852,6 +852,15 @@ async def navixy_sync():
     return result
 
 
+@api_router.post("/demo/fill-admin")
+async def demo_fill_admin():
+    """Remplit les véhicules sans données administratives avec un jeu de
+    démonstration fictif (leasing, assurance, carte grise, contrôle technique)
+    + quelques états des lieux. Non destructif : ne touche pas aux données déjà saisies."""
+    result = await enrich_demo_admin()
+    return result
+
+
 @api_router.get("/vehicles/{vehicle_id}/live")
 async def vehicle_live(vehicle_id: str):
     v = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
@@ -1046,6 +1055,126 @@ VAN_PHOTOS = [
     "https://images.unsplash.com/photo-1606611013016-969c19ba27bb?crop=entropy&cs=srgb&fm=jpg&q=85&w=900",
     "https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?crop=entropy&cs=srgb&fm=jpg&q=85&w=900",
 ]
+
+# ---------------------------------------------------------------------------
+# Demo administrative data (fictional) — fills empty vehicles for showcasing.
+# ---------------------------------------------------------------------------
+DEMO_LEASING_COS = ["Arval Suisse", "ALD Automotive", "LeasePlan", "PostFinance Leasing", "Mobility Fleet", "AMAG Leasing"]
+DEMO_INSURERS = ["AXA", "Zurich Assurances", "La Mobilière", "Allianz Suisse", "Helvetia", "Vaudoise"]
+DEMO_CENTRES = ["Service auto OCAN Genève", "SAN Vaud Lausanne", "StVA Zürich", "OCN Fribourg", "Service auto VS Sion", "SAN Vaud Nyon"]
+DEMO_COUVERTURE = ["Casco complète", "Casco partielle", "RC + Casco complète", "Casco complète", "RC", "Casco partielle"]
+# Échéances variées (jours) -> mix expiré / critique / attention / ok
+DEMO_LEASING_FIN = [-18, 62, 520, 84, 690, 880, 150, 25, 400, -5, 300, 730]
+DEMO_ASS_ECH = [24, 210, 430, 47, -6, 600, 90, 300, 55, 700, 18, 250]
+DEMO_CTRL = [19, 410, 540, 73, 300, 6, 200, 500, 30, 120, 800, 60]
+DEMO_MENSUALITE = [890, 1040, 760, 1180, 950, 820, 910, 1090, 780, 1150, 860, 990]
+DEMO_PRIME = [1980, 1450, 2340, 1720, 980, 1290, 2100, 1600, 1180, 2450, 1350, 1890]
+DEMO_FRANCHISE = [1000, 500, 2000, 1000, 0, 500]
+DEMO_DMG_PHOTOS = [
+    "https://images.unsplash.com/photo-1654027197679-84c14708d5de?crop=entropy&cs=srgb&fm=jpg&q=85&w=900",
+    "https://images.unsplash.com/photo-1673187139211-1e7ec3dd60ec?crop=entropy&cs=srgb&fm=jpg&q=85&w=900",
+]
+
+
+def _demo_admin_data(i: int, annee: int = 0) -> dict:
+    n = len(DEMO_LEASING_FIN)
+    lfin, aech, ctrl = DEMO_LEASING_FIN[i % n], DEMO_ASS_ECH[i % n], DEMO_CTRL[i % n]
+    duree = 48
+    mensualite = DEMO_MENSUALITE[i % len(DEMO_MENSUALITE)]
+    debut = (date.today() + timedelta(days=lfin) - timedelta(days=duree * 30)).isoformat()
+    yr = annee if annee and annee > 1990 else 2021
+    return {
+        "leasing": {
+            "societe": DEMO_LEASING_COS[i % len(DEMO_LEASING_COS)],
+            "numero_contrat": f"LSG-2022-{4500 + i}",
+            "date_debut": debut,
+            "date_fin": iso(lfin),
+            "mensualite_chf": mensualite,
+            "duree_mois": duree,
+            "km_contractuel": 120000,
+            "option_achat": i % 2 == 0,
+            "valeur_residuelle": 9800 + (i % 6) * 1400,
+            "cout_total": mensualite * duree,
+            "cout_mensuel": mensualite,
+            "commentaires": "Données de démonstration · entretien inclus, pneus hiver fournis.",
+        },
+        "assurance": {
+            "compagnie": DEMO_INSURERS[i % len(DEMO_INSURERS)],
+            "numero_police": f"POL-{780000 + i * 11}",
+            "type_couverture": DEMO_COUVERTURE[i % len(DEMO_COUVERTURE)],
+            "prime_annuelle": DEMO_PRIME[i % len(DEMO_PRIME)],
+            "franchise": DEMO_FRANCHISE[i % len(DEMO_FRANCHISE)],
+            "assistance": True,
+            "contact_sinistre": "+41 800 80 80 80",
+            "date_debut": iso(aech - 365),
+            "date_echeance": iso(aech),
+        },
+        "carte_grise": {
+            "date_mise_circulation": iso(-((2026 - yr) * 365)),
+            "poids_total": 3500,
+            "nombre_places": 3,
+        },
+        "controle_technique": {
+            "date_dernier": iso(ctrl - 730),
+            "date_prochain": iso(ctrl),
+            "centre": DEMO_CENTRES[i % len(DEMO_CENTRES)],
+            "resultat": "Conforme" if i % 3 else "Conforme avec remarques",
+        },
+    }
+
+
+def _has_admin_data(v: dict) -> bool:
+    leasing = (v.get("leasing") or {}).get("date_fin")
+    assurance = (v.get("assurance") or {}).get("date_echeance")
+    controle = (v.get("controle_technique") or {}).get("date_prochain")
+    return bool(leasing or assurance or controle)
+
+
+async def enrich_demo_admin() -> dict:
+    """Fill fictional admin data on vehicles that have none (non-destructive)."""
+    vehicles = await db.vehicles.find({}, {"_id": 0}).sort("plaque", 1).to_list(1000)
+    now = datetime.now(timezone.utc).isoformat()
+    enriched = 0
+    for i, v in enumerate(vehicles):
+        if _has_admin_data(v):
+            continue
+        fields = {**_demo_admin_data(i, v.get("annee") or 0), "updated_at": now}
+        if not v.get("photo_url"):
+            fields["photo_url"] = VAN_PHOTOS[i % len(VAN_PHOTOS)]
+        await db.vehicles.update_one({"id": v["id"]}, {"$set": fields})
+        enriched += 1
+
+    inspections_added = 0
+    if vehicles and await db.inspections.count_documents({}) == 0:
+        vid = vehicles[0]["id"]
+        km = vehicles[0].get("kilometrage") or 80000
+        samples = [
+            {
+                "id": str(uuid.uuid4()), "vehicle_id": vid, "date": iso(-200),
+                "responsable": vehicles[0].get("responsable") or "Marc Favre",
+                "kilometrage": max(0, km - 13000),
+                "commentaire": "Données de démo · état général bon. Rayure portière avant droite signalée.",
+                "photos": [
+                    {"angle": "avant_gauche", "url": VAN_PHOTOS[0], "kind": "image"},
+                    {"angle": "dommages", "url": DEMO_DMG_PHOTOS[0], "kind": "image"},
+                ],
+                "created_at": now,
+            },
+            {
+                "id": str(uuid.uuid4()), "vehicle_id": vid, "date": iso(-12),
+                "responsable": "Sophie Dubois", "kilometrage": km,
+                "commentaire": "Données de démo · nouveau choc pare-chocs arrière. Devis carrosserie demandé.",
+                "photos": [
+                    {"angle": "arriere_droite", "url": DEMO_DMG_PHOTOS[1], "kind": "image"},
+                    {"angle": "dommages", "url": DEMO_DMG_PHOTOS[0], "kind": "image"},
+                ],
+                "created_at": now,
+            },
+        ]
+        await db.inspections.insert_many([dict(x) for x in samples])
+        inspections_added = len(samples)
+
+    return {"enriched": enriched, "total": len(vehicles), "inspections_added": inspections_added}
 
 
 async def seed_data():
