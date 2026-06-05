@@ -88,6 +88,7 @@ frontend/node_modules/.cache/default-development/7.pack
 .env
 .env.*
 *.env
+!deploy/.env.example
 credentials.json
 *.key
 .credentials
