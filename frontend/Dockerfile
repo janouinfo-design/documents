@@ -3,8 +3,8 @@ FROM node:20-alpine AS build
 WORKDIR /app
 ENV NODE_OPTIONS=--max-old-space-size=2048
 
-COPY package.json yarn.lock ./
-RUN yarn install --frozen-lockfile --network-timeout 600000
+COPY package.json yarn.lock* ./
+RUN yarn install --network-timeout 600000
 
 COPY . .
 
