@@ -66,7 +66,6 @@ export const getTimeline = () => http.get("/timeline").then((r) => r.data);
 // Navixy integration
 export const getNavixyStatus = () => http.get("/navixy/status").then((r) => r.data);
 export const navixySync = () => http.post("/navixy/sync").then((r) => r.data);
-export const getVehicleLive = (id) => http.get(`/vehicles/${id}/live`).then((r) => r.data);
 
 // Demo data
 export const fillDemoAdmin = () => http.post("/demo/fill-admin").then((r) => r.data);

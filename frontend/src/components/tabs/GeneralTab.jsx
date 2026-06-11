@@ -7,7 +7,6 @@ import { Stat, SectionCard, FormRow } from "@/components/Field";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import DropZone from "@/components/DropZone";
-import NavixyLiveCard from "@/components/NavixyLiveCard";
 
 const GEN_FIELDS = ["photo_url", "plaque", "marque", "modele", "annee", "vin", "kilometrage", "groupe", "base", "responsable", "tracker_gps", "prochaine_maintenance", "prochaine_expertise"];
 const pick = (v) => Object.fromEntries(GEN_FIELDS.map((k) => [k, v[k] ?? ""]));
@@ -91,9 +90,7 @@ export default function GeneralTab({ vehicle, onSaved }) {
   }
 
   return (
-    <div className="space-y-5">
-      {vehicle.navixy_tracker_id ? <NavixyLiveCard vehicle={vehicle} /> : null}
-      <SectionCard
+    <SectionCard
       title="Informations générales"
       description="Identité administrative du véhicule"
       testId="general-view"
@@ -113,6 +110,5 @@ export default function GeneralTab({ vehicle, onSaved }) {
         <Stat label="Prochaine expertise" value={dateFr(vehicle.prochaine_expertise)} icon={ClipboardList} />
       </div>
     </SectionCard>
-    </div>
   );
 }
