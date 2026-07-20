@@ -84,6 +84,10 @@ body {
 
 .font-display { font-family: 'Cabinet Grotesk', sans-serif; }
 
+/* Hide scrollbar for horizontal tab strips (mobile swipe) */
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
 @layer base {
     [data-debug-wrapper="true"] {
         display: contents !important;

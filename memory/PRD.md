@@ -76,15 +76,36 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - [x] Frontend same-origin (/api) → un seul port publié (APP_PORT, défaut 8090) derrière le Nginx hôte (sous-domaine dédié). Aucun mélange avec Navixy/autres apps.
 - Note: build Docker non testé dans le pod (Docker indisponible) ; logique stockage local validée + aperçu Emergent non régressé.
 
+## Déploiement VPS — mise en production (2026-06 → 07, session fork)
+- [x] VPS OVH `83.228.207.198` (IPv4) / IPv6, Ubuntu, Docker 29.4 + Compose v5.1. Repo GitHub `janouinfo-design/documents` cloné dans `~/documents`.
+- [x] Correctif build: `frontend/Dockerfile` → `COPY package.json yarn.lock* ./` + `yarn install` (sans `--frozen-lockfile`) car `yarn.lock` non committé au repo. Build frontend OK (16s, bundle same-origin `/api` validé, pas de `undefined/api`).
+- [x] `.gitignore`: ajout `!deploy/.env.example` (était exclu par `.env.*`).
+- [x] `docker-compose.yml`: healthcheck MongoDB + backend `depends_on: condition: service_healthy` (évite flotte vide au 1er boot à froid).
+- [x] Stack lancé sur VPS (port 8090), Navixy sync OK (12 véhicules réels), MongoDB `logitrak_fleet` dédiée. DNS A `documents.logitrak.ch` → 83.228.207.198 + Nginx hôte + certbot (HTTPS).
+- [x] Feature « Données démo »: endpoint `POST /api/demo/fill-admin` (non destructif) + bouton page Véhicules. Remplit leasing/assurance/carte grise/contrôles fictifs (échéances variées) + états des lieux. Peuple Dashboard/Timeline/Alertes.
+
+## Intégration dans le hub « New Navixy » (projet SÉPARÉ) (2026-07)
+- Contexte: LogiTrak (= module « Documents ») sera embarqué en **iframe** dans un autre projet Emergent `logistics-hub-maker.preview.emergentagent.com`. New Navixy = projet distinct, NE PAS TOUCHER.
+- [x] `frontend/nginx.conf`: en-tête `Content-Security-Policy: frame-ancestors 'self' https://*.emergentagent.com https://*.logitrak.ch` (autorise l'iframe depuis le hub, bloque le clickjacking ailleurs).
+- Reste à faire côté hub (autre projet): ajouter une page/menu avec `<iframe src="https://documents.logitrak.ch">`.
+
+## Refonte navigation — Phase 1 (2026-07)
+- [x] Périmètre STRICT: uniquement le projet Documents (LogiTrak). Aucune modif de New Navixy / autres apps VPS / connexion Navixy (API backend inchangée).
+- [x] Remplacé le menu vertical gauche (`Layout.jsx`) par une **barre d'onglets horizontale** sticky (SaaS, style clair/Swiss existant): Tableau de bord, Véhicules, Échéances, Alertes. Onglet actif = soulignement slate-900. Testids conservés (nav-dashboard/vehicles/timeline/alerts).
+- [x] Responsive: onglets `overflow-x-auto no-scrollbar` (swipe mobile), libellé module `hidden sm:flex`. Utilitaire `.no-scrollbar` ajouté à index.css.
+- [x] Retiré la carte « Suivi Navixy en direct » de l'onglet Général (le GPS live est géré par le hub) + suppression composant `NavixyLiveCard.jsx` et API `getVehicleLive` devenus morts.
+- [x] Testé aperçu Emergent: 4 onglets présents, navigation + états actifs OK, Dashboard/Véhicules rendus.
+- Note: routes inchangées (`/`, `/vehicules`, `/timeline`, `/alertes`) → aucune 404, migration sûre sans conserver l'ancien menu.
+
 ## Backlog (prioritized)
-- P1: OCR carte grise (lecture plaque/VIN/date/poids/places + pré-remplissage) via IA vision.
-- P1: Alertes/notifications proactives (email/in-app) sur échéances 180/90/30/7.
+- Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.
+- Phase 3+ (gros chantiers, à cadrer 1 par 1): modules Contrats & renouvellements, Conducteurs, Clients, Modèles, Corbeille/Favoris/Partagés ; permissions/rôles + auth ; multi-tenant.
+- P1: Envoi e-mail RÉEL des alertes (attente EMAIL_PROVIDER/API_KEY/FROM/RECIPIENTS).
 - P2: Export PDF/CSV des coûts (leasing/assurance) et rapport de conformité.
-- P2: Vue calendrier (grille mensuelle) en complément de la timeline verticale.
-- P2: Authentification + rôles (admin/responsable) si multi-utilisateurs requis.
-- P3: Refactor server.py en routers (vehicles/documents/inspections/dashboard) ; upload async (asyncio.to_thread).
-- P3: DELETE /vehicles/{id} -> 404 si id inconnu (symétrie avec GET).
+- P2: Vue calendrier (grille mensuelle) en complément de la timeline.
+- P3: Refactor server.py en routers ; upload async.
 
 ## Next Tasks
-1. Recueillir le retour utilisateur sur la V1.
-2. Prioriser OCR carte grise vs notifications d'échéances.
+1. Déployer Phase 1 + iframe header + retrait carte GPS sur le VPS (Save to GitHub → git pull → docker compose up -d --build).
+2. Embarquer l'iframe LogiTrak dans le hub `logistics-hub-maker`.
+3. Valider Phase 2 (sous-onglets) ou prioriser un nouveau module.
