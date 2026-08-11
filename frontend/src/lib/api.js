@@ -77,11 +77,12 @@ export const runAlerts = () => http.post("/alerts/run").then((r) => r.data);
 
 // Scan intelligent de documents
 export const getDocumentTypes = () => http.get("/document-types").then((r) => r.data);
-export const scanVehicleDocument = (vehicleId, files, { documentType, documentId } = {}) => {
+export const scanVehicleDocument = (vehicleId, files, { documentType, documentId, asPdf } = {}) => {
   const form = new FormData();
   (files || []).forEach((f) => form.append("files", f));
   if (documentType) form.append("document_type", documentType);
   if (documentId) form.append("document_id", documentId);
+  if (asPdf) form.append("as_pdf", "1");
   return http
     .post(`/vehicles/${vehicleId}/documents/scan`, form, {
       headers: { "Content-Type": "multipart/form-data" },
@@ -93,5 +94,12 @@ export const validateScannedDocument = (docId, payload) =>
   http.post(`/documents/${docId}/validate`, payload).then((r) => r.data);
 export const getFieldMeta = (id) => http.get(`/vehicles/${id}/field-meta`).then((r) => r.data);
 export const getVehicleHistory = (id) => http.get(`/vehicles/${id}/history`).then((r) => r.data);
+
+// Enrichissement technique externe (SwissCarInfo — données officielles OFROU)
+export const getTechnicalStatus = () => http.get("/technical-data/status").then((r) => r.data);
+export const enrichTechnical = (id) =>
+  http.post(`/vehicles/${id}/enrich-technical`, null, { timeout: 60000 }).then((r) => r.data);
+export const applyTechnicalEnrichment = (id, payload) =>
+  http.post(`/vehicles/${id}/enrich-technical/apply`, payload).then((r) => r.data);
 
 export default http;

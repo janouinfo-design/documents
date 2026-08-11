@@ -243,6 +243,28 @@ class GptVisionProvider(DocumentExtractionProvider):
         }
 
 
+def enhance_and_pdf(images_bytes: list):
+    """Améliore la lisibilité des photos (EXIF + autocontraste) et assemble un PDF unique.
+    Retourne (pdf_bytes, jpeg_pages)."""
+    from PIL import Image, ImageOps
+    if not images_bytes:
+        raise ValueError("Aucune image à assembler")
+    pil_pages, jpegs = [], []
+    for data in images_bytes:
+        img = Image.open(io.BytesIO(data))
+        img = ImageOps.exif_transpose(img).convert("RGB")
+        img = ImageOps.autocontrast(img, cutoff=1)
+        if max(img.size) > 2200:
+            img.thumbnail((2200, 2200))
+        pil_pages.append(img)
+        buf = io.BytesIO()
+        img.save(buf, "JPEG", quality=90)
+        jpegs.append(buf.getvalue())
+    out = io.BytesIO()
+    pil_pages[0].save(out, "PDF", save_all=True, append_images=pil_pages[1:], resolution=150)
+    return out.getvalue(), jpegs
+
+
 def get_provider(api_key: str) -> DocumentExtractionProvider:
     name = (os.environ.get("DOC_EXTRACTION_PROVIDER") or "gpt_vision").lower()
     model = os.environ.get("DOC_EXTRACTION_MODEL") or "gpt-5.4"
@@ -252,17 +274,4 @@ def get_provider(api_key: str) -> DocumentExtractionProvider:
 
 
 class VehicleTechnicalDataProvider:
-    """Interface pour une source technique externe licenciée (SwissCarInfo,
-    reception-par-type.ch, auto-i-dat, Eurotax…) interrogée via VIN / n° d'homologation (code TG).
-    Aucune implémentation tant qu'aucun accès vérifié n'est fourni — aucune donnée inventée.
-    Retour attendu : {conso_officielle_l_100km, conso_officielle_norme, co2_g_km, co2_norme,
-    capacite_reservoir_l, provider, retrieved_at}."""
-
-    async def lookup(self, vin: str = None, homologation_number: str = None,
-                     make: str = None, model: str = None, variant: str = None) -> dict:
-        raise NotImplementedError
-
-
-def get_technical_provider():
-    """None tant qu'aucun fournisseur licencié n'est configuré (env TECH_DATA_PROVIDER)."""
-    return None
+    """Voir technical_data.py — abstraction et implémentation SwissCarInfo y résident."""

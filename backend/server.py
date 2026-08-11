@@ -17,7 +17,9 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime, timezone, date, timedelta
 
-from extraction import DOC_TYPES, FIELD_DEFS, get_provider, pdf_to_images_b64, prepare_image_b64, normalize_value
+from extraction import (DOC_TYPES, FIELD_DEFS, enhance_and_pdf, get_provider,
+                        pdf_to_images_b64, prepare_image_b64, normalize_value)
+from technical_data import TECH_FIELD_DEFS, get_technical_provider, TechnicalLookupError
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -1139,8 +1141,8 @@ def _same_value(a, b) -> bool:
     return na == nb
 
 
-def _build_review_fields(vehicle: dict, dtype: str, raw_fields: dict) -> list:
-    defs = {d["key"]: d for d in FIELD_DEFS.get(dtype, [])}
+def _build_review_fields(vehicle: dict, defs_list: list, raw_fields: dict) -> list:
+    defs = {d["key"]: d for d in defs_list}
     out = []
     for key, info in (raw_fields or {}).items():
         fd = defs.get(key)
@@ -1163,7 +1165,7 @@ def _build_review_fields(vehicle: dict, dtype: str, raw_fields: dict) -> list:
             "current_value": current if has_current else None,
             "conflict": conflict,
         })
-    order = [d["key"] for d in FIELD_DEFS.get(dtype, [])]
+    order = [d["key"] for d in defs_list]
     out.sort(key=lambda f: order.index(f["field"]))
     return out
 
@@ -1177,7 +1179,8 @@ async def list_document_types():
 async def scan_vehicle_document(vehicle_id: str, request: Request,
                                 files: List[UploadFile] = File(None),
                                 document_type: Optional[str] = Form(None),
-                                document_id: Optional[str] = Form(None)):
+                                document_id: Optional[str] = Form(None),
+                                as_pdf: Optional[str] = Form(None)):
     vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
     if not vehicle:
         raise HTTPException(status_code=404, detail="Véhicule introuvable")
@@ -1207,7 +1210,7 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
             raise HTTPException(status_code=400, detail="Aucun fichier fourni")
         if len(files) > MAX_SCAN_PAGES:
             raise HTTPException(status_code=400, detail=f"Maximum {MAX_SCAN_PAGES} pages par scan")
-        pages, total_size = [], 0
+        inputs = []
         for f in files:
             data = await f.read()
             ext = _ext_of(f.filename)
@@ -1216,29 +1219,51 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
                                     detail=f"Format non supporté pour le scan: .{ext or '?'} (PDF, JPG, PNG, WEBP)")
             if len(data) > MAX_FILE_SIZE:
                 raise HTTPException(status_code=413, detail=f"Fichier trop volumineux (max {MAX_FILE_SIZE_MB} Mo)")
-            if ext == "pdf":
-                try:
-                    imgs = pdf_to_images_b64(data)
-                except Exception:
-                    raise HTTPException(status_code=422, detail="PDF illisible ou corrompu")
-                if not imgs:
-                    raise HTTPException(status_code=422, detail="PDF sans page exploitable")
-                images_b64.extend(imgs)
-            else:
-                try:
-                    images_b64.append(prepare_image_b64(data))
-                except Exception:
-                    raise HTTPException(status_code=422, detail=f"Image illisible: {f.filename}")
-            content_type = f.content_type or guess_mime(f.filename)
-            path = f"{APP_NAME}/uploads/{vehicle_id}/{uuid.uuid4()}.{ext}"
+            inputs.append((f, data, ext))
+        as_pdf_flag = (as_pdf or "").strip().lower() in ("1", "true", "yes")
+        pages, total_size = [], 0
+        if as_pdf_flag and all(ext != "pdf" for _, _, ext in inputs):
+            # Photos du scanner : amélioration de lisibilité + assemblage en un PDF unique
             try:
-                stored = put_object(path, data, content_type)
+                pdf_bytes, jpegs = enhance_and_pdf([data for _, data, _ in inputs])
+            except Exception:
+                raise HTTPException(status_code=422, detail="Image illisible")
+            images_b64 = [prepare_image_b64(j) for j in jpegs]
+            filename = f"scan-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.pdf"
+            path = f"{APP_NAME}/uploads/{vehicle_id}/{uuid.uuid4()}.pdf"
+            try:
+                stored = put_object(path, pdf_bytes, "application/pdf")
             except Exception as e:
                 logger.error("Scan upload failed: %s", e)
                 raise HTTPException(status_code=502, detail="Échec du téléversement")
-            pages.append({"storage_path": stored["path"], "original_filename": f.filename,
-                          "content_type": content_type, "size": stored.get("size", len(data))})
-            total_size += len(data)
+            pages.append({"storage_path": stored["path"], "original_filename": filename,
+                          "content_type": "application/pdf", "size": stored.get("size", len(pdf_bytes))})
+            total_size = len(pdf_bytes)
+        else:
+            for f, data, ext in inputs:
+                if ext == "pdf":
+                    try:
+                        imgs = pdf_to_images_b64(data)
+                    except Exception:
+                        raise HTTPException(status_code=422, detail="PDF illisible ou corrompu")
+                    if not imgs:
+                        raise HTTPException(status_code=422, detail="PDF sans page exploitable")
+                    images_b64.extend(imgs)
+                else:
+                    try:
+                        images_b64.append(prepare_image_b64(data))
+                    except Exception:
+                        raise HTTPException(status_code=422, detail=f"Image illisible: {f.filename}")
+                content_type = f.content_type or guess_mime(f.filename)
+                path = f"{APP_NAME}/uploads/{vehicle_id}/{uuid.uuid4()}.{ext}"
+                try:
+                    stored = put_object(path, data, content_type)
+                except Exception as e:
+                    logger.error("Scan upload failed: %s", e)
+                    raise HTTPException(status_code=502, detail="Échec du téléversement")
+                pages.append({"storage_path": stored["path"], "original_filename": f.filename,
+                              "content_type": content_type, "size": stored.get("size", len(data))})
+                total_size += len(data)
         record = {
             "id": str(uuid.uuid4()), "vehicle_id": vehicle_id,
             "folder": DOC_TYPES.get(document_type, {}).get("folder", "Divers"),
@@ -1265,7 +1290,7 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
     dtype = document_type or result.get("document_type") or "autre"
     if dtype not in DOC_TYPES:
         dtype = "autre"
-    fields = _build_review_fields(vehicle, dtype, result.get("fields"))
+    fields = _build_review_fields(vehicle, FIELD_DEFS.get(dtype, []), result.get("fields"))
     await db.documents.update_one({"id": record["id"]}, {"$set": {
         "extraction_status": "done", "document_type": dtype,
         "type_confidence": result.get("type_confidence"),
@@ -1357,6 +1382,114 @@ async def validate_scanned_document(doc_id: str, payload: DocumentValidate, requ
 async def get_vehicle_field_meta(vehicle_id: str):
     return await db.vehicle_field_meta.find(
         {"vehicle_id": vehicle_id}, {"_id": 0}).sort("updated_at", -1).to_list(200)
+
+
+# ---------------------------------------------------------------------------
+# Enrichissement technique externe (SwissCarInfo — données officielles OFROU)
+# ---------------------------------------------------------------------------
+async def _can_locked_keys(vehicle_id: str) -> set:
+    """Champs mesurés via CAN/OBD — jamais remplacés par des données constructeur."""
+    metas = await db.vehicle_field_meta.find(
+        {"vehicle_id": vehicle_id, "provider": "navixy_can"}, {"_id": 0, "field": 1}).to_list(100)
+    locked_paths = {m["field"] for m in metas}
+    return {d["key"] for d in TECH_FIELD_DEFS
+            if (d["key"] if d["target"] == "root" else f"{d['target']}.{d['key']}") in locked_paths}
+
+
+@api_router.get("/technical-data/status")
+async def technical_data_status():
+    provider = get_technical_provider()
+    return {"configured": provider is not None,
+            "provider": "swisscarinfo" if provider else None}
+
+
+class TechnicalApply(BaseModel):
+    fields: dict = Field(default_factory=dict)
+    matched_by: Optional[str] = None
+    retrieved_at: Optional[str] = None
+
+
+@api_router.post("/vehicles/{vehicle_id}/enrich-technical")
+async def enrich_technical(vehicle_id: str, request: Request):
+    vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Véhicule introuvable")
+    provider = get_technical_provider()
+    if provider is None:
+        raise HTTPException(status_code=503,
+                            detail="Fournisseur de données techniques non configuré — renseignez SWISSCARINFO_API_KEY puis redémarrez le backend.")
+    try:
+        result = provider.lookup(plate=vehicle.get("plaque") or None,
+                                 homologation_number=vehicle.get("numero_homologation") or None,
+                                 vin=vehicle.get("vin") or None)
+    except TechnicalLookupError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    can_locked = await _can_locked_keys(vehicle_id)
+    main = result.get("fields") or {}
+    raw = {k: {"value": v, "confidence": None} for k, v in main.items() if k not in can_locked}
+    fields = _build_review_fields(vehicle, TECH_FIELD_DEFS, raw)
+    variantes = []
+    for var in (result.get("variantes") or []):
+        vraw = {k: {"value": v, "confidence": None} for k, v in (var.get("fields") or {}).items()
+                if v not in (None, "") and k not in main and k not in can_locked}
+        variantes.append({"label": var.get("label"),
+                          "fields": _build_review_fields(vehicle, TECH_FIELD_DEFS, vraw)})
+    await audit("enrich", "vehicle", request, vehicle_id, vehicle_id,
+                f"Recherche base technique SwissCarInfo ({result.get('matched_by')}) — {len(fields)} champ(s) trouvé(s)")
+    return {"provider": result.get("provider"), "matched_by": result.get("matched_by"),
+            "retrieved_at": result.get("retrieved_at"),
+            "requires_variant_choice": len(variantes) > 0, "variantes": variantes,
+            "fields": fields}
+
+
+@api_router.post("/vehicles/{vehicle_id}/enrich-technical/apply")
+async def apply_technical_enrichment(vehicle_id: str, payload: TechnicalApply, request: Request):
+    vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Véhicule introuvable")
+    defs = {d["key"]: d for d in TECH_FIELD_DEFS}
+    can_locked = await _can_locked_keys(vehicle_id)
+    root_updates, sub_updates, applied = {}, {}, []
+    for key, raw in (payload.fields or {}).items():
+        fd = defs.get(key)
+        if not fd or key in can_locked:
+            continue
+        value = normalize_value(raw, fd["kind"])
+        if value is None:
+            continue
+        current = _get_current(vehicle, fd["target"], key)
+        if not _is_empty(current) and _same_value(current, value):
+            continue
+        if fd["target"] == "root":
+            root_updates[key] = value
+        else:
+            sub_updates.setdefault(fd["target"], {})[key] = value
+        applied.append((key, fd, current, value))
+
+    now = datetime.now(timezone.utc).isoformat()
+    update = dict(root_updates)
+    for sub, vals in sub_updates.items():
+        update[sub] = {**(vehicle.get(sub) or {}), **vals}
+    if update:
+        update["updated_at"] = now
+        await db.vehicles.update_one({"id": vehicle["id"]}, {"$set": update})
+
+    for key, fd, old, new in applied:
+        fpath = key if fd["target"] == "root" else f"{fd['target']}.{key}"
+        await db.vehicle_field_meta.update_one(
+            {"vehicle_id": vehicle["id"], "field": fpath},
+            {"$set": {"label": fd["label"], "source": "external_vehicle_database",
+                      "provider": "swisscarinfo", "source_ref": payload.matched_by or "",
+                      "retrieved_at": payload.retrieved_at or "", "confidence": None,
+                      "validated_by": "utilisateur", "validated_at": now, "updated_at": now}},
+            upsert=True)
+        old_txt = old if not _is_empty(old) else "—"
+        await audit("modify", "vehicle", request, vehicle["id"], vehicle["id"],
+                    f"{fd['label']}: {old_txt} → {new} (source: Base technique SwissCarInfo)")
+
+    fresh = await db.vehicles.find_one({"id": vehicle["id"]}, {"_id": 0})
+    fresh["metrics"] = compute_metrics(fresh)
+    return {"ok": True, "applied": len(applied), "vehicle": fresh}
 
 
 @api_router.get("/vehicles/{vehicle_id}/history")

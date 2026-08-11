@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   Pencil, Loader2, ScrollText, Calendar, Weight, Users,
-  Fuel, Gauge, Zap, Leaf, Hash, TrendingUp,
+  Fuel, Gauge, Zap, Leaf, Hash, TrendingUp, Database,
 } from "lucide-react";
-import { updateVehicle } from "@/lib/api";
+import { updateVehicle, getFieldMeta } from "@/lib/api";
 import { dateFr, fmtNum } from "@/lib/format";
 import { Stat, SectionCard, FormRow } from "@/components/Field";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import DocFolderSection from "@/components/DocFolderSection";
 import DocumentScanCard from "@/components/DocumentScanCard";
+import TechnicalEnrichDialog from "@/components/TechnicalEnrichDialog";
 
 const CG_FIELDS = ["date_mise_circulation", "poids_total", "nombre_places"];
 const TECH_FIELDS = [
@@ -39,7 +40,23 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
   const [edit, setEdit] = useState(false);
   const [form, setForm] = useState(() => pick(vehicle));
   const [saving, setSaving] = useState(false);
+  const [techOpen, setTechOpen] = useState(false);
+  const [swissMeta, setSwissMeta] = useState(null);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  useEffect(() => {
+    let on = true;
+    getFieldMeta(vehicle.id)
+      .then((metas) => {
+        if (!on) return;
+        const m = (metas || [])
+          .filter((x) => x.provider === "swisscarinfo")
+          .sort((a, b) => (b.retrieved_at || "").localeCompare(a.retrieved_at || ""))[0];
+        setSwissMeta(m || null);
+      })
+      .catch(() => {});
+    return () => { on = false; };
+  }, [vehicle.id, vehicle.updated_at]);
 
   const litres = vehicle.cylindree_cm3 ? `${fmtNum(vehicle.cylindree_cm3)} cm³ — ${(vehicle.cylindree_cm3 / 1000).toFixed(1)} L` : "—";
   const reelleFromCan = vehicle.conso_reelle_source === "can";
@@ -193,6 +210,11 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
             title="Données moteur & consommation"
             description="Officielle = homologation · Réelle = uniquement mesurée (CAN/OBD) ou saisie manuelle marquée"
             testId="moteur-conso"
+            action={
+              <Button variant="outline" size="sm" onClick={() => setTechOpen(true)} data-testid="tech-enrich-btn" className="gap-1.5">
+                <Database className="h-3.5 w-3.5" /> Base technique
+              </Button>
+            }
           >
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <Stat label="Carburant" value={vehicle.type_carburant || "—"} icon={Fuel} />
@@ -223,6 +245,11 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
               <Stat label="Capacité réservoir" value={cap > 0 ? `${cap} L` : "—"} />
               <Stat label="Niveau carburant" value={niveauTxt} icon={Fuel} />
             </div>
+            {swissMeta && (
+              <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-400" data-testid="tech-provenance-note">
+                Source : SwissCarInfo — données officielles OFROU · dernière récupération le {dateFr((swissMeta.retrieved_at || "").slice(0, 10))}
+              </p>
+            )}
           </SectionCard>
         </>
       )}
@@ -230,6 +257,8 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
       <SectionCard title="Documents carte grise" description="Recto · Verso · Historique" testId="carte-grise-docs">
         <DocFolderSection vehicleId={vehicle.id} folder="Carte grise" docs={docs} onChange={() => { refetchDocs?.(); onSaved?.(); }} compact />
       </SectionCard>
+
+      <TechnicalEnrichDialog open={techOpen} onOpenChange={setTechOpen} vehicle={vehicle} onApplied={() => onSaved?.()} />
     </div>
   );
 }

@@ -11,6 +11,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { scanVehicleDocument, validateScannedDocument, deleteDocument } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { loadDocScanner } from "@/lib/docScanner";
+import DocumentCropper from "@/components/DocumentCropper";
 
 export const DOC_TYPE_OPTIONS = [
   { key: "permis_circulation", label: "Permis de circulation" },
@@ -78,6 +80,10 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
   const [cameraError, setCameraError] = useState(null);
   const [failedDocId, setFailedDocId] = useState(null);
   const [validating, setValidating] = useState(false);
+  const [cropFile, setCropFile] = useState(null);
+  const scannerRef = useRef(null);
+  const overlayRef = useRef(null);
+  const detectTimerRef = useRef(null);
   const cameraRef = useRef(null);
   const fileRef = useRef(null);
   const videoRef = useRef(null);
@@ -100,12 +106,36 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
     setError(null);
     setCameraError(null);
     setFailedDocId(null);
+    setCropFile(null);
     setDocType(forcedType || "autre");
     validatedRef.current = false;
   };
 
+  const ensureScanner = async () => {
+    if (scannerRef.current) return scannerRef.current;
+    try {
+      scannerRef.current = await loadDocScanner();
+      return scannerRef.current;
+    } catch {
+      return null;
+    }
+  };
+
+  const handleCapturedPhoto = async (file) => {
+    if (!file) return;
+    const scanner = await ensureScanner();
+    if (!scanner) {
+      addFiles([file], { fromCamera: true });
+      setStep("capture");
+      return;
+    }
+    setCropFile(file);
+    setStep("crop");
+  };
+
   const openCamera = async () => {
     setCameraError(null);
+    ensureScanner();
     if (isMobileDevice()) {
       cameraRef.current?.click();
       return;
@@ -135,6 +165,56 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
   }, [step]);
 
   useEffect(() => {
+    if (step !== "camera") return undefined;
+    let cancelled = false;
+    ensureScanner().then((scanner) => {
+      if (!scanner || cancelled) return;
+      detectTimerRef.current = setInterval(() => {
+        const video = videoRef.current;
+        const overlay = overlayRef.current;
+        if (!video || !overlay || !video.videoWidth || !window.cv) return;
+        try {
+          const scale = 420 / video.videoWidth;
+          const c = document.createElement("canvas");
+          c.width = 420;
+          c.height = Math.round(video.videoHeight * scale);
+          c.getContext("2d").drawImage(video, 0, 0, c.width, c.height);
+          const mat = window.cv.imread(c);
+          const contour = scanner.findPaperContour(mat);
+          const pts = contour ? scanner.getCornerPoints(contour) : null;
+          if (contour?.delete) contour.delete();
+          mat.delete();
+          overlay.width = video.videoWidth;
+          overlay.height = video.videoHeight;
+          const ctx = overlay.getContext("2d");
+          ctx.clearRect(0, 0, overlay.width, overlay.height);
+          if (pts?.topLeftCorner) {
+            const P = ["topLeftCorner", "topRightCorner", "bottomRightCorner", "bottomLeftCorner"].map(
+              (k) => ({ x: pts[k].x / scale, y: pts[k].y / scale })
+            );
+            ctx.beginPath();
+            ctx.moveTo(P[0].x, P[0].y);
+            P.slice(1).forEach((p) => ctx.lineTo(p.x, p.y));
+            ctx.closePath();
+            ctx.lineWidth = Math.max(3, overlay.width * 0.004);
+            ctx.strokeStyle = "#10b981";
+            ctx.fillStyle = "rgba(16,185,129,0.12)";
+            ctx.fill();
+            ctx.stroke();
+          }
+        } catch {
+          /* frame suivante */
+        }
+      }, 350);
+    });
+    return () => {
+      cancelled = true;
+      clearInterval(detectTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
+  useEffect(() => {
     if (open && initialMode === "camera" && initialStep === "capture") {
       const t = setTimeout(() => openCamera(), 250);
       return () => clearTimeout(t);
@@ -155,7 +235,7 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
     onOpenChange(o);
   };
 
-  const addFiles = (list) => {
+  const addFiles = (list, opts = {}) => {
     const arr = Array.from(list || []);
     if (!arr.length) return;
     const hasPdf = arr.some((f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
@@ -177,7 +257,7 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
     }
     setPages((ps) => [
       ...ps,
-      ...arr.map((f) => ({ id: crypto.randomUUID(), file: f, preview: URL.createObjectURL(f), isPdf: false })),
+      ...arr.map((f) => ({ id: crypto.randomUUID(), file: f, preview: URL.createObjectURL(f), isPdf: false, fromCamera: !!opts.fromCamera })),
     ]);
   };
 
@@ -190,8 +270,11 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
     canvas.getContext("2d").drawImage(video, 0, 0);
     canvas.toBlob(
       (blob) => {
-        if (blob) addFiles([new File([blob], `photo-${Date.now()}.jpg`, { type: "image/jpeg" })]);
-        setStep("capture");
+        if (!blob) {
+          setStep("capture");
+          return;
+        }
+        handleCapturedPhoto(new File([blob], `photo-${Date.now()}.jpg`, { type: "image/jpeg" }));
       },
       "image/jpeg",
       0.92
@@ -225,7 +308,8 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
     setError(null);
     setStep("analyzing");
     try {
-      const res = await scanVehicleDocument(vehicle.id, pages.map((p) => p.file), { documentType: chosenType || undefined });
+      const asPdf = pages.length > 0 && pages.every((p) => !p.isPdf) && pages.some((p) => p.fromCamera);
+      const res = await scanVehicleDocument(vehicle.id, pages.map((p) => p.file), { documentType: chosenType || undefined, asPdf });
       if (res.extraction_status === "failed") {
         setFailedDocId(res.document_id);
         setError(res.error);
@@ -305,7 +389,8 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
           <DialogDescription>
             {step === "type" && "Choisissez le type de document à ajouter."}
             {step === "capture" && "Prenez une photo ou importez un PDF/image. Plusieurs pages possibles (recto, verso…)."}
-            {step === "camera" && "Cadrez le document puis prenez la photo."}
+            {step === "camera" && "Cadrez le document — le contour détecté s'affiche en vert."}
+            {step === "crop" && "Vérifiez le recadrage — ajustez les coins si nécessaire avant de valider."}
             {step === "analyzing" && "Analyse en cours…"}
             {step === "review" && "Vérifiez les données détectées — rien n'est enregistré sans votre validation."}
             {step === "failed" && "L'analyse a échoué."}
@@ -318,7 +403,7 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
           accept="image/*"
           capture="environment"
           className="hidden"
-          onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }}
+          onChange={(e) => { handleCapturedPhoto(e.target.files?.[0]); e.target.value = ""; }}
         />
         <input
           ref={fileRef}
@@ -425,6 +510,9 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
                 Aucune page ajoutée pour l'instant
               </p>
             )}
+            {pages.length > 0 && pages.every((p) => !p.isPdf) && pages.some((p) => p.fromCamera) && (
+              <p className="text-xs text-slate-400" data-testid="scan-pdf-note">Les photos seront améliorées puis assemblées en un PDF unique.</p>
+            )}
             <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
               <Button variant="outline" data-testid="scan-cancel-btn" onClick={() => close(false)}>Annuler</Button>
               <Button data-testid="scan-analyze-btn" onClick={analyze} disabled={pages.length === 0} className="gap-2 bg-slate-900 hover:bg-slate-800">
@@ -436,8 +524,9 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
 
         {step === "camera" && (
           <div className="space-y-3" data-testid="scan-camera-view">
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-900">
+            <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-900">
               <video ref={videoRef} autoPlay playsInline muted className="h-64 w-full object-contain sm:h-80" />
+              <canvas ref={overlayRef} className="pointer-events-none absolute inset-0 h-full w-full" style={{ objectFit: "contain" }} />
             </div>
             <div className="flex justify-center gap-2">
               <Button variant="outline" data-testid="scan-camera-cancel" onClick={() => setStep("capture")}>Annuler</Button>
@@ -447,6 +536,22 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
             </div>
             <p className="text-center text-xs text-slate-400">La photo s'ajoute comme page — vous pourrez la reprendre ou en ajouter d'autres.</p>
           </div>
+        )}
+
+        {step === "crop" && cropFile && (
+          <DocumentCropper
+            file={cropFile}
+            scanner={scannerRef.current}
+            onConfirm={(f) => {
+              addFiles([f], { fromCamera: true });
+              setCropFile(null);
+              setStep("capture");
+            }}
+            onCancel={() => {
+              setCropFile(null);
+              setStep("capture");
+            }}
+          />
         )}
 
         {step === "analyzing" && (

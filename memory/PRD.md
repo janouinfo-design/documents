@@ -129,6 +129,17 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 
 
 
+## Implemented — Itération 7 · SwissCarInfo + Scanner à détection de contours (2026-08-11)
+- [x] **SwissCarInfo API v3** (backend/technical_data.py): recherche **plaque IVI en priorité** (regex canton+numéro, /v3/plate), repli **n° d'homologation** (/v3/search type=variant). Clé exclusivement backend (SWISSCARINFO_API_KEY + SWISSCARINFO_BASE_URL, aussi dans deploy/.env.example). Sans clé → provider None, mode « non configuré » propre (503 message français, UI avec icône clé). Gestion erreurs 300/401/404/429.
+- [x] Endpoints: GET /api/technical-data/status · POST /api/vehicles/{id}/enrich-technical (lookup + review fields avec conflits, AUCUNE écriture) · POST .../enrich-technical/apply (validation explicite uniquement). Architecture prête pour un enrichissement en masse futur (endpoints par véhicule réutilisables) — bouton global volontairement NON développé (quota 500 plaques/mois).
+- [x] **Variantes obligatoires**: si plusieurs lignes d'émissions divergent sans correspondance boîte → conso/CO₂ exclus des fields, `requires_variant_choice=true` + liste variantes ; l'UI force le choix avant la revue. Boîte connue/valeurs identiques → résolution auto. CO₂ 0 accepté (BEV, _num0).
+- [x] **Garde CAN/OBD**: _can_locked_keys — tout champ avec vehicle_field_meta provider=navixy_can est exclu du lookup ET bloqué à l'apply (jamais écrasé par des données constructeur).
+- [x] UI (TechnicalEnrichDialog + bouton « Base technique » dans la carte Données moteur & consommation, onglet Carte grise): source « SwissCarInfo — base officielle OFROU/ASTRA », trouvé par plaque/homologation, date de récupération, conflits « Valeur actuelle (fiche) / Donnée technique proposée », validation explicite. Note de provenance persistante sous la carte (tech-provenance-note) via field-meta. Provenance source=external_vehicle_database + audit « … (source: Base technique SwissCarInfo) ».
+- [x] **Scanner documents à détection de contours** (commun à TOUS les onglets via ScanDocumentDialog): jscanify 1.4 + OpenCV.js auto-hébergés (/scanner/, lazy-load ~9 Mo au 1er usage). Webcam desktop: **cadre de détection vert en direct** (overlay canvas, 350 ms). Après capture (mobile ou webcam): étape recadrage (DocumentCropper) — détection auto des 4 coins (validation aire >8%), **poignées SVG draggables** pour ajustement manuel, correction de perspective (extractPaper). Échec détection → coins par défaut + message « ajustez manuellement ». OpenCV indisponible → photo utilisée telle quelle (fallback propre).
+- [x] **Conversion PDF**: photos capturées → backend as_pdf=1 → enhance_and_pdf (EXIF + autocontraste Pillow + resize 2200px) → **PDF multi-pages unique** stocké (scan-YYYYMMDD-HHMMSS.pdf) ; OCR sur les pages améliorées. Imports classiques inchangés (régression testée).
+- [x] Tests: testing agent itération 6 — backend 7/7 pytest, frontend 100 % (iteration_6.json). Post-test: guard images vides dans enhance_and_pdf, TechnicalApply Optional=None. E2E self-test: apply + provenance + audit + garde CAN vérifiés puis nettoyés ; provider testé contre mock local (ambiguïté/résolution boîte).
+- ⚠️ SwissCarInfo NON ACTIVÉ: en attente de la clé compte Max de l'utilisateur (à mettre dans backend/.env en preview et deploy/.env sur VPS, puis restart backend).
+
 ## Backlog (prioritized)
 - Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.
 - Phase 3+ (gros chantiers, à cadrer 1 par 1): modules Contrats & renouvellements, Conducteurs, Clients, Modèles, Corbeille/Favoris/Partagés ; permissions/rôles + auth ; multi-tenant.
@@ -138,6 +149,7 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - P3: Refactor server.py en routers ; upload async.
 
 ## Next Tasks
-1. Déployer l'itération 4 (scan) + corrections précédentes sur le VPS: Save to GitHub → `cd ~/documents && git pull` → `cd deploy && docker compose up -d --build`. Renseigner EMERGENT_LLM_KEY dans deploy/.env pour activer le scan en production.
-2. Vérifier l'iframe Navixy après redéploiement: `curl -sI https://documents.logitrak.ch | grep -i content-security-policy` doit inclure `https://*.logitrak.fr`, puis tester https://login.logitrak.fr/#/user-app/14328.
-3. Valider Phase 2 nav (sous-onglets) ou prioriser un nouveau module.
+1. Recevoir la clé SwissCarInfo (compte Max) → SWISSCARINFO_API_KEY dans backend/.env (preview) et deploy/.env (VPS) → restart backend → tester une vraie recherche plaque sur la flotte.
+2. Déployer les itérations 4-7 sur le VPS: Save to GitHub → `cd ~/documents && git pull` → `cd deploy && docker compose up -d --build`. Renseigner EMERGENT_LLM_KEY + SWISSCARINFO_API_KEY dans deploy/.env.
+3. Vérifier l'iframe Navixy après redéploiement: `curl -sI https://documents.logitrak.ch | grep -i content-security-policy` doit inclure `https://*.logitrak.fr`, puis tester https://login.logitrak.fr/#/user-app/14328.
+4. Valider Phase 2 nav (sous-onglets) ou prioriser un nouveau module.
