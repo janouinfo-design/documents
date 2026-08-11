@@ -1184,6 +1184,10 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
     vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
     if not vehicle:
         raise HTTPException(status_code=404, detail="Véhicule introuvable")
+    if not EMERGENT_KEY:
+        raise HTTPException(status_code=503,
+                            detail="Scan non configuré sur ce serveur — renseignez EMERGENT_LLM_KEY "
+                                   "(deploy/.env sur le VPS) puis redémarrez le backend.")
     if document_type and document_type not in DOC_TYPES:
         raise HTTPException(status_code=400, detail="Type de document inconnu")
 
@@ -1284,8 +1288,16 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
     except Exception as e:
         logger.error("Extraction failed: %s", e)
         await db.documents.update_one({"id": record["id"]}, {"$set": {"extraction_status": "failed"}})
+        if isinstance(e, (ImportError, ModuleNotFoundError)):
+            err_msg = ("Module OCR absent du serveur (emergentintegrations) — "
+                       "reconstruisez l'image backend (docker compose build backend).")
+        elif isinstance(e, RuntimeError) and "EMERGENT_LLM_KEY" in str(e):
+            err_msg = ("Scan non configuré sur ce serveur — renseignez EMERGENT_LLM_KEY "
+                       "(deploy/.env sur le VPS) puis redémarrez le backend.")
+        else:
+            err_msg = "Analyse impossible. Réessayez ou saisissez les données manuellement."
         return {"document_id": record["id"], "extraction_status": "failed",
-                "error": "Analyse impossible. Réessayez ou saisissez les données manuellement."}
+                "error": err_msg}
 
     dtype = document_type or result.get("document_type") or "autre"
     if dtype not in DOC_TYPES:

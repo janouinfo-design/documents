@@ -1,0 +1,36 @@
+{
+  "summary": "Verified fix for LogiTrak scan bugs (A) iframe camera + (B) OCR failure due to missing EMERGENT_LLM_KEY. Backend fail-fast 503 confirmed via httpx+ASGITransport with server.EMERGENT_KEY monkeypatched to '' — .env untouched. Frontend NotAllowedError renders the differentiated message with 'Importer un fichier' still usable; fullscreen button absent in non-iframe context (correct). Regression: real scan happy-path (permis JPEG) still works — extraction_status='done' with AUDI/VIN detected. Dashboard/Vehicules/Alertes/Timeline all load without errors.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/vehicles/{id}/documents/scan", "issue": "Catch bloc ligne 1288 ne différencie PAS ImportError (emergentintegrations manquant) vs RuntimeError(EMERGENT_LLM_KEY) — retourne toujours 'Analyse impossible. Réessayez ou saisissez les données manuellement.' contrairement à ce qui est annoncé dans la review request. Impact réduit car le fail-fast 503 couvre déjà le cas clé manquante en amont, mais si emergentintegrations est absent du serveur, l'utilisateur verra toujours le message générique."},
+      {"endpoint": "POST /api/documents/{id}/validate", "issue": "test_validate_applies_only_sent_fields renvoie applied=0 (test pré-existant non lié à cette itération — le véhicule cible avait déjà les valeurs; à ré-observer sur véhicule frais)"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_scan_failfast.py",
+    "/app/test_reports/pytest/iter8_failfast.xml",
+    "/app/test_reports/pytest/iter8_regression.xml"
+  ],
+  "action_items": [
+    "(MINEUR) Différencier explicitement dans le catch ligne 1288 de server.py: `except ImportError` → 'Module OCR absent du serveur — installez emergentintegrations puis redémarrez.'; `except RuntimeError as e:` si 'EMERGENT_LLM_KEY' in str(e) → message config. Le message générique actuel masque encore les deux cas exactement comme le bug prod initial (sauf que le fail-fast 503 en couvre déjà 90%)."
+  ],
+  "critical_code_review_comments": [
+    "server.py:1288 — le catch générique ne fournit pas les messages différenciés annoncés dans la review (ImportError / RuntimeError EMERGENT_LLM_KEY). Le fail-fast 503 en amont suffit pour EMERGENT_LLM_KEY absente, mais un déploiement sans emergentintegrations continuerait à afficher le message générique originalement bogué."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_scan_failfast.py (nouveau)"
+  ],
+  "success_rate": {"backend": "100% sur les 4 tests fail-fast + happy-path scan (3/4 tests régression pré-existants OK, 1 échec pré-existant sans lien)", "frontend": "100% sur flux caméra NotAllowedError + régression pages"},
+  "seed_data_creation": "Aucun. Documents de scan créés pendant les tests sont supprimés via cleanup (delete /api/documents/{id}).",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "N/A (pas d'auth)",
+  "context_for_next_testing_agent": "Nouveau test /app/backend/tests/test_scan_failfast.py utilise httpx.AsyncClient + ASGITransport + pytest_asyncio (mode auto) — monkeypatch server.EMERGENT_KEY='' pour valider le 503 sans toucher .env. pytest-asyncio 1.4.0 installé. Le TestClient sync (starlette) ne fonctionne PAS avec Motor (event loop closed) — utiliser httpx AsyncClient. Frontend: `page.add_init_script` qui remplace navigator.mediaDevices.getUserMedia par un DOMException NotAllowedError déclenche correctement le rendu data-testid='scan-camera-error'. Le cas iframe (cameraError==='iframe' → bouton scan-open-fullscreen) n'a pas été testé en E2E (simulation window.top!==window.self fragile en headless) — validé uniquement par revue de code lignes 476-488 de ScanDocumentDialog.jsx.",
+  "rca_of_the_issue": "Bug prod (VPS) reproduisible: EMERGENT_LLM_KEY vide → get_provider(None) construit un provider qui lève RuntimeError à l'appel analyze(), catché par le bloc générique ligne 1288 qui masque tout en 'Analyse impossible…'. Le fix implémenté (fail-fast 503 ligne 1187 avant tout upload) court-circuite ce chemin avec un message actionnable citant 'EMERGENT_LLM_KEY' et 'deploy/.env'. Frontend iframe: getUserMedia bloqué par navigateur dans une iframe cross-origin sans allow='camera'; le fix détecte window.self!==window.top + err.name NotAllowedError/SecurityError et propose 'Ouvrir en plein écran' via window.open."
+}

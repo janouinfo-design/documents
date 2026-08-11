@@ -151,6 +151,14 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - [x] Fix : ligne corrompue supprimée + ajout de **pymupdf** et **pillow** au pip install du Dockerfile backend (importés par extraction.py — sans eux le scan aurait planté en prod à l'exécution même après un build réussi).
 - [x] Vérifié par testing agent it.7 (iteration_7.json) : parse statique des 2 Dockerfiles OK, croisement imports/dépendances complet, docker-compose.yml valide, régression preview 3/3 (12 véhicules, status SwissCarInfo, dashboard). Docker indisponible dans le pod → pas de build réel possible côté Emergent ; l'utilisateur doit refaire Save to GitHub + git pull + rebuild.
 
+## Bugfix — scan caméra/analyse en production VPS (2026-08-11)
+- [x] **Bug utilisateur** : (A) caméra indisponible dans l'iframe du hub (login.logitrak.fr) ; (B) en accès direct la caméra marche mais l'analyse échoue (« Analyse impossible… »).
+- [x] **Cause A** : getUserMedia bloqué par le navigateur dans une iframe cross-origin sans `allow="camera"` (non configurable côté hub Navixy user-app). **Limitation navigateur, pas un bug de l'app.**
+- [x] **Cause B (reproduite à distance sur la prod)** : EMERGENT_LLM_KEY absente de deploy/.env sur le VPS → RuntimeError du provider OCR masqué par un message générique. Redéploiement VPS confirmé fait (last-modified 11.08 16:07, /scanner/*.js servis 200, CSP OK).
+- [x] Fixes : (1) fail-fast **503 explicite** au scan si EMERGENT_LLM_KEY vide (« Scan non configuré — renseignez EMERGENT_LLM_KEY (deploy/.env)… ») avant tout upload ; (2) catch extraction différencié (ImportError emergentintegrations → « Module OCR absent », RuntimeError clé → message config) ; (3) frontend : erreurs caméra différenciées par err.name + cas iframe → message dédié + bouton **« Ouvrir en plein écran »** (scan-open-fullscreen, window.open). Sur smartphone la caméra native (input capture) fonctionne même en iframe.
+- [x] Testé : testing agent it.8 (iteration_8.json) — 503 fail-fast validé par monkeypatch (EMERGENT_KEY='', .env intact, aucun document créé), happy-path scan réel OK, NotAllowedError frontend OK, régressions pages OK. Catch différencié réappliqué post-rapport (avait été perdu) — pytest test_scan_failfast.py 4/4. Cas iframe validé par revue de code (simulation window.top fragile en headless).
+- ⚠️ **Action utilisateur requise pour résoudre l'analyse en prod** : renseigner EMERGENT_LLM_KEY dans ~/documents/deploy/.env (clé = Universal Key du profil Emergent) puis `docker compose up -d backend`. Puis Save to GitHub + git pull + rebuild pour obtenir les nouveaux messages/bouton plein écran.
+
 ## Backlog (prioritized)
 - Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.
 - Phase 3+ (gros chantiers, à cadrer 1 par 1): modules Contrats & renouvellements, Conducteurs, Clients, Modèles, Corbeille/Favoris/Partagés ; permissions/rôles + auth ; multi-tenant.

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Camera, FolderUp, Loader2, RotateCw, Trash2, FileText, Sparkles,
-  AlertTriangle, ScanLine, RefreshCw, ArrowLeft,
+  AlertTriangle, ScanLine, RefreshCw, ArrowLeft, ExternalLink,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -151,8 +151,17 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
       });
       streamRef.current = stream;
       setStep("camera");
-    } catch {
-      setCameraError("Caméra indisponible ou autorisation refusée — utilisez « Importer un fichier ».");
+    } catch (err) {
+      const inIframe = window.self !== window.top;
+      if (inIframe && (err?.name === "NotAllowedError" || err?.name === "SecurityError")) {
+        setCameraError("iframe");
+      } else if (err?.name === "NotFoundError" || err?.name === "OverconstrainedError") {
+        setCameraError("Aucune caméra détectée sur cet appareil — utilisez « Importer un fichier ».");
+      } else if (err?.name === "NotAllowedError") {
+        setCameraError("Autorisation caméra refusée — réactivez-la via l'icône caméra dans la barre d'adresse du navigateur, ou utilisez « Importer un fichier ».");
+      } else {
+        setCameraError("Caméra indisponible ou autorisation refusée — utilisez « Importer un fichier ».");
+      }
     }
   };
 
@@ -464,7 +473,20 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
                 {error}
               </div>
             )}
-            {cameraError && (
+            {cameraError === "iframe" ? (
+              <div data-testid="scan-camera-error" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
+                <p>La caméra est bloquée à l'intérieur du hub (iframe) par le navigateur. Ouvrez l'application en plein écran pour scanner, ou utilisez « Importer un fichier ».</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  data-testid="scan-open-fullscreen"
+                  onClick={() => window.open(window.location.href, "_blank", "noopener")}
+                  className="mt-2 gap-1.5 border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" /> Ouvrir en plein écran
+                </Button>
+              </div>
+            ) : cameraError && (
               <div data-testid="scan-camera-error" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                 {cameraError}
               </div>
