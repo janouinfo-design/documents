@@ -12,7 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Runtime dependencies (explicit — independent from the Emergent-only pip freeze)
 RUN pip install --no-cache-dir \
     "fastapi" "uvicorn[standard]" "motor" "pymongo" \
-    "pydantic>=2" "python-dotenv" "requests" "python-multipart" "apscheduler"
+    "pydantic>=2" "python-dotenv" "requests" "python-multipart" "apscheduler" \
+    "pymupdf" "pillow"
 
 # Optional OCR support (GPT-4o via Emergent integrations). Best-effort:
 # only needed if EMERGENT_LLM_KEY is configured. Build never fails if unavailable.
@@ -25,4 +26,3 @@ COPY server.py extraction.py technical_data.py ./
 EXPOSE 8001
 
 CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8001"]
-, "8001"]
