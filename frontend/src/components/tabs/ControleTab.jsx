@@ -10,6 +10,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import AlertChips from "@/components/AlertChips";
 import StatusBadge from "@/components/StatusBadge";
 import DocFolderSection from "@/components/DocFolderSection";
+import DocumentScanCard from "@/components/DocumentScanCard";
 
 const F = ["date_dernier", "date_prochain", "centre", "resultat"];
 const pick = (c = {}) => Object.fromEntries(F.map((k) => [k, c[k] ?? ""]));
@@ -87,6 +88,15 @@ export default function ControleTab({ vehicle, metrics, onSaved, docs, refetchDo
           </div>
         </SectionCard>
       )}
+
+      <DocumentScanCard
+        vehicle={vehicle}
+        docType="controle_technique"
+        testIdPrefix="ctrl-scan"
+        title="Scan intelligent — Expertise / Contrôle technique"
+        description="Photographiez ou importez le rapport : dates de contrôle, centre, résultat… sont extraits puis soumis à votre validation."
+        onValidated={() => { onSaved?.(); refetchDocs?.(); }}
+      />
 
       <SectionCard title="Rapports de contrôle" description="Rapport PDF d'expertise" testId="controle-docs">
         <DocFolderSection vehicleId={vehicle.id} folder="Contrôle technique" docs={docs} onChange={() => { refetchDocs?.(); onSaved?.(); }} compact />

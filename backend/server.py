@@ -1177,7 +1177,7 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
         logger.error("Extraction failed: %s", e)
         await db.documents.update_one({"id": record["id"]}, {"$set": {"extraction_status": "failed"}})
         return {"document_id": record["id"], "extraction_status": "failed",
-                "error": "Analyse impossible. Le fichier a été conservé — réessayez ou saisissez les données manuellement."}
+                "error": "Analyse impossible. Réessayez ou saisissez les données manuellement."}
 
     dtype = document_type or result.get("document_type") or "autre"
     if dtype not in DOC_TYPES:

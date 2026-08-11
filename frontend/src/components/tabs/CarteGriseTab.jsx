@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import {
-  Pencil, Loader2, ScrollText, Calendar, Weight, Users, Camera, FolderUp,
+  Pencil, Loader2, ScrollText, Calendar, Weight, Users,
   Fuel, Gauge, Zap, Leaf, Hash,
 } from "lucide-react";
 import { updateVehicle } from "@/lib/api";
@@ -10,7 +10,7 @@ import { Stat, SectionCard, FormRow } from "@/components/Field";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import DocFolderSection from "@/components/DocFolderSection";
-import ScanDocumentDialog from "@/components/ScanDocumentDialog";
+import DocumentScanCard from "@/components/DocumentScanCard";
 
 const CG_FIELDS = ["date_mise_circulation", "poids_total", "nombre_places"];
 const TECH_FIELDS = [
@@ -28,11 +28,8 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
   const [edit, setEdit] = useState(false);
   const [form, setForm] = useState(() => pick(vehicle));
   const [saving, setSaving] = useState(false);
-  const [scanOpen, setScanOpen] = useState(false);
-  const [scanMode, setScanMode] = useState("import");
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-  const openScan = (mode) => { setScanMode(mode); setScanOpen(true); };
   const litres = vehicle.cylindree_cm3 ? ` (${(vehicle.cylindree_cm3 / 1000).toFixed(1)} L)` : "";
 
   const save = async () => {
@@ -66,20 +63,14 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
 
   return (
     <div className="space-y-5">
-      <SectionCard
+      <DocumentScanCard
+        vehicle={vehicle}
+        docType="permis_circulation"
+        testIdPrefix="cg-scan"
         title="Scan intelligent — Permis de circulation"
         description="Photographiez ou importez le permis : plaque, VIN, carburant, cylindrée, puissance, poids… sont extraits puis soumis à votre validation."
-        testId="carte-grise-ocr"
-      >
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <Button data-testid="cg-scan-camera" onClick={() => openScan("camera")} className="gap-2 bg-slate-900 hover:bg-slate-800">
-            <Camera className="h-4 w-4" /> Prendre une photo
-          </Button>
-          <Button data-testid="cg-scan-import" variant="outline" onClick={() => openScan("import")} className="gap-2">
-            <FolderUp className="h-4 w-4" /> Importer PDF ou image
-          </Button>
-        </div>
-      </SectionCard>
+        onValidated={() => { onSaved?.(); refetchDocs?.(); }}
+      />
 
       {edit ? (
         <SectionCard title="Modifier la carte grise & données techniques" testId="carte-grise-edit">
@@ -143,15 +134,6 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
       <SectionCard title="Documents carte grise" description="Recto · Verso · Historique" testId="carte-grise-docs">
         <DocFolderSection vehicleId={vehicle.id} folder="Carte grise" docs={docs} onChange={() => { refetchDocs?.(); onSaved?.(); }} compact />
       </SectionCard>
-
-      <ScanDocumentDialog
-        open={scanOpen}
-        onOpenChange={setScanOpen}
-        vehicle={vehicle}
-        initialMode={scanMode}
-        forcedType="permis_circulation"
-        onValidated={() => { onSaved?.(); refetchDocs?.(); }}
-      />
     </div>
   );
 }

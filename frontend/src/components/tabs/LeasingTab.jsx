@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import AlertChips from "@/components/AlertChips";
 import StatusBadge from "@/components/StatusBadge";
 import DocFolderSection from "@/components/DocFolderSection";
+import DocumentScanCard from "@/components/DocumentScanCard";
 
 const F = ["societe", "numero_contrat", "date_debut", "date_fin", "mensualite_chf", "duree_mois", "km_contractuel", "option_achat", "valeur_residuelle", "cout_total", "cout_mensuel", "commentaires"];
 const pick = (l = {}) => Object.fromEntries(F.map((k) => [k, l[k] ?? (k === "option_achat" ? false : "")]));
@@ -131,6 +132,15 @@ export default function LeasingTab({ vehicle, metrics, onSaved, docs, refetchDoc
           {l.commentaires && <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{l.commentaires}</div>}
         </SectionCard>
       )}
+
+      <DocumentScanCard
+        vehicle={vehicle}
+        docType="leasing"
+        testIdPrefix="leasing-scan"
+        title="Scan intelligent — Contrat de leasing"
+        description="Photographiez ou importez le contrat : organisme, n° de contrat, mensualité, dates, kilométrage… sont extraits puis soumis à votre validation."
+        onValidated={() => { onSaved?.(); refetchDocs?.(); }}
+      />
 
       <SectionCard title="Documents leasing" description="Contrat PDF · Conditions · Annexes" testId="leasing-docs">
         <DocFolderSection vehicleId={vehicle.id} folder="Leasing" docs={docs} onChange={() => { refetchDocs?.(); onSaved?.(); }} compact />

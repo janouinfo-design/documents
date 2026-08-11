@@ -111,6 +111,15 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - [x] Tests: E2E curl (scan→conflits→validation→provenance→protection Navixy) + testing agent it.4: backend 17/17 pytest, frontend 100% (/app/test_reports/iteration_4.json). Correctifs post-test: valeur 0 légitime (CO₂ BEV), SheetTitle a11y, affordance provenance.
 
 
+## Implemented — Itération 5 · Scan mutualisé + webcam + bibliothèque centrale (2026-08-11)
+- [x] Composant générique `DocumentScanCard` (📷 Prendre une photo / 📁 Importer un fichier) réutilisé dans les 4 onglets : Carte grise (permis_circulation), Assurance, Leasing, Contrôles — une seule logique, zéro duplication.
+- [x] « Prendre une photo » : caméra native sur mobile (input capture=environment) ; **vraie webcam sur desktop** (getUserMedia, aperçu vidéo, bouton « Prendre la photo », reprise possible) ; message propre + fallback import si caméra indisponible/refusée.
+- [x] Onglet Documents = bibliothèque centrale : bouton unique « + Ajouter un document » → étape choix du type (Détection automatique + 7 types, lien « Changer ») → capture/import → même moteur. Les documents scannés depuis n'importe quel onglet apparaissent dans Documents (enregistrement unique, pas de copie physique — document_type + folder assurent le lien module).
+- [x] Conflits : raccourcis « Tout conserver / Tout remplacer » (défaut sécurisé = conserver). Fermeture depuis l'étape échec = soft-delete du document orphelin.
+- [x] Chaque onglet garde sa section documents (Voir / Télécharger / Supprimer via DocFolderSection) + re-scan via la carte.
+- [x] Tests : testing agent itération 5 frontend 100 % (iteration_5.json) — flux assurance forcé, auto-détection permis avec 6 conflits conservés (aucun écrasement), webcam headless, annulation, régressions Dashboard/Échéances/Alertes/éditions classiques. Console vérifiée : aucun warning Radix a11y.
+
+
 ## Backlog (prioritized)
 - Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.
 - Phase 3+ (gros chantiers, à cadrer 1 par 1): modules Contrats & renouvellements, Conducteurs, Clients, Modèles, Corbeille/Favoris/Partagés ; permissions/rôles + auth ; multi-tenant.

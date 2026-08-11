@@ -12,6 +12,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import AlertChips from "@/components/AlertChips";
 import StatusBadge from "@/components/StatusBadge";
 import DocFolderSection from "@/components/DocFolderSection";
+import DocumentScanCard from "@/components/DocumentScanCard";
 
 const F = ["compagnie", "numero_police", "type_couverture", "prime_annuelle", "franchise", "assistance", "contact_sinistre", "date_debut", "date_echeance"];
 const pick = (a = {}) => Object.fromEntries(F.map((k) => [k, a[k] ?? (k === "assistance" ? false : "")]));
@@ -103,6 +104,15 @@ export default function AssuranceTab({ vehicle, metrics, onSaved, docs, refetchD
           </div>
         </SectionCard>
       )}
+
+      <DocumentScanCard
+        vehicle={vehicle}
+        docType="assurance"
+        testIdPrefix="assurance-scan"
+        title="Scan intelligent — Police d'assurance"
+        description="Photographiez ou importez la police : compagnie, n° de police, couverture, prime, dates… sont extraits puis soumis à votre validation."
+        onValidated={() => { onSaved?.(); refetchDocs?.(); }}
+      />
 
       <SectionCard title="Documents assurance" description="Police · Certificat · Conditions générales" testId="assurance-docs">
         <DocFolderSection vehicleId={vehicle.id} folder="Assurance" docs={docs} onChange={() => { refetchDocs?.(); onSaved?.(); }} compact />

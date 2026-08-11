@@ -1,18 +1,12 @@
 import { useState } from "react";
 import {
   FileText, ShieldCheck, ScrollText, ClipboardCheck, Receipt, Images,
-  FileSignature, FolderArchive, Plus, Camera, FolderUp, PenLine,
+  FileSignature, FolderArchive, Plus,
 } from "lucide-react";
-import { toast } from "sonner";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { uploadDocument } from "@/lib/api";
 import { SectionCard } from "@/components/Field";
 import DocFolderSection from "@/components/DocFolderSection";
-import DropZone from "@/components/DropZone";
 import ScanDocumentDialog from "@/components/ScanDocumentDialog";
 
 const FOLDERS = [
@@ -29,54 +23,18 @@ const FOLDERS = [
 export default function DocumentsTab({ vehicle, onSaved, docs, refetchDocs }) {
   const count = (folder) => docs.filter((d) => d.folder === folder).length;
   const onChange = () => { refetchDocs?.(); onSaved?.(); };
-
   const [scanOpen, setScanOpen] = useState(false);
-  const [scanMode, setScanMode] = useState("import");
-  const [manualOpen, setManualOpen] = useState(false);
-  const [manualFolder, setManualFolder] = useState("Divers");
-  const [manualBusy, setManualBusy] = useState(false);
-
-  const openScan = (mode) => { setScanMode(mode); setScanOpen(true); };
-
-  const manualUpload = async (files) => {
-    setManualBusy(true);
-    try {
-      for (const f of files) await uploadDocument(vehicle.id, f, manualFolder);
-      toast.success(`${files.length} fichier(s) ajouté(s) · ${manualFolder}`);
-      setManualOpen(false);
-      onChange();
-    } catch {
-      toast.error("Échec du téléversement");
-    } finally {
-      setManualBusy(false);
-    }
-  };
 
   return (
     <>
       <SectionCard
-        title="Arborescence des documents"
-        description="Organisez tous les fichiers du véhicule par dossier · PDF, JPG, PNG, DOCX, XLSX, ZIP"
+        title="Bibliothèque des documents"
+        description="Tous les documents du véhicule, y compris ceux ajoutés depuis Carte grise, Assurance ou Leasing · Chaque dossier accepte aussi le dépôt manuel de fichiers"
         testId="documents-tab"
         action={
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button data-testid="add-document-btn" size="sm" className="gap-1.5 bg-slate-900 hover:bg-slate-800">
-                <Plus className="h-4 w-4" /> Ajouter un document
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
-              <DropdownMenuItem data-testid="add-doc-scan" onClick={() => openScan("camera")} className="gap-2.5 py-2.5">
-                <Camera className="h-4 w-4 text-slate-500" /> Scanner / prendre une photo
-              </DropdownMenuItem>
-              <DropdownMenuItem data-testid="add-doc-import" onClick={() => openScan("import")} className="gap-2.5 py-2.5">
-                <FolderUp className="h-4 w-4 text-slate-500" /> Importer PDF ou image
-              </DropdownMenuItem>
-              <DropdownMenuItem data-testid="add-doc-manual" onClick={() => setManualOpen(true)} className="gap-2.5 py-2.5">
-                <PenLine className="h-4 w-4 text-slate-500" /> Ajouter manuellement
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button data-testid="add-document-btn" size="sm" onClick={() => setScanOpen(true)} className="gap-1.5 bg-slate-900 hover:bg-slate-800">
+            <Plus className="h-4 w-4" /> Ajouter un document
+          </Button>
         }
       >
         <Accordion type="multiple" defaultValue={["Leasing"]} className="space-y-2">
@@ -103,30 +61,9 @@ export default function DocumentsTab({ vehicle, onSaved, docs, refetchDocs }) {
         open={scanOpen}
         onOpenChange={setScanOpen}
         vehicle={vehicle}
-        initialMode={scanMode}
+        askType
         onValidated={onChange}
       />
-
-      <Dialog open={manualOpen} onOpenChange={setManualOpen}>
-        <DialogContent className="max-w-md" data-testid="manual-add-dialog">
-          <DialogHeader>
-            <DialogTitle className="font-display">Ajouter manuellement</DialogTitle>
-            <DialogDescription>Choisissez un dossier puis déposez le fichier — sans analyse automatique.</DialogDescription>
-          </DialogHeader>
-          <Select value={manualFolder} onValueChange={setManualFolder}>
-            <SelectTrigger data-testid="manual-folder-select"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {FOLDERS.map(({ name }) => <SelectItem key={name} value={name}>{name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <DropZone
-            onFiles={manualUpload}
-            busy={manualBusy}
-            testId="manual-dropzone"
-            accept=".pdf,.jpg,.jpeg,.png,.webp,.docx,.doc,.xlsx,.xls,.zip,.csv"
-          />
-        </DialogContent>
-      </Dialog>
     </>
   );
 }
