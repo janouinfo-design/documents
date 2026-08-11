@@ -20,8 +20,9 @@ RUN pip install --no-cache-dir emergentintegrations \
     --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/ \
     || echo "emergentintegrations non installé (OCR désactivé jusqu'à configuration)"
 
-COPY server.py .
+COPY server.py extraction.py ./
 
 EXPOSE 8001
 
 CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8001"]
+, "8001"]

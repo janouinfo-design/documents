@@ -17,6 +17,8 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime, timezone, date, timedelta
 
+from extraction import DOC_TYPES, FIELD_DEFS, get_provider, pdf_to_images_b64, prepare_image_b64, normalize_value
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
@@ -38,6 +40,7 @@ logger = logging.getLogger(__name__)
 STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
 EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
 APP_NAME = "logitrak-fleet"
+extraction_provider = get_provider(EMERGENT_KEY)
 storage_key = None
 STORAGE_BACKEND = (os.environ.get("STORAGE_BACKEND") or "emergent").lower()
 LOCAL_STORAGE_DIR = os.environ.get("ADMIN_DOCS_STORAGE_PATH") or os.environ.get("LOCAL_STORAGE_DIR") or "/data/storage"
@@ -253,6 +256,7 @@ class Leasing(BaseModel):
     mensualite_chf: Optional[float] = 0
     duree_mois: Optional[int] = 0
     km_contractuel: Optional[int] = 0
+    km_annuel: Optional[int] = 0
     option_achat: Optional[bool] = False
     valeur_residuelle: Optional[float] = 0
     cout_total: Optional[float] = 0
@@ -292,6 +296,15 @@ class VehicleBase(BaseModel):
     modele: Optional[str] = ""
     annee: Optional[int] = 0
     vin: Optional[str] = ""
+    type_carburant: Optional[str] = ""
+    cylindree_cm3: Optional[int] = 0
+    puissance_kw: Optional[float] = 0
+    variante: Optional[str] = ""
+    numero_homologation: Optional[str] = ""
+    categorie: Optional[str] = ""
+    poids_vide: Optional[int] = 0
+    co2_g_km: Optional[float] = 0
+    conso_officielle_l_100km: Optional[float] = 0
     kilometrage: Optional[int] = 0
     groupe: Optional[str] = ""
     base: Optional[str] = ""
@@ -318,6 +331,15 @@ class VehicleUpdate(BaseModel):
     modele: Optional[str] = None
     annee: Optional[int] = None
     vin: Optional[str] = None
+    type_carburant: Optional[str] = None
+    cylindree_cm3: Optional[int] = None
+    puissance_kw: Optional[float] = None
+    variante: Optional[str] = None
+    numero_homologation: Optional[str] = None
+    categorie: Optional[str] = None
+    poids_vide: Optional[int] = None
+    co2_g_km: Optional[float] = None
+    conso_officielle_l_100km: Optional[float] = None
     kilometrage: Optional[int] = None
     groupe: Optional[str] = None
     base: Optional[str] = None
@@ -801,7 +823,15 @@ async def navixy_sync_internal() -> dict:
 
         existing = await db.vehicles.find_one({"navixy_tracker_id": tid})
         if existing:
-            await db.vehicles.update_one({"navixy_tracker_id": tid}, {"$set": navixy_fields})
+            # Les champs validés depuis un document scanné restent prioritaires sur Navixy
+            metas = await db.vehicle_field_meta.find(
+                {"vehicle_id": existing["id"], "source": "document_scan",
+                 "field": {"$in": ["plaque", "marque", "modele", "vin", "annee"]}},
+                {"_id": 0, "field": 1},
+            ).to_list(10)
+            protected = {m["field"] for m in metas}
+            fields_to_set = {k: val for k, val in navixy_fields.items() if k not in protected}
+            await db.vehicles.update_one({"navixy_tracker_id": tid}, {"$set": fields_to_set})
             updated += 1
         else:
             doc = {
@@ -997,50 +1027,259 @@ async def alerts_run():
     return await run_alerts()
 
 
-@api_router.post("/vehicles/{vehicle_id}/carte-grise/ocr")
-async def ocr_carte_grise(vehicle_id: str, file: UploadFile = File(...)):
-    data = await file.read()
-    b64 = base64.b64encode(data).decode()
-    try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
-        chat = LlmChat(
-            api_key=os.environ["EMERGENT_LLM_KEY"],
-            session_id=f"ocr-{vehicle_id}-{uuid.uuid4()}",
-            system_message="Tu es un expert en extraction de données de cartes grises / permis de circulation suisses. Tu réponds uniquement en JSON strict.",
-        ).with_model("openai", "gpt-4o")
-        prompt = (
-            "Analyse cette image de carte grise (permis de circulation) et extrais ces champs en JSON: "
-            "{\"plaque\": string, \"vin\": string, \"date_mise_circulation\": \"YYYY-MM-DD\", "
-            "\"poids_total\": integer (kg, poids total en charge), \"nombre_places\": integer}. "
-            "Si un champ est introuvable, mets null. Réponds UNIQUEMENT avec l'objet JSON, sans texte ni balises de code."
-        )
-        resp = await chat.send_message(UserMessage(text=prompt, file_contents=[ImageContent(image_base64=b64)]))
-    except Exception as e:
-        logger.error("OCR failed: %s", e)
-        raise HTTPException(status_code=502, detail="Échec de l'analyse OCR")
+# ---------------------------------------------------------------------------
+# Scan intelligent de documents (upload -> extraction -> validation -> fiche véhicule)
+# ---------------------------------------------------------------------------
+SCAN_EXTS = {"pdf", "jpg", "jpeg", "png", "webp"}
+MAX_SCAN_PAGES = 8
 
-    text = resp if isinstance(resp, str) else getattr(resp, "text", str(resp))
-    text = text.strip()
-    if "{" in text and "}" in text:
-        text = text[text.find("{"): text.rfind("}") + 1]
-    try:
-        parsed = json.loads(text)
-    except Exception:
-        raise HTTPException(status_code=422, detail="Réponse OCR non interprétable")
 
-    def _int(x):
+def _get_current(v: dict, target: str, field: str):
+    if target == "root":
+        return v.get(field)
+    if target == "document":
+        return None
+    return (v.get(target) or {}).get(field)
+
+
+def _is_empty(x) -> bool:
+    return x is None or x == "" or x == 0
+
+
+def _same_value(a, b) -> bool:
+    try:
+        return abs(float(a) - float(b)) < 1e-6
+    except (TypeError, ValueError):
+        pass
+    na = re.sub(r"\s+", " ", str(a or "").strip()).casefold()
+    nb = re.sub(r"\s+", " ", str(b or "").strip()).casefold()
+    return na == nb
+
+
+def _build_review_fields(vehicle: dict, dtype: str, raw_fields: dict) -> list:
+    defs = {d["key"]: d for d in FIELD_DEFS.get(dtype, [])}
+    out = []
+    for key, info in (raw_fields or {}).items():
+        fd = defs.get(key)
+        if not fd or not isinstance(info, dict):
+            continue
+        value = normalize_value(info.get("value"), fd["kind"])
+        if value is None:
+            continue
+        conf = info.get("confidence")
         try:
-            return int(float(x))
+            conf = max(0.0, min(1.0, float(conf)))
         except (TypeError, ValueError):
-            return 0
+            conf = None
+        current = _get_current(vehicle, fd["target"], key)
+        has_current = not _is_empty(current)
+        conflict = has_current and not _same_value(current, value)
+        out.append({
+            "field": key, "label": fd["label"], "target": fd["target"], "kind": fd["kind"],
+            "value": value, "confidence": conf,
+            "current_value": current if has_current else None,
+            "conflict": conflict,
+        })
+    order = [d["key"] for d in FIELD_DEFS.get(dtype, [])]
+    out.sort(key=lambda f: order.index(f["field"]))
+    return out
 
-    return {
-        "plaque": parsed.get("plaque") or "",
-        "vin": parsed.get("vin") or "",
-        "date_mise_circulation": parsed.get("date_mise_circulation"),
-        "poids_total": _int(parsed.get("poids_total")),
-        "nombre_places": _int(parsed.get("nombre_places")),
-    }
+
+@api_router.get("/document-types")
+async def list_document_types():
+    return [{"key": k, **v} for k, v in DOC_TYPES.items()]
+
+
+@api_router.post("/vehicles/{vehicle_id}/documents/scan")
+async def scan_vehicle_document(vehicle_id: str, request: Request,
+                                files: List[UploadFile] = File(None),
+                                document_type: Optional[str] = Form(None),
+                                document_id: Optional[str] = Form(None)):
+    vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Véhicule introuvable")
+    if document_type and document_type not in DOC_TYPES:
+        raise HTTPException(status_code=400, detail="Type de document inconnu")
+
+    images_b64 = []
+    if document_id:
+        # Ré-analyse d'un document déjà téléversé (changement de type, nouvel essai)
+        record = await db.documents.find_one(
+            {"id": document_id, "vehicle_id": vehicle_id, "is_deleted": False}, {"_id": 0})
+        if not record:
+            raise HTTPException(status_code=404, detail="Document introuvable")
+        pages = record.get("pages") or [{"storage_path": record["storage_path"],
+                                         "content_type": record.get("content_type", "")}]
+        for page in pages:
+            try:
+                data, ctype = get_object(page["storage_path"])
+            except Exception:
+                raise HTTPException(status_code=404, detail="Fichier source introuvable")
+            if "pdf" in (ctype or "").lower():
+                images_b64.extend(pdf_to_images_b64(data))
+            else:
+                images_b64.append(prepare_image_b64(data))
+    else:
+        if not files:
+            raise HTTPException(status_code=400, detail="Aucun fichier fourni")
+        if len(files) > MAX_SCAN_PAGES:
+            raise HTTPException(status_code=400, detail=f"Maximum {MAX_SCAN_PAGES} pages par scan")
+        pages, total_size = [], 0
+        for f in files:
+            data = await f.read()
+            ext = _ext_of(f.filename)
+            if ext not in SCAN_EXTS:
+                raise HTTPException(status_code=400,
+                                    detail=f"Format non supporté pour le scan: .{ext or '?'} (PDF, JPG, PNG, WEBP)")
+            if len(data) > MAX_FILE_SIZE:
+                raise HTTPException(status_code=413, detail=f"Fichier trop volumineux (max {MAX_FILE_SIZE_MB} Mo)")
+            if ext == "pdf":
+                try:
+                    imgs = pdf_to_images_b64(data)
+                except Exception:
+                    raise HTTPException(status_code=422, detail="PDF illisible ou corrompu")
+                if not imgs:
+                    raise HTTPException(status_code=422, detail="PDF sans page exploitable")
+                images_b64.extend(imgs)
+            else:
+                try:
+                    images_b64.append(prepare_image_b64(data))
+                except Exception:
+                    raise HTTPException(status_code=422, detail=f"Image illisible: {f.filename}")
+            content_type = f.content_type or guess_mime(f.filename)
+            path = f"{APP_NAME}/uploads/{vehicle_id}/{uuid.uuid4()}.{ext}"
+            try:
+                stored = put_object(path, data, content_type)
+            except Exception as e:
+                logger.error("Scan upload failed: %s", e)
+                raise HTTPException(status_code=502, detail="Échec du téléversement")
+            pages.append({"storage_path": stored["path"], "original_filename": f.filename,
+                          "content_type": content_type, "size": stored.get("size", len(data))})
+            total_size += len(data)
+        record = {
+            "id": str(uuid.uuid4()), "vehicle_id": vehicle_id,
+            "folder": DOC_TYPES.get(document_type, {}).get("folder", "Divers"),
+            "original_filename": pages[0]["original_filename"],
+            "storage_path": pages[0]["storage_path"],
+            "content_type": pages[0]["content_type"],
+            "size": total_size, "pages": pages,
+            "document_type": document_type, "extraction_status": "processing",
+            "source": "scan", "is_deleted": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.documents.insert_one(dict(record))
+        record.pop("_id", None)
+
+    images_b64 = images_b64[:MAX_SCAN_PAGES]
+    try:
+        result = await extraction_provider.analyze(images_b64, document_type)
+    except Exception as e:
+        logger.error("Extraction failed: %s", e)
+        await db.documents.update_one({"id": record["id"]}, {"$set": {"extraction_status": "failed"}})
+        return {"document_id": record["id"], "extraction_status": "failed",
+                "error": "Analyse impossible. Le fichier a été conservé — réessayez ou saisissez les données manuellement."}
+
+    dtype = document_type or result.get("document_type") or "autre"
+    if dtype not in DOC_TYPES:
+        dtype = "autre"
+    fields = _build_review_fields(vehicle, dtype, result.get("fields"))
+    await db.documents.update_one({"id": record["id"]}, {"$set": {
+        "extraction_status": "done", "document_type": dtype,
+        "type_confidence": result.get("type_confidence"),
+        "folder": DOC_TYPES[dtype]["folder"],
+        "extracted_fields": fields,
+    }})
+    await audit("scan", "document", request, record["id"], vehicle_id,
+                f"Scan {DOC_TYPES[dtype]['label']} — {len(fields)} champ(s) détecté(s)")
+    return {"document_id": record["id"], "extraction_status": "done",
+            "document_type": dtype, "type_confidence": result.get("type_confidence"),
+            "pages_count": len(images_b64), "fields": fields}
+
+
+class DocumentValidate(BaseModel):
+    document_type: str
+    fields: dict = Field(default_factory=dict)
+
+
+@api_router.post("/documents/{doc_id}/validate")
+async def validate_scanned_document(doc_id: str, payload: DocumentValidate, request: Request):
+    docrec = await db.documents.find_one({"id": doc_id, "is_deleted": False}, {"_id": 0})
+    if not docrec:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    dtype = payload.document_type
+    if dtype not in DOC_TYPES:
+        raise HTTPException(status_code=400, detail="Type de document inconnu")
+    vehicle = await db.vehicles.find_one({"id": docrec["vehicle_id"]}, {"_id": 0})
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Véhicule introuvable")
+
+    defs = {d["key"]: d for d in FIELD_DEFS.get(dtype, [])}
+    conf_by_field = {f["field"]: f.get("confidence") for f in docrec.get("extracted_fields") or []}
+    root_updates, sub_updates, doc_data, applied = {}, {}, {}, []
+
+    for key, raw in (payload.fields or {}).items():
+        fd = defs.get(key)
+        if not fd:
+            continue
+        value = normalize_value(raw, fd["kind"])
+        if value is None:
+            continue
+        if fd["target"] == "document":
+            doc_data[key] = value
+            continue
+        current = _get_current(vehicle, fd["target"], key)
+        if not _is_empty(current) and _same_value(current, value):
+            continue
+        if fd["target"] == "root":
+            root_updates[key] = value
+        else:
+            sub_updates.setdefault(fd["target"], {})[key] = value
+        applied.append((key, fd, current, value))
+
+    now = datetime.now(timezone.utc).isoformat()
+    update = dict(root_updates)
+    for sub, vals in sub_updates.items():
+        update[sub] = {**(vehicle.get(sub) or {}), **vals}
+    if update:
+        update["updated_at"] = now
+        await db.vehicles.update_one({"id": vehicle["id"]}, {"$set": update})
+
+    type_label = DOC_TYPES[dtype]["label"]
+    for key, fd, old, new in applied:
+        fpath = key if fd["target"] == "root" else f"{fd['target']}.{key}"
+        await db.vehicle_field_meta.update_one(
+            {"vehicle_id": vehicle["id"], "field": fpath},
+            {"$set": {"label": fd["label"], "source": "document_scan",
+                      "source_document_id": doc_id, "confidence": conf_by_field.get(key),
+                      "validated_by": "utilisateur", "validated_at": now, "updated_at": now}},
+            upsert=True)
+        old_txt = old if not _is_empty(old) else "—"
+        await audit("modify", "vehicle", request, vehicle["id"], vehicle["id"],
+                    f"{fd['label']}: {old_txt} → {new} (source: {type_label})")
+
+    await db.documents.update_one({"id": doc_id}, {"$set": {
+        "document_type": dtype, "folder": DOC_TYPES[dtype]["folder"],
+        "validated_at": now, "validated_fields": payload.fields,
+        "document_data": doc_data, "extraction_status": "validated",
+    }})
+    await audit("validate", "document", request, doc_id, vehicle["id"],
+                f"Validation {type_label} — {len(applied)} champ(s) appliqué(s)")
+
+    fresh = await db.vehicles.find_one({"id": vehicle["id"]}, {"_id": 0})
+    fresh["metrics"] = compute_metrics(fresh)
+    return {"ok": True, "applied": len(applied), "document_id": doc_id, "vehicle": fresh}
+
+
+@api_router.get("/vehicles/{vehicle_id}/field-meta")
+async def get_vehicle_field_meta(vehicle_id: str):
+    return await db.vehicle_field_meta.find(
+        {"vehicle_id": vehicle_id}, {"_id": 0}).sort("updated_at", -1).to_list(200)
+
+
+@api_router.get("/vehicles/{vehicle_id}/history")
+async def get_vehicle_history(vehicle_id: str):
+    return await db.audit_logs.find(
+        {"vehicle_id": vehicle_id}, {"_id": 0}).sort("created_at", -1).to_list(50)
 
 
 # ---------------------------------------------------------------------------
@@ -1299,6 +1538,8 @@ async def startup():
         await db.alerts.create_index([("vehicle_id", 1), ("type", 1), ("threshold", 1), ("due_date", 1)])
         await db.alerts.create_index([("kind", 1), ("digest_date", 1)])
         await db.vehicles.create_index("navixy_tracker_id")
+        await db.vehicle_field_meta.create_index([("vehicle_id", 1), ("field", 1)], unique=True)
+        await db.audit_logs.create_index([("vehicle_id", 1), ("created_at", -1)])
     except Exception as e:
         logger.error(f"Index creation failed: {e}")
     try:

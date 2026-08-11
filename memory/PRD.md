@@ -97,6 +97,20 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - [x] Testé aperçu Emergent: 4 onglets présents, navigation + états actifs OK, Dashboard/Véhicules rendus.
 - Note: routes inchangées (`/`, `/vehicules`, `/timeline`, `/alertes`) → aucune 404, migration sûre sans conserver l'ancien menu.
 
+## Implemented — Itération 4 · Scan intelligent des documents (2026-08-11)
+- [x] Backend `extraction.py`: abstraction `DocumentExtractionProvider` (extensible Azure/Google/AWS) + `GptVisionProvider` (gpt-5.4 via emergentintegrations, override env DOC_EXTRACTION_PROVIDER/DOC_EXTRACTION_MODEL). Interface future `VehicleEnrichmentProvider` (OFROU/TARGA — volontairement non implémentée).
+- [x] 7 types de documents: permis_circulation, assurance, leasing, controle_technique, facture, amende, autre (FIELD_DEFS extensibles). Support JPG/PNG/WEBP + PDF multi-pages (PyMuPDF, max 8 pages), redressement EXIF + resize (Pillow).
+- [x] `POST /api/vehicles/{id}/documents/scan` (multi-fichiers ou ré-analyse via document_id sans doublon) → type détecté + champs avec confidence/current_value/conflict. `POST /api/documents/{id}/validate` → applique UNIQUEMENT les champs choisis, met à jour la fiche véhicule (source unique de vérité), classe le document.
+- [x] Nouveaux champs véhicule (racine, sans doublon): type_carburant, cylindree_cm3, puissance_kw, variante, numero_homologation, categorie, poids_vide, co2_g_km, conso_officielle_l_100km (+ leasing.km_annuel). Litres = calculés à l'affichage.
+- [x] Provenance: collection `vehicle_field_meta` + GET /api/vehicles/{id}/field-meta. Audit trail activé (db.audit_logs) + GET /api/vehicles/{id}/history ("ancien → nouveau (source: ...)").
+- [x] Protection Navixy: plaque/marque/modele/vin/annee validés par document ne sont plus écrasés par la sync (kilometrage reste Navixy).
+- [x] Frontend `ScanDocumentDialog.jsx` mobile-first: photo caméra (capture=environment), import PDF/image, multi-pages (vignettes/rotation/suppression), étapes Analyse → Type (modifiable + ré-analyse) → Revue (badges confiance vert ≥90% / ambre 70-90% / rouge <70%) → Conflits (Conserver/Utiliser, défaut = conserver) → Valider. Annulation en revue = soft-delete.
+- [x] Onglet Documents: « + Ajouter un document » (Scanner / Importer / Manuellement). Carte grise: scan permis (type forcé) + données techniques affichées/éditables. Général: section « Provenance & historique ». Ancien endpoint OCR remplacé (pas de 2e système parallèle).
+- [x] Échéances validées par scan alimentent le moteur d'alertes existant.
+- [x] Deploy VPS: backend/Dockerfile (pymupdf + pillow, COPY extraction.py). ⚠️ Le scan exige EMERGENT_LLM_KEY dans deploy/.env sur le VPS.
+- [x] Tests: E2E curl (scan→conflits→validation→provenance→protection Navixy) + testing agent it.4: backend 17/17 pytest, frontend 100% (/app/test_reports/iteration_4.json). Correctifs post-test: valeur 0 légitime (CO₂ BEV), SheetTitle a11y, affordance provenance.
+
+
 ## Backlog (prioritized)
 - Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.
 - Phase 3+ (gros chantiers, à cadrer 1 par 1): modules Contrats & renouvellements, Conducteurs, Clients, Modèles, Corbeille/Favoris/Partagés ; permissions/rôles + auth ; multi-tenant.
@@ -106,6 +120,6 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - P3: Refactor server.py en routers ; upload async.
 
 ## Next Tasks
-1. Déployer Phase 1 + iframe header + retrait carte GPS sur le VPS (Save to GitHub → git pull → docker compose up -d --build).
-2. Embarquer l'iframe LogiTrak dans le hub `logistics-hub-maker`.
-3. Valider Phase 2 (sous-onglets) ou prioriser un nouveau module.
+1. Déployer l'itération 4 (scan) + corrections précédentes sur le VPS: Save to GitHub → `cd ~/documents && git pull` → `cd deploy && docker compose up -d --build`. Renseigner EMERGENT_LLM_KEY dans deploy/.env pour activer le scan en production.
+2. Vérifier l'iframe Navixy après redéploiement: `curl -sI https://documents.logitrak.ch | grep -i content-security-policy` doit inclure `https://*.logitrak.fr`, puis tester https://login.logitrak.fr/#/user-app/14328.
+3. Valider Phase 2 nav (sous-onglets) ou prioriser un nouveau module.

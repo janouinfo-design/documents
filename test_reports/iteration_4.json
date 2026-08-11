@@ -1,0 +1,43 @@
+{
+  "summary": "Iteration 4 — Intelligent document scan feature validated end-to-end. Backend: 17/17 pytest tests pass (test_docscan.py) covering error paths (invalid vehicle 404, no file 400, .zip rejected 400), full happy path on JPEG permis de circulation (extraction_status=done, document_type=permis_circulation, fields[] with value/confidence/current_value/conflict, correct AUDI/WAUZZZ8V5KA098765 values), PDF assurance detection (compagnie/numero_police/date_echeance extracted), validate endpoint applies only sent fields and updates vehicle root + carte_grise/assurance subobjects, document flips to extraction_status='validated' in folder 'Carte grise', field-meta contains source='document_scan' with confidence, /history returns audit '→' entries, Navixy sync preserves the previously validated VIN on seed vehicle d1099b53-a118-42d8-adfc-3d1b9e1fdcb0 (kilometrage still re-synced), re-analyse via document_id (Form) works without duplicating the document, assurance with echeance <30 days triggers a matching entry in /api/alerts after /alerts/run, regression on /vehicles, /dashboard, /timeline, /alerts, /navixy/status, classic /vehicles/{id}/documents upload all green. Frontend (Playwright, viewport 1920x1080): /vehicules → click plate opens drawer → Documents tab → add-document-btn shows menu (add-doc-scan / add-doc-import / add-doc-manual) → import path opens scan-dialog → hidden input accepts JPG → scan-pages vignette rendered with rotation & remove buttons → scan-analyze-btn triggers scan-analyzing → scan-review reached with scan-type-select (Permis de circulation 99%), 8 detected fields with confidence badges, scan-conflicts section with conflict-keep-* / conflict-new-* buttons per field, scan-validate-btn shows count '(8)' and closes the dialog on click → Carte grise tab reflects new applied non-conflicting values (Diesel / 1461 / 85) → cg-scan-camera + cg-scan-import both visible → manual-add-dialog opens with manual-folder-select + manual-dropzone, upload closes the dialog automatically → provenance-section visible on the seed vehicle General tab (repliable, 10 fields). Regression: /, /echeances, /alertes render correctly with the demo email banner.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "ScanDocumentDialog / VehicleDrawer / manual-add-dialog", "issues": ["Recurring Radix a11y console warning: 'DialogContent requires a DialogTitle for the component to be accessible for screen reader users'. Already reported in iter1/iter2/iter3 — still not fixed. Wrap DialogTitle with VisuallyHidden or provide a visible title + aria-describedby."]},
+      {"screen": "VehicleDrawer General tab — provenance-section", "issues": ["When collapsed, the panel only displays the count (e.g., '10') with no visible hint that it is expandable. Add an explicit chevron/'Afficher les détails' label so users discover the drill-down."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_docscan.py",
+    "/app/test_reports/pytest/pytest_iter4.xml"
+  ],
+  "action_items": [
+    "(a11y) Add a VisuallyHidden DialogTitle inside ScanDocumentDialog, ManualAddDialog and VehicleDrawer Sheet to silence the recurring Radix warning — 4th iteration this is being reported.",
+    "(polish) Make the provenance-section header show a visible expand affordance (chevron + label) — currently only a numeric badge is visible while collapsed.",
+    "(perf, carry-over from iter3) server.py is now ~1600 lines. Split into routers (vehicles/documents/scan/navixy/alerts/dashboard) + services; DB writes in scan/validate already async but navixy_post / put_object / get_object remain sync in async routes.",
+    "(nit) In /api/documents/{doc_id}/validate, when no meaningful diff is applied for a validated document, we still write vehicle_field_meta entries only for fields in `applied`; that is correct. But the audit trail relies solely on the `detail` string with '→' — consider structuring the audit payload with old/new/field to make history programmatically queryable."
+  ],
+  "critical_code_review_comments": [
+    "server.py = 1600 lines and growing (was 1156 in iter3, 919 in iter2). The 700-line guideline was crossed 2 iterations ago; routers/services split is now overdue — every future feature will regress readability and merge safety.",
+    "extraction.py::GptVisionProvider hardcodes model='gpt-5.4' as default while the review mentioned 'GPT vision (emergentintegrations)'. Fine, but keep an env-var override (DOC_EXTRACTION_MODEL already supported — document it in README).",
+    "extraction.py::normalize_value coerces `n == 0` to None for int/float fields. This will silently drop legitimate zeros (e.g., CO₂ = 0 for BEV, mensualite = 0 for a company-owned vehicle). Consider allowing 0 for specific fields.",
+    "scan endpoint stores the raw upload (put_object) before knowing the LLM extraction succeeds. If extraction fails, the file remains on disk with extraction_status=failed — good for retry, but there is no /documents/{id}/discard endpoint exposed; the frontend cancel path must therefore hit DELETE /api/documents/{id} to soft-delete. Ensure the review-cancel action actually calls it.",
+    "validate_scanned_document trusts `payload.document_type` — a caller could send a different type than the one persisted, causing FIELD_DEFS mismatch on a previously-validated doc. Consider clamping to the stored document.document_type or refusing the change.",
+    "navixy protection only protects {plaque, marque, modele, vin, annee}. If a user validates other Navixy-provided root fields via document (e.g., photo_url or groupe) they would still be overwritten. Consider protecting *any* field present in vehicle_field_meta with source=document_scan."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_docscan.py"
+  ],
+  "success_rate": {"backend": "100% (17/17)", "frontend": "100%"},
+  "seed_data_creation": "Backend tests picked vehicle id=6491d528-d2a6-4b4a-8e66-8d0206422637 (plaque 'EX 30 08') for JPEG permis + PDF assurance + re-analyse + soon-expiring insurance scans (~4 LLM calls). The seed vehicle d1099b53-a118-42d8-adfc-3d1b9e1fdcb0 (BE 579928) already had 10 document_scan-validated fields from the main-agent's prior curl run; Navixy protection test simply re-triggered /api/navixy/sync and asserted VIN unchanged. Frontend Playwright ran 1 additional scan+validate on EX 30 08 (Diesel/1461/85 applied without changing plate/marque/modele since Conserver was left as default).",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "N/A — no auth. EMERGENT_LLM_KEY in backend/.env powers GPT vision (emergentintegrations, model gpt-5.4). NAVIXY_API_HASH in backend/.env.",
+  "context_for_next_testing_agent": "test_docscan.py is class-scoped and stateful (TestScanPermisJpg validates fields then TestScanPermisJpg::test_field_meta_and_history relies on that write). Run it as a whole file, not individual tests, to avoid apparent history-empty false negatives. LLM latency is ~5-15s per call so ~4 scans/run = ~1min total. If Navixy /navixy/sync starts failing with 502, that is upstream — retest_docscan.py::TestNavixyProtection will surface it. All scan endpoints go through extraction_provider (extraction.py); to mock the LLM in future iterations, monkeypatch GptVisionProvider.analyze. Frontend testIds catalogued: add-document-btn, add-doc-scan/import/manual, scan-dialog, scan-take-photo, scan-import-file, scan-pages, scan-rotate-{i}, scan-remove-{i}, scan-cancel-btn, scan-analyze-btn, scan-analyzing, scan-review, scan-type-select, scan-reanalyze-btn, scan-conflicts, conflict-keep-{field}, conflict-new-{field}, conflict-input-{field}, scan-field-{field}, scan-apply-{field}, scan-input-{field}, scan-review-cancel, scan-validate-btn, scan-no-fields, scan-failed, scan-retry-btn, manual-add-dialog, manual-folder-select, manual-dropzone, cg-scan-camera, cg-scan-import, cg-edit-btn, cg-save, provenance-section.",
+  "rca_of_the_issue": "No blocking bugs. Two minor assertion mismatches in the initial version of the test file (history uses `detail` key not `message`; dashboard exposes `vehicles_conformes` not `en_service`) were corrected inside the test file itself — no application change needed. The residual observations are: recurring Radix DialogTitle a11y warnings (design), collapsed provenance-section shows only a numeric badge (UX), and normalize_value silently drops legitimate 0 values (potential functional edge case)."
+}

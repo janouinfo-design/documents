@@ -75,13 +75,23 @@ export const getAlerts = () => http.get("/alerts").then((r) => r.data);
 export const getAlertsLog = () => http.get("/alerts/log").then((r) => r.data);
 export const runAlerts = () => http.post("/alerts/run").then((r) => r.data);
 
-// OCR carte grise (GPT-4o vision)
-export const ocrCarteGrise = (id, file) => {
-  const fd = new FormData();
-  fd.append("file", file);
+// Scan intelligent de documents
+export const getDocumentTypes = () => http.get("/document-types").then((r) => r.data);
+export const scanVehicleDocument = (vehicleId, files, { documentType, documentId } = {}) => {
+  const form = new FormData();
+  (files || []).forEach((f) => form.append("files", f));
+  if (documentType) form.append("document_type", documentType);
+  if (documentId) form.append("document_id", documentId);
   return http
-    .post(`/vehicles/${id}/carte-grise/ocr`, fd, { headers: { "Content-Type": "multipart/form-data" } })
+    .post(`/vehicles/${vehicleId}/documents/scan`, form, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 180000,
+    })
     .then((r) => r.data);
 };
+export const validateScannedDocument = (docId, payload) =>
+  http.post(`/documents/${docId}/validate`, payload).then((r) => r.data);
+export const getFieldMeta = (id) => http.get(`/vehicles/${id}/field-meta`).then((r) => r.data);
+export const getVehicleHistory = (id) => http.get(`/vehicles/${id}/history`).then((r) => r.data);
 
 export default http;

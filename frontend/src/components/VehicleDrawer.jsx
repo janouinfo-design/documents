@@ -76,6 +76,8 @@ export default function VehicleDrawer({ open, onOpenChange, vehicleId, initialTa
       >
         {isLoading || !vehicle ? (
           <div className="flex h-full items-center justify-center">
+            <SheetTitle className="sr-only">Chargement du véhicule</SheetTitle>
+            <SheetDescription className="sr-only">Veuillez patienter</SheetDescription>
             <Loader2 className="h-6 w-6 animate-spin text-slate-300" />
           </div>
         ) : (

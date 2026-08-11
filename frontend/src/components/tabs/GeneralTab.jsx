@@ -7,6 +7,7 @@ import { Stat, SectionCard, FormRow } from "@/components/Field";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import DropZone from "@/components/DropZone";
+import ProvenanceSection from "@/components/ProvenanceSection";
 
 const GEN_FIELDS = ["photo_url", "plaque", "marque", "modele", "annee", "vin", "kilometrage", "groupe", "base", "responsable", "tracker_gps", "prochaine_maintenance", "prochaine_expertise"];
 const pick = (v) => Object.fromEntries(GEN_FIELDS.map((k) => [k, v[k] ?? ""]));
@@ -90,8 +91,9 @@ export default function GeneralTab({ vehicle, onSaved }) {
   }
 
   return (
-    <SectionCard
-      title="Informations générales"
+    <div className="space-y-5">
+      <SectionCard
+        title="Informations générales"
       description="Identité administrative du véhicule"
       testId="general-view"
       action={<Button variant="outline" size="sm" onClick={startEdit} data-testid="general-edit-btn" className="gap-1.5"><Pencil className="h-3.5 w-3.5" /> Modifier</Button>}
@@ -109,6 +111,8 @@ export default function GeneralTab({ vehicle, onSaved }) {
         <Stat label="Prochaine maintenance" value={dateFr(vehicle.prochaine_maintenance)} icon={Wrench} />
         <Stat label="Prochaine expertise" value={dateFr(vehicle.prochaine_expertise)} icon={ClipboardList} />
       </div>
-    </SectionCard>
+      </SectionCard>
+      <ProvenanceSection vehicleId={vehicle.id} />
+    </div>
   );
 }
