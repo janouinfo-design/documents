@@ -251,10 +251,18 @@ def get_provider(api_key: str) -> DocumentExtractionProvider:
     raise ValueError(f"Fournisseur d'extraction inconnu: {name}")
 
 
-class VehicleEnrichmentProvider:
-    """Interface future pour l'enrichissement externe (VIN / homologation →
-    données techniques officielles, p.ex. OFROU/TARGA sous licence).
-    Aucune implémentation tant qu'aucune API officielle vérifiée n'est disponible."""
+class VehicleTechnicalDataProvider:
+    """Interface pour une source technique externe licenciée (SwissCarInfo,
+    reception-par-type.ch, auto-i-dat, Eurotax…) interrogée via VIN / n° d'homologation (code TG).
+    Aucune implémentation tant qu'aucun accès vérifié n'est fourni — aucune donnée inventée.
+    Retour attendu : {conso_officielle_l_100km, conso_officielle_norme, co2_g_km, co2_norme,
+    capacite_reservoir_l, provider, retrieved_at}."""
 
-    async def enrich(self, vin: str = None, homologation: str = None) -> dict:
+    async def lookup(self, vin: str = None, homologation_number: str = None,
+                     make: str = None, model: str = None, variant: str = None) -> dict:
         raise NotImplementedError
+
+
+def get_technical_provider():
+    """None tant qu'aucun fournisseur licencié n'est configuré (env TECH_DATA_PROVIDER)."""
+    return None

@@ -2,21 +2,32 @@ import { useState } from "react";
 import { toast } from "sonner";
 import {
   Pencil, Loader2, ScrollText, Calendar, Weight, Users,
-  Fuel, Gauge, Zap, Leaf, Hash,
+  Fuel, Gauge, Zap, Leaf, Hash, TrendingUp,
 } from "lucide-react";
 import { updateVehicle } from "@/lib/api";
-import { dateFr } from "@/lib/format";
+import { dateFr, fmtNum } from "@/lib/format";
 import { Stat, SectionCard, FormRow } from "@/components/Field";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import DocFolderSection from "@/components/DocFolderSection";
 import DocumentScanCard from "@/components/DocumentScanCard";
 
 const CG_FIELDS = ["date_mise_circulation", "poids_total", "nombre_places"];
 const TECH_FIELDS = [
   "type_carburant", "cylindree_cm3", "puissance_kw", "poids_vide", "categorie",
-  "co2_g_km", "conso_officielle_l_100km", "variante", "numero_homologation",
+  "co2_g_km", "co2_norme", "conso_officielle_l_100km", "conso_officielle_norme",
+  "capacite_reservoir_l", "conso_reelle_l_100km", "variante", "numero_homologation",
 ];
+
+const NORMES = ["WLTP", "NEDC"];
+const REELLE_SOURCES = {
+  can: "CAN",
+  fms: "FMS",
+  obd: "OBD",
+  fuel_transactions: "Pleins carburant",
+  manual: "Manuelle",
+};
 
 const pick = (vehicle) => ({
   ...Object.fromEntries(CG_FIELDS.map((k) => [k, (vehicle.carte_grise || {})[k] ?? ""])),
@@ -30,11 +41,21 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-  const litres = vehicle.cylindree_cm3 ? ` (${(vehicle.cylindree_cm3 / 1000).toFixed(1)} L)` : "";
+  const litres = vehicle.cylindree_cm3 ? `${fmtNum(vehicle.cylindree_cm3)} cm³ — ${(vehicle.cylindree_cm3 / 1000).toFixed(1)} L` : "—";
+  const reelleFromCan = vehicle.conso_reelle_source === "can";
+  const off = Number(vehicle.conso_officielle_l_100km) || 0;
+  const reelle = Number(vehicle.conso_reelle_l_100km) || 0;
+  const ecart = off > 0 && reelle > 0 ? ((reelle - off) / off) * 100 : null;
+  const cap = Number(vehicle.capacite_reservoir_l) || 0;
+  const niveau = vehicle.carburant_niveau_pct;
+  const niveauTxt = niveau != null
+    ? `${niveau} %${cap > 0 ? ` ≈ ${((niveau / 100) * cap).toFixed(1)} L` : ""}${vehicle.carburant_niveau_date ? ` (${dateFr(vehicle.carburant_niveau_date)})` : ""}`
+    : "—";
 
   const save = async () => {
     setSaving(true);
     try {
+      const reelleForm = Number(form.conso_reelle_l_100km) || 0;
       await updateVehicle(vehicle.id, {
         type_carburant: form.type_carburant || "",
         cylindree_cm3: Number(form.cylindree_cm3) || 0,
@@ -42,7 +63,16 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
         poids_vide: Number(form.poids_vide) || 0,
         categorie: form.categorie || "",
         co2_g_km: Number(form.co2_g_km) || 0,
+        co2_norme: form.co2_norme || "",
         conso_officielle_l_100km: Number(form.conso_officielle_l_100km) || 0,
+        conso_officielle_norme: form.conso_officielle_norme || "",
+        capacite_reservoir_l: Number(form.capacite_reservoir_l) || 0,
+        ...(!reelleFromCan
+          ? {
+              conso_reelle_l_100km: reelleForm,
+              conso_reelle_source: reelleForm > 0 ? "manual" : "unavailable",
+            }
+          : {}),
         variante: form.variante || "",
         numero_homologation: form.numero_homologation || "",
         carte_grise: {
@@ -51,7 +81,7 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
           nombre_places: Number(form.nombre_places) || 0,
         },
       });
-      toast.success("Carte grise enregistrée");
+      toast.success("Données véhicule enregistrées");
       onSaved?.();
       setEdit(false);
     } catch {
@@ -73,19 +103,15 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
       />
 
       {edit ? (
-        <SectionCard title="Modifier la carte grise & données techniques" testId="carte-grise-edit">
+        <SectionCard title="Modifier carte grise & données moteur" testId="carte-grise-edit">
+          <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Carte grise</p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             {[
               ["date_mise_circulation", "Mise en circulation", "date"],
-              ["type_carburant", "Carburant"],
-              ["cylindree_cm3", "Cylindrée (cm³)", "number"],
-              ["puissance_kw", "Puissance (kW)", "number"],
               ["poids_vide", "Poids à vide (kg)", "number"],
               ["poids_total", "Poids total (kg)", "number"],
               ["nombre_places", "Nombre de places", "number"],
               ["categorie", "Catégorie"],
-              ["co2_g_km", "CO₂ (g/km)", "number"],
-              ["conso_officielle_l_100km", "Conso officielle (L/100 km)", "number"],
               ["variante", "Variante / type"],
               ["numero_homologation", "N° homologation"],
             ].map(([k, label, type]) => (
@@ -93,6 +119,43 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
                 <Input data-testid={`cg-${k}`} type={type || "text"} value={form[k] || ""} onChange={(e) => set(k, e.target.value)} />
               </FormRow>
             ))}
+          </div>
+          <p className="mb-3 mt-6 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Moteur & consommation</p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {[
+              ["type_carburant", "Carburant"],
+              ["cylindree_cm3", "Cylindrée (cm³)", "number"],
+              ["puissance_kw", "Puissance (kW)", "number"],
+              ["co2_g_km", "CO₂ (g/km)", "number"],
+              ["conso_officielle_l_100km", "Conso officielle (L/100 km)", "number"],
+              ["capacite_reservoir_l", "Capacité réservoir (L)", "number"],
+            ].map(([k, label, type]) => (
+              <FormRow key={k} label={label}>
+                <Input data-testid={`cg-${k}`} type={type || "text"} value={form[k] || ""} onChange={(e) => set(k, e.target.value)} />
+              </FormRow>
+            ))}
+            <FormRow label="Norme conso officielle">
+              <Select value={form.conso_officielle_norme || undefined} onValueChange={(v) => set("conso_officielle_norme", v)}>
+                <SelectTrigger data-testid="cg-conso_officielle_norme"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>{NORMES.map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}</SelectContent>
+              </Select>
+            </FormRow>
+            <FormRow label="Norme CO₂">
+              <Select value={form.co2_norme || undefined} onValueChange={(v) => set("co2_norme", v)}>
+                <SelectTrigger data-testid="cg-co2_norme"><SelectValue placeholder="—" /></SelectTrigger>
+                <SelectContent>{NORMES.map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}</SelectContent>
+              </Select>
+            </FormRow>
+            <FormRow label={reelleFromCan ? "Conso réelle — mesurée via CAN" : "Conso réelle (L/100 km) — saisie manuelle"}>
+              <Input
+                data-testid="cg-conso_reelle_l_100km"
+                type="number"
+                disabled={reelleFromCan}
+                value={form.conso_reelle_l_100km || ""}
+                onChange={(e) => set("conso_reelle_l_100km", e.target.value)}
+                placeholder={reelleFromCan ? "Gérée automatiquement" : ""}
+              />
+            </FormRow>
           </div>
           <div className="mt-5 flex justify-end gap-2">
             <Button variant="outline" onClick={() => setEdit(false)}>Annuler</Button>
@@ -102,33 +165,66 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
           </div>
         </SectionCard>
       ) : (
-        <SectionCard
-          title="Carte grise & données techniques"
-          description="Informations véhicule officielles"
-          testId="carte-grise-view"
-          action={
-            <Button variant="outline" size="sm" onClick={() => { setForm(pick(vehicle)); setEdit(true); }} data-testid="cg-edit-btn" className="gap-1.5">
-              <Pencil className="h-3.5 w-3.5" /> Modifier
-            </Button>
-          }
-        >
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <Stat label="Plaque" value={vehicle.plaque} icon={ScrollText} />
-            <Stat label="VIN" value={vehicle.vin} />
-            <Stat label="Mise en circulation" value={dateFr(c.date_mise_circulation)} icon={Calendar} />
-            <Stat label="Carburant" value={vehicle.type_carburant || "—"} icon={Fuel} />
-            <Stat label="Cylindrée" value={vehicle.cylindree_cm3 ? `${vehicle.cylindree_cm3} cm³${litres}` : "—"} icon={Gauge} />
-            <Stat label="Puissance" value={vehicle.puissance_kw ? `${vehicle.puissance_kw} kW` : "—"} icon={Zap} />
-            <Stat label="Poids à vide" value={vehicle.poids_vide ? `${vehicle.poids_vide} kg` : "—"} icon={Weight} />
-            <Stat label="Poids total" value={c.poids_total ? `${c.poids_total} kg` : "—"} icon={Weight} />
-            <Stat label="Nombre de places" value={c.nombre_places || "—"} icon={Users} />
-            <Stat label="Catégorie" value={vehicle.categorie || "—"} />
-            <Stat label="CO₂" value={vehicle.co2_g_km ? `${vehicle.co2_g_km} g/km` : "—"} icon={Leaf} />
-            <Stat label="Conso officielle" value={vehicle.conso_officielle_l_100km ? `${vehicle.conso_officielle_l_100km} L/100 km` : "—"} icon={Fuel} />
-            <Stat label="Variante / type" value={vehicle.variante || "—"} />
-            <Stat label="N° homologation" value={vehicle.numero_homologation || "—"} icon={Hash} />
-          </div>
-        </SectionCard>
+        <>
+          <SectionCard
+            title="Carte grise"
+            description="Données lues sur le permis de circulation"
+            testId="carte-grise-view"
+            action={
+              <Button variant="outline" size="sm" onClick={() => { setForm(pick(vehicle)); setEdit(true); }} data-testid="cg-edit-btn" className="gap-1.5">
+                <Pencil className="h-3.5 w-3.5" /> Modifier
+              </Button>
+            }
+          >
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <Stat label="Plaque" value={vehicle.plaque} icon={ScrollText} />
+              <Stat label="VIN" value={vehicle.vin} />
+              <Stat label="Mise en circulation" value={dateFr(c.date_mise_circulation)} icon={Calendar} />
+              <Stat label="Poids à vide" value={vehicle.poids_vide ? `${fmtNum(vehicle.poids_vide)} kg` : "—"} icon={Weight} />
+              <Stat label="Poids total" value={c.poids_total ? `${fmtNum(c.poids_total)} kg` : "—"} icon={Weight} />
+              <Stat label="Nombre de places" value={c.nombre_places || "—"} icon={Users} />
+              <Stat label="Catégorie" value={vehicle.categorie || "—"} />
+              <Stat label="Variante / type" value={vehicle.variante || "—"} />
+              <Stat label="N° homologation" value={vehicle.numero_homologation || "—"} icon={Hash} />
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Données moteur & consommation"
+            description="Officielle = homologation · Réelle = uniquement mesurée (CAN/OBD) ou saisie manuelle marquée"
+            testId="moteur-conso"
+          >
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <Stat label="Carburant" value={vehicle.type_carburant || "—"} icon={Fuel} />
+              <Stat label="Cylindrée" value={litres} icon={Gauge} />
+              <Stat label="Puissance" value={vehicle.puissance_kw ? `${vehicle.puissance_kw} kW` : "—"} icon={Zap} />
+              <Stat
+                label="CO₂ officiel"
+                value={vehicle.co2_g_km ? `${vehicle.co2_g_km} g/km${vehicle.co2_norme ? ` · ${vehicle.co2_norme}` : ""}` : "—"}
+                icon={Leaf}
+              />
+              <Stat
+                label="Conso officielle"
+                value={off > 0 ? `${off} L/100 km${vehicle.conso_officielle_norme ? ` · ${vehicle.conso_officielle_norme}` : ""}` : "—"}
+                icon={Fuel}
+              />
+              <div data-testid="conso-reelle-stat">
+                <Stat
+                  label="Conso réelle"
+                  value={reelle > 0 ? `${reelle} L/100 km · Source : ${REELLE_SOURCES[vehicle.conso_reelle_source] || "—"}` : "Données insuffisantes"}
+                  icon={Gauge}
+                />
+              </div>
+              <Stat
+                label="Écart officielle / réelle"
+                value={ecart != null ? `${ecart > 0 ? "+" : ""}${ecart.toFixed(1)} %` : "—"}
+                icon={TrendingUp}
+              />
+              <Stat label="Capacité réservoir" value={cap > 0 ? `${cap} L` : "—"} />
+              <Stat label="Niveau carburant" value={niveauTxt} icon={Fuel} />
+            </div>
+          </SectionCard>
+        </>
       )}
 
       <SectionCard title="Documents carte grise" description="Recto · Verso · Historique" testId="carte-grise-docs">

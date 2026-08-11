@@ -119,6 +119,15 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - [x] Chaque onglet garde sa section documents (Voir / Télécharger / Supprimer via DocFolderSection) + re-scan via la carte.
 - [x] Tests : testing agent itération 5 frontend 100 % (iteration_5.json) — flux assurance forcé, auto-détection permis avec 6 conflits conservés (aucun écrasement), webcam headless, annulation, régressions Dashboard/Échéances/Alertes/éditions classiques. Console vérifiée : aucun warning Radix a11y.
 
+## Implemented — Itération 6 · Consommation officielle vs réelle + télémétrie carburant (2026-08-11)
+- [x] 5 nouveaux champs véhicule (réutilisation des existants, zéro doublon) : conso_officielle_norme (WLTP/NEDC), co2_norme, capacite_reservoir_l, conso_reelle_l_100km, conso_reelle_source (can|fms|obd|fuel_transactions|manual|unavailable) + télémétrie carburant_niveau_pct / carburant_niveau_date (sync-only, non éditables).
+- [x] Sync Navixy enrichie : /tracker/readings/list par tracker → niveau carburant frais (≤7 j, ex. VD 311225 = 99 % vérifié) + compteur litres cumulés CAN (can_consumption/obd_total_fuel) → snapshots quotidiens `fuel_snapshots` (litres+km) → conso réelle MESURÉE = ΔL/Δkm×100 uniquement si Δkm ≥ 100 et 2–60 L/100km plausible → source="can" + provenance (provider navixy_can). JAMAIS d'estimation ; l'IA n'extrait aucune consommation du permis.
+- [x] Priorité des sources respectée : CAN écrase manuel ; saisie manuelle possible uniquement si source ≠ can, marquée « Source : Manuelle », sinon champ verrouillé (« Mesurée via CAN »).
+- [x] UI Carte grise restructurée : carte « Carte grise » (données du document) + carte « Données moteur & consommation » : Carburant · Cylindrée « 1968 cm³ — 2.0 L » (litres calculés, jamais stockés) · Puissance · CO₂+norme · Officielle+norme · Réelle+source ou « Données insuffisantes » · Écart % (+12.5 % vérifié) · Capacité réservoir · Niveau carburant (% ≈ L estimés, niveau ≠ consommation).
+- [x] Abstraction `VehicleTechnicalDataProvider.lookup(vin, homologation, marque, modele, variante)` prête à brancher (SwissCarInfo / reception-par-type.ch / auto-i-dat / Eurotax) — aucun fournisseur codé (pas d'API OFROU publique ; TARGA → IVITA). Comparatif fourni à l'utilisateur, décision en attente.
+- [x] Tests (self-test) : sync Navixy réelle OK (12 véhicules, niveau 99 % capté), PUT manuel officielle 7.2 WLTP + réelle 8.1 manual → écart +12.5 % affiché, screenshot validé. Aucune conso réelle CAN calculée à ce jour (compteurs litres anciens sur la flotte — pipeline s'alimentera dès que les trackers remontent des litres frais).
+
+
 
 ## Backlog (prioritized)
 - Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.

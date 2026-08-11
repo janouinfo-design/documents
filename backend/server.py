@@ -305,6 +305,13 @@ class VehicleBase(BaseModel):
     poids_vide: Optional[int] = 0
     co2_g_km: Optional[float] = 0
     conso_officielle_l_100km: Optional[float] = 0
+    conso_officielle_norme: Optional[str] = ""
+    co2_norme: Optional[str] = ""
+    capacite_reservoir_l: Optional[float] = 0
+    conso_reelle_l_100km: Optional[float] = 0
+    conso_reelle_source: Optional[str] = "unavailable"
+    carburant_niveau_pct: Optional[float] = None
+    carburant_niveau_date: Optional[str] = ""
     kilometrage: Optional[int] = 0
     groupe: Optional[str] = ""
     base: Optional[str] = ""
@@ -340,6 +347,11 @@ class VehicleUpdate(BaseModel):
     poids_vide: Optional[int] = None
     co2_g_km: Optional[float] = None
     conso_officielle_l_100km: Optional[float] = None
+    conso_officielle_norme: Optional[str] = None
+    co2_norme: Optional[str] = None
+    capacite_reservoir_l: Optional[float] = None
+    conso_reelle_l_100km: Optional[float] = None
+    conso_reelle_source: Optional[str] = None
     kilometrage: Optional[int] = None
     groupe: Optional[str] = None
     base: Optional[str] = None
@@ -777,6 +789,64 @@ def _empty_nested():
     }
 
 
+FUEL_FRESH_DAYS = 7
+
+
+def _parse_navixy_time(s):
+    try:
+        return datetime.strptime(str(s)[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return None
+
+
+def _extract_fuel_readings(resp: dict) -> dict:
+    """Niveau carburant (%) et litres cumulés CAN récents depuis /tracker/readings/list."""
+    out = {}
+    cutoff = datetime.now(timezone.utc) - timedelta(days=FUEL_FRESH_DAYS)
+    for item in (resp.get("inputs") or []) + (resp.get("states") or []):
+        name = str(item.get("name") or "")
+        val = item.get("value")
+        ts = _parse_navixy_time(item.get("update_time"))
+        if not isinstance(val, (int, float)) or ts is None or ts < cutoff:
+            continue
+        if name in ("obd_fuel", "fuel_level", "can_fuel_level") and 0 <= val <= 100:
+            out["niveau_pct"] = round(float(val), 1)
+            out["niveau_date"] = ts.date().isoformat()
+        elif name in ("can_consumption", "obd_total_fuel", "total_fuel_used") and val > 0:
+            out["litres_cumules"] = round(float(val), 1)
+    return out
+
+
+async def _record_fuel_snapshot(vehicle_id: str, litres: float, km: int):
+    """Snapshot quotidien (litres cumulés CAN + odomètre) puis calcul de la conso réelle MESURÉE.
+    Jamais d'estimation : il faut deux snapshots espacés d'au moins 100 km."""
+    now = datetime.now(timezone.utc)
+    await db.fuel_snapshots.update_one(
+        {"vehicle_id": vehicle_id, "day": now.date().isoformat()},
+        {"$set": {"litres_cumules": litres, "km": km, "recorded_at": now.isoformat()}},
+        upsert=True)
+    snaps = await db.fuel_snapshots.find({"vehicle_id": vehicle_id}, {"_id": 0}).sort("day", 1).to_list(400)
+    if len(snaps) < 2:
+        return
+    last = snaps[-1]
+    base = next((s for s in snaps[:-1]
+                 if last["km"] - s["km"] >= 100 and last["litres_cumules"] > s["litres_cumules"]), None)
+    if not base:
+        return
+    conso = (last["litres_cumules"] - base["litres_cumules"]) / (last["km"] - base["km"]) * 100
+    if not 2 <= conso <= 60:
+        return
+    iso = now.isoformat()
+    await db.vehicles.update_one({"id": vehicle_id}, {"$set": {
+        "conso_reelle_l_100km": round(conso, 1), "conso_reelle_source": "can", "updated_at": iso}})
+    await db.vehicle_field_meta.update_one(
+        {"vehicle_id": vehicle_id, "field": "conso_reelle_l_100km"},
+        {"$set": {"label": "Consommation réelle (L/100 km)", "source": "can",
+                  "provider": "navixy_can", "confidence": None,
+                  "validated_by": "système", "validated_at": iso, "updated_at": iso}},
+        upsert=True)
+
+
 async def navixy_sync_internal() -> dict:
     trackers = navixy_post("/tracker/list").get("list", [])
     tracker_ids = [t["id"] for t in trackers]
@@ -821,6 +891,15 @@ async def navixy_sync_internal() -> dict:
             "updated_at": now,
         }
 
+        fuel = {}
+        try:
+            fuel = _extract_fuel_readings(navixy_post("/tracker/readings/list", {"tracker_id": tid}))
+        except Exception:
+            pass
+        if fuel.get("niveau_pct") is not None:
+            navixy_fields["carburant_niveau_pct"] = fuel["niveau_pct"]
+            navixy_fields["carburant_niveau_date"] = fuel["niveau_date"]
+
         existing = await db.vehicles.find_one({"navixy_tracker_id": tid})
         if existing:
             # Les champs validés depuis un document scanné restent prioritaires sur Navixy
@@ -848,6 +927,10 @@ async def navixy_sync_internal() -> dict:
             }
             await db.vehicles.insert_one(dict(doc))
             created += 1
+
+        vid = existing["id"] if existing else doc["id"]
+        if fuel.get("litres_cumules") is not None and km > 0:
+            await _record_fuel_snapshot(vid, fuel["litres_cumules"], km)
 
     removed = await db.vehicles.delete_many({"source": {"$in": ["demo", None]}})
     return {"synced": len(trackers), "created": created, "updated": updated, "removed_demo": removed.deleted_count}
@@ -1540,6 +1623,7 @@ async def startup():
         await db.vehicles.create_index("navixy_tracker_id")
         await db.vehicle_field_meta.create_index([("vehicle_id", 1), ("field", 1)], unique=True)
         await db.audit_logs.create_index([("vehicle_id", 1), ("created_at", -1)])
+        await db.fuel_snapshots.create_index([("vehicle_id", 1), ("day", 1)], unique=True)
     except Exception as e:
         logger.error(f"Index creation failed: {e}")
     try:
