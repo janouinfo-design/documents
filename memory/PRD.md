@@ -140,6 +140,12 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - [x] Tests: testing agent itération 6 — backend 7/7 pytest, frontend 100 % (iteration_6.json). Post-test: guard images vides dans enhance_and_pdf, TechnicalApply Optional=None. E2E self-test: apply + provenance + audit + garde CAN vérifiés puis nettoyés ; provider testé contre mock local (ambiguïté/résolution boîte).
 - ⚠️ SwissCarInfo NON ACTIVÉ: en attente de la clé compte Max de l'utilisateur (à mettre dans backend/.env en preview et deploy/.env sur VPS, puis restart backend).
 
+## Vérifications session (2026-08-11, suite)
+- [x] **CSP iframe CONFIRMÉE en production** : `curl -sI https://documents.logitrak.ch` retourne `content-security-policy: frame-ancestors 'self' https://*.logitrak.fr https://*.logitrak.ch https://*.navixy.com https://*.emergentagent.com` → le correctif *.logitrak.fr est déjà déployé sur le VPS. Reste : test visuel utilisateur dans https://login.logitrak.fr/#/user-app/14328.
+- [x] **date_prochain SwissCarInfo → échéances/alertes : DÉJÀ CÂBLÉ et prouvé E2E** : apply date_prochain=2026-08-31 → metrics controle recalculées (critical/20j) → /api/timeline contient l'échéance → /api/alerts/run created=1, alerte contrôle visible. Aucun code ajouté (TECH_FIELD_DEFS target=controle_technique.date_prochain alimente le moteur existant seuils 90/60/30/7). Données de test restaurées/nettoyées (date 2026-06-24, alerte, meta, audit).
+- [x] **Deploy-readiness vérifiée** : backend/Dockerfile copie technical_data.py ; requests==2.34.2 dans requirements ; deploy/.env.example contient SWISSCARINFO_API_KEY/SWISSCARINFO_BASE_URL (untracked mais exception .gitignore OK) ; frontend/.dockerignore n'exclut pas public/ (opencv.js 9 Mo + jscanify seront dans l'image et le repo) ; frontend/yarn.lock sera commité (Dockerfile gère yarn.lock*).
+- Le déploiement lui-même doit être fait par l'utilisateur : Save to GitHub → `cd ~/documents && git pull` → `cd deploy && docker compose up -d --build`.
+
 ## Backlog (prioritized)
 - Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.
 - Phase 3+ (gros chantiers, à cadrer 1 par 1): modules Contrats & renouvellements, Conducteurs, Clients, Modèles, Corbeille/Favoris/Partagés ; permissions/rôles + auth ; multi-tenant.
