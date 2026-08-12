@@ -151,6 +151,51 @@ def build_conformity_pdf(vehicles: list) -> bytes:
                        "saisis dans les fiches véhicules ; les lignes sans contrat affichent « - »."),
              new_x="LMARGIN", new_y="NEXT")
     pdf.set_text_color(0)
+    pdf.ln(6)
+
+    _section(pdf, "Environnement — consommation & CO2 officiels")
+    co2_vals, conso_vals = [], []
+    for v in vehicles:
+        if v.get("co2_g_km") not in (None, ""):
+            co2_vals.append(float(v["co2_g_km"]))
+        if v.get("conso_officielle_l_100km") not in (None, ""):
+            conso_vals.append(float(v["conso_officielle_l_100km"]))
+    pdf.set_font("helvetica", "", 10)
+    if co2_vals or conso_vals:
+        parts = []
+        if co2_vals:
+            parts.append(f"CO2 officiel moyen : {sum(co2_vals) / len(co2_vals):.0f} g/km ({len(co2_vals)}/{len(vehicles)} véhicules renseignés)")
+        if conso_vals:
+            parts.append(f"Conso officielle moyenne : {sum(conso_vals) / len(conso_vals):.1f} L/100 km ({len(conso_vals)}/{len(vehicles)})")
+        pdf.cell(0, 6, _tx("   ·   ".join(parts)), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(1)
+    pdf.set_font("helvetica", "", 8.5)
+    with pdf.table(col_widths=(20, 32, 24, 28, 24, 24), text_align=("LEFT", "LEFT", "LEFT", "LEFT", "LEFT", "LEFT"),
+                   line_height=6, padding=1.2) as table:
+        head = table.row()
+        for h in ("Plaque", "Véhicule", "Carburant", "Conso officielle", "Conso réelle", "CO2 officiel"):
+            head.cell(_tx(h))
+        for v in vehicles:
+            conso_off = (f"{v['conso_officielle_l_100km']} L/100 km ({v.get('conso_officielle_norme') or '-'})"
+                         if v.get("conso_officielle_l_100km") not in (None, "") else "-")
+            reelle = (f"{v['conso_reelle_l_100km']} L/100 km"
+                      if v.get("conso_reelle_l_100km") not in (None, "") else "-")
+            co2 = (f"{v['co2_g_km']} g/km ({v.get('co2_norme') or '-'})"
+                   if v.get("co2_g_km") not in (None, "") else "-")
+            row = table.row()
+            row.cell(_tx(v.get("plaque") or "-"))
+            row.cell(_tx(" ".join(x for x in (v.get("marque"), v.get("modele")) if x) or "-"))
+            row.cell(_tx(v.get("type_carburant") or "-"))
+            row.cell(_tx(conso_off))
+            row.cell(_tx(reelle))
+            row.cell(_tx(co2))
+    pdf.ln(4)
+    pdf.set_font("helvetica", "I", 8)
+    pdf.set_text_color(110)
+    pdf.cell(0, 5, _tx("Valeurs officielles issues de la base ASTRA/OFROU (copie locale) ou de la carte grise ; "
+                       "conso réelle mesurée (CAN/OBD ou pleins). Les véhicules sans données affichent « - »."),
+             new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(0)
 
     return bytes(pdf.output())
 

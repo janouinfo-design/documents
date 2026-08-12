@@ -212,6 +212,12 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - Références de test : VIN `W1N4N5DB3P1234567` → Mercedes-AMG GLA 45 (1 candidat) ; `WVGZZZA1ZR…` → ambigu (56 configs) ; flotte réelle : BE 579928 (1VD672, 3 champs applicables), VD 602 548 (1AE831, variantes de boîte).
 - ⚠️ VPS : premier démarrage télécharge désormais **~1,6 Go** (5 datasets) puis importe (~10-15 min), automatique via ASTRA_SYNC_ENABLED=true.
 
+## Implemented — Itération 16 · Historique des valeurs + Rapport environnemental + Préparation VPS (2026-08-12)
+- [x] **Historique des valeurs / retour en arrière** : à l'apply ASTRA, `vehicle_field_meta` conserve `previous_value` + `applied_value` ; nouvel endpoint POST `/api/vehicles/{id}/enrich-technical/revert` {field} (restaure l'ancienne valeur, supprime la provenance, audit « retour à la valeur précédant l'enrichissement ASTRA » ; 404 sans historique, 422 champ inconnu). UI CarteGriseTab : liste `tech-history-list` sous la note de provenance (« Label : ancienne barrée → nouvelle » + bouton « Rétablir » `tech-revert-{field}`), rafraîchie via onSaved.
+- [x] **Rapport conformité enrichi** : nouvelle section PDF « Environnement — consommation & CO2 officiels » (moyennes flotte : CO₂ officiel moyen g/km + conso officielle moyenne avec ratio de véhicules renseignés, puis tableau Plaque/Véhicule/Carburant/Conso officielle (norme)/Conso réelle/CO₂ (norme), note de source ASTRA/CAN). Vérifié sur données réelles : « CO2 officiel moyen : 156 g/km (2/12) ».
+- [x] **Préparation déploiement VPS** : docker-compose validé (volume `logitrak-fleet_astra_data`, ASTRA_DATA_DIR=/data/astra), Dockerfile backend inclut astra_data.py, .dockerignore/.gitignore excluent les 1,6 Go de datasets, deploy/README.md mis à jour (section ASTRA auto-import + OCR Claude). Le déploiement lui-même reste à faire par l'utilisateur : Save to GitHub → git pull → docker compose up -d --build.
+- [x] **Tests** : pytest test_astra.py étendu à 25 tests (apply→previous_value→revert e2e, 404/422) — 25/25 ; PDF vérifié par décompression des streams ; testing agent it.15 (frontend) : **100 % (3/3 flux + régressions)**, état restauré (iteration_15.json).
+
 ## Backlog (prioritized)
 - Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.
 - Phase 3+ (gros chantiers, à cadrer 1 par 1): modules Contrats & renouvellements, Conducteurs, Clients, Modèles, Corbeille/Favoris/Partagés ; permissions/rôles + auth ; multi-tenant.

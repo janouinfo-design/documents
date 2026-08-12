@@ -67,6 +67,7 @@ sudo certbot --nginx -d documents.logitrak.ch     # SSL Let's Encrypt
 | Réseau Docker | `logitrak-fleet_net` |
 | Volume base de données | `logitrak-fleet_mongo_data` |
 | Volume fichiers/photos | `logitrak-fleet_storage_data` |
+| Volume données ASTRA | `logitrak-fleet_astra_data` |
 | Port hôte | `APP_PORT` (un seul, configurable) |
 
 Rien n'est partagé avec vos autres apps. MongoDB et le stockage ne sont **pas** exposés publiquement (réseau interne uniquement).
@@ -88,10 +89,20 @@ docker run --rm -v logitrak-fleet_storage_data:/data -v $PWD:/out alpine \
   tar czf /out/storage_$(date +%F).tgz -C /data .
 ```
 
-## 8. Activer l'OCR (plus tard)
-1. Renseignez `EMERGENT_LLM_KEY` (Profil → Universal Key) dans `.env`.
+## 8. OCR / analyse de documents (Claude)
+1. Renseignez `ANTHROPIC_API_KEY` (console.anthropic.com) dans `.env`
+   (ou `EMERGENT_LLM_KEY` en secours).
 2. `docker compose up -d --build backend`.
-L'onglet « Carte grise » lira alors automatiquement plaque, VIN, date, poids, places.
+L'onglet « Carte grise » lira alors automatiquement plaque, VIN, homologation, poids, places.
+
+## 8bis. Base technique officielle ASTRA/OFROU (automatique, sans clé)
+Au **premier démarrage**, le backend télécharge les datasets officiels
+(opendata.astra.admin.ch, ~1,6 Go) puis les importe dans MongoDB (~10-15 min au total).
+Rien à configurer (`ASTRA_SYNC_ENABLED=true` par défaut, re-synchronisation mensuelle).
+```bash
+curl http://127.0.0.1:8090/api/astra/status   # suivi de l'import (import_running, compteurs)
+```
+Aussi visible dans l'app : Véhicules → « Base technique » → « État des données officielles ».
 
 ## 9. Activer l'e-mail réel (optionnel)
 Renseignez dans `.env` : `EMAIL_PROVIDER` (resend|sendgrid), `EMAIL_API_KEY`,

@@ -314,3 +314,52 @@ class TestFleetBatch:
             assert d["found"] >= 1
         finally:
             mongo.vehicles.update_one({"id": v["id"]}, {"$set": {"numero_homologation": orig or ""}})
+
+
+# --------------------------- Historique des valeurs + retour en arrière ---------------------------
+class TestRevertHistory:
+    FIELD = "conso_officielle_l_100km"
+
+    def test_apply_records_previous_then_revert(self, imported, mongo):
+        v = mongo.vehicles.find_one({}, {"id": 1, self.FIELD: 1})
+        vid = v["id"]
+        orig = v.get(self.FIELD)
+        new_val = 9.9 if orig != 9.9 else 8.8
+        r = requests.post(f"{BASE_URL}/api/vehicles/{vid}/enrich-technical/apply", json={
+            "fields": {self.FIELD: new_val},
+            "matched_by": "homologation",
+            "retrieved_at": "2026-08-12T10:00:00+00:00",
+            "provider": "astra_tas"}, timeout=30)
+        assert r.status_code == 200, r.text
+        assert r.json()["applied"] == 1
+        meta = mongo.vehicle_field_meta.find_one({"vehicle_id": vid, "field": self.FIELD})
+        assert meta is not None
+        assert "previous_value" in meta, meta
+        assert meta["applied_value"] == new_val
+        assert meta["previous_value"] == (orig if orig not in ("", None) else None)
+        # retour en arrière
+        r2 = requests.post(f"{BASE_URL}/api/vehicles/{vid}/enrich-technical/revert",
+                           json={"field": self.FIELD}, timeout=30)
+        assert r2.status_code == 200, r2.text
+        fresh = mongo.vehicles.find_one({"id": vid}, {self.FIELD: 1})
+        assert fresh.get(self.FIELD) == meta["previous_value"]
+        assert mongo.vehicle_field_meta.find_one({"vehicle_id": vid, "field": self.FIELD}) is None
+        # audit du retour
+        hist = requests.get(f"{BASE_URL}/api/vehicles/{vid}/history", timeout=30).json()
+        assert any("retour à la valeur précédant" in (e.get("detail") or "") for e in hist)
+        # restaurer l'état exact d'origine
+        mongo.vehicles.update_one({"id": vid}, {"$set": {self.FIELD: orig}})
+
+    def test_revert_without_history_404(self, imported, mongo):
+        v = mongo.vehicles.find_one({}, {"id": 1})
+        mongo.vehicle_field_meta.delete_many({"vehicle_id": v["id"], "field": "poids_vide"})
+        r = requests.post(f"{BASE_URL}/api/vehicles/{v['id']}/enrich-technical/revert",
+                          json={"field": "poids_vide"}, timeout=30)
+        assert r.status_code == 404
+        assert "précédente" in r.json()["detail"]
+
+    def test_revert_unknown_field_422(self, imported, mongo):
+        v = mongo.vehicles.find_one({}, {"id": 1})
+        r = requests.post(f"{BASE_URL}/api/vehicles/{v['id']}/enrich-technical/revert",
+                          json={"field": "champ_inexistant"}, timeout=30)
+        assert r.status_code == 422

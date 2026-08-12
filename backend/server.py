@@ -1626,6 +1626,8 @@ async def apply_technical_enrichment(vehicle_id: str, payload: TechnicalApply, r
             {"$set": {"label": fd["label"], "source": "external_vehicle_database",
                       "provider": payload.provider or "astra_tas", "source_ref": payload.matched_by or "",
                       "retrieved_at": payload.retrieved_at or "", "confidence": None,
+                      "previous_value": old if not _is_empty(old) else None,
+                      "applied_value": new,
                       "validated_by": "utilisateur", "validated_at": now, "updated_at": now}},
             upsert=True)
         old_txt = old if not _is_empty(old) else "—"
@@ -1635,6 +1637,44 @@ async def apply_technical_enrichment(vehicle_id: str, payload: TechnicalApply, r
     fresh = await db.vehicles.find_one({"id": vehicle["id"]}, {"_id": 0})
     fresh["metrics"] = compute_metrics(fresh)
     return {"ok": True, "applied": len(applied), "vehicle": fresh}
+
+
+class TechnicalRevert(BaseModel):
+    field: str
+
+
+@api_router.post("/vehicles/{vehicle_id}/enrich-technical/revert")
+async def revert_technical_field(vehicle_id: str, payload: TechnicalRevert, request: Request):
+    vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Véhicule introuvable")
+    defs = {d["key"]: d for d in TECH_FIELD_DEFS}
+    key = payload.field.split(".")[-1]
+    fd = defs.get(key)
+    if not fd:
+        raise HTTPException(status_code=422, detail="Champ inconnu")
+    fpath = key if fd["target"] == "root" else f"{fd['target']}.{key}"
+    meta = await db.vehicle_field_meta.find_one(
+        {"vehicle_id": vehicle_id, "field": fpath, "source": "external_vehicle_database"}, {"_id": 0})
+    if not meta or "previous_value" not in meta:
+        raise HTTPException(status_code=404,
+                            detail="Aucune valeur précédente enregistrée pour ce champ.")
+    prev = meta.get("previous_value")
+    current = _get_current(vehicle, fd["target"], key)
+    now = datetime.now(timezone.utc).isoformat()
+    if fd["target"] == "root":
+        await db.vehicles.update_one({"id": vehicle_id}, {"$set": {key: prev, "updated_at": now}})
+    else:
+        sub = {**(vehicle.get(fd["target"]) or {}), key: prev}
+        await db.vehicles.update_one({"id": vehicle_id}, {"$set": {fd["target"]: sub, "updated_at": now}})
+    await db.vehicle_field_meta.delete_one({"vehicle_id": vehicle_id, "field": fpath})
+    cur_txt = current if not _is_empty(current) else "—"
+    prev_txt = prev if not _is_empty(prev) else "—"
+    await audit("modify", "vehicle", request, vehicle_id, vehicle_id,
+                f"{fd['label']}: {cur_txt} → {prev_txt} (retour à la valeur précédant l'enrichissement ASTRA)")
+    fresh = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
+    fresh["metrics"] = compute_metrics(fresh)
+    return {"ok": True, "vehicle": fresh}
 
 
 @api_router.post("/vehicles/enrich-technical/batch")

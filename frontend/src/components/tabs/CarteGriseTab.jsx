@@ -4,7 +4,7 @@ import {
   Pencil, Loader2, ScrollText, Calendar, Weight, Users,
   Fuel, Gauge, Zap, Leaf, Hash, TrendingUp, Database,
 } from "lucide-react";
-import { updateVehicle, getFieldMeta } from "@/lib/api";
+import { updateVehicle, getFieldMeta, revertTechnicalField } from "@/lib/api";
 import { dateFr, fmtNum } from "@/lib/format";
 import { Stat, SectionCard, FormRow } from "@/components/Field";
 import { Input } from "@/components/ui/input";
@@ -42,6 +42,7 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
   const [saving, setSaving] = useState(false);
   const [techOpen, setTechOpen] = useState(false);
   const [swissMeta, setSwissMeta] = useState(null);
+  const [astraHistory, setAstraHistory] = useState([]);
   const scanValidatedRef = useRef(false);
 
   useEffect(() => {
@@ -58,14 +59,25 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
     getFieldMeta(vehicle.id)
       .then((metas) => {
         if (!on) return;
-        const m = (metas || [])
-          .filter((x) => ["astra_tas", "astra_tg", "astra_edatenblatt", "swisscarinfo"].includes(x.provider))
-          .sort((a, b) => (b.retrieved_at || "").localeCompare(a.retrieved_at || ""))[0];
+        const astra = (metas || [])
+          .filter((x) => ["astra_tas", "astra_tg", "astra_edatenblatt", "swisscarinfo"].includes(x.provider));
+        const m = astra.sort((a, b) => (b.retrieved_at || "").localeCompare(a.retrieved_at || ""))[0];
         setSwissMeta(m || null);
+        setAstraHistory(astra.filter((x) => Object.prototype.hasOwnProperty.call(x, "previous_value")));
       })
       .catch(() => {});
     return () => { on = false; };
   }, [vehicle.id, vehicle.updated_at]);
+
+  const revertField = async (h) => {
+    try {
+      await revertTechnicalField(vehicle.id, h.field);
+      toast.success(`${h.label} : valeur précédente rétablie`);
+      onSaved?.();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Impossible de rétablir la valeur");
+    }
+  };
 
   const litres = vehicle.cylindree_cm3 ? `${fmtNum(vehicle.cylindree_cm3)} cm³ — ${(vehicle.cylindree_cm3 / 1000).toFixed(1)} L` : "—";
   const reelleFromCan = vehicle.conso_reelle_source === "can";
@@ -258,6 +270,27 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
               <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-400" data-testid="tech-provenance-note">
                 Source : {swissMeta.provider === "swisscarinfo" ? "SwissCarInfo — données officielles OFROU" : "Base officielle ASTRA/OFROU (copie locale)"} · dernière récupération le {dateFr((swissMeta.retrieved_at || "").slice(0, 10))}
               </p>
+            )}
+            {astraHistory.length > 0 && (
+              <div className="mt-2 space-y-1.5" data-testid="tech-history-list">
+                {astraHistory.map((h) => (
+                  <div key={h.field} className="flex items-center justify-between gap-3 text-xs">
+                    <span className="min-w-0 text-slate-400">
+                      {h.label} : <span className="line-through decoration-slate-300">{h.previous_value == null || h.previous_value === "" ? "—" : String(h.previous_value)}</span>
+                      {" → "}
+                      <span className="font-medium text-slate-600">{h.applied_value == null ? "—" : String(h.applied_value)}</span>
+                    </span>
+                    <button
+                      type="button"
+                      data-testid={`tech-revert-${h.field.replace(/\./g, "-")}`}
+                      onClick={() => revertField(h)}
+                      className="shrink-0 rounded-md border border-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
+                    >
+                      Rétablir
+                    </button>
+                  </div>
+                ))}
+              </div>
             )}
           </SectionCard>
         </>
