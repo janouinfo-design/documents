@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Pencil, Loader2, Car, Calendar, Hash, Gauge, Users, MapPin, User, Radio, Wrench, ClipboardList } from "lucide-react";
-import { updateVehicle, uploadFile } from "@/lib/api";
+import { updateVehicle, uploadFile, photoSrc } from "@/lib/api";
 import { fmtKm, dateFr } from "@/lib/format";
 import { Stat, SectionCard, FormRow } from "@/components/Field";
 import { Input } from "@/components/ui/input";
@@ -63,7 +63,7 @@ export default function GeneralTab({ vehicle, onSaved }) {
         <div className="mb-5">
           <FormRow label="Photo du véhicule">
             <div className="flex items-center gap-3">
-              {form.photo_url && <img src={form.photo_url} alt="aperçu" className="h-16 w-24 rounded-lg border border-slate-200 object-cover" />}
+              {form.photo_url && <img src={photoSrc(form.photo_url)} alt="aperçu" className="h-16 w-24 rounded-lg border border-slate-200 object-cover" />}
               <div className="flex-1"><DropZone onFiles={handlePhoto} multiple={false} busy={uploading} compact accept="image/*" label="Changer la photo" testId="general-photo-drop" /></div>
             </div>
           </FormRow>

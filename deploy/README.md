@@ -37,6 +37,9 @@ nano .env
 - `APP_PORT` : un port **libre** (par défaut 8090)
 - `DB_NAME` : laissez `logitrak_fleet` (base dédiée)
 - `NAVIXY_API_HASH` : votre clé Navixy (région EU par défaut)
+- `JWT_SECRET` : **obligatoire** — générez-le avec `openssl rand -hex 32`
+- `ADMIN_EMAIL` / `ADMIN_PASSWORD` : **obligatoires** — compte superadmin créé au premier démarrage
+- `ADMIN_FORCE_RESET` : laissez `false` (passez à `true` + restart uniquement pour récupérer un mot de passe perdu, puis remettez `false`)
 - `EMERGENT_LLM_KEY` : (optionnel, pour l'OCR carte grise) — à remplir plus tard
 - `EMAIL_*` : (optionnel) pour l'envoi réel des alertes
 
@@ -47,8 +50,18 @@ docker compose up -d --build
 Vérifier :
 ```bash
 docker compose ps
-curl http://127.0.0.1:8090/api/vehicles   # doit répondre du JSON
+curl -i http://127.0.0.1:8090/api/vehicles   # doit répondre 401 (authentification requise = normal)
+curl -X POST http://127.0.0.1:8090/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"<ADMIN_EMAIL>","password":"<ADMIN_PASSWORD>"}'   # doit renvoyer {"token": ...}
 ```
+
+## 4bis. Authentification (superadmin)
+- Toute l'application est protégée : connexion par email + mot de passe (JWT, session 24 h).
+- Le compte superadmin est créé automatiquement au démarrage depuis `ADMIN_EMAIL`/`ADMIN_PASSWORD` du `.env`.
+- Le mot de passe peut être changé dans l'application (menu utilisateur → « Changer le mot de passe ») ; le `.env` n'est alors plus utilisé pour ce compte.
+- Mot de passe perdu : mettre `ADMIN_FORCE_RESET=true` dans `.env`, `docker compose up -d backend`, se reconnecter avec `ADMIN_PASSWORD`, puis remettre `ADMIN_FORCE_RESET=false`.
+- Protection force brute : 5 échecs de connexion → verrou de 15 minutes.
 
 ## 5. Exposer via votre Nginx hôte
 ```bash

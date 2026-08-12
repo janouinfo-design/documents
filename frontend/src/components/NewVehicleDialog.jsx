@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Truck, Loader2 } from "lucide-react";
-import { createVehicle, uploadFile } from "@/lib/api";
+import { createVehicle, uploadFile, photoSrc } from "@/lib/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -103,7 +103,7 @@ export default function NewVehicleDialog({ open, onOpenChange }) {
             <FormRow label="Photo du véhicule">
               {form.photo_url ? (
                 <div className="flex items-center gap-3">
-                  <img src={form.photo_url} alt="aperçu" className="h-16 w-24 rounded-lg border border-slate-200 object-cover" />
+                  <img src={photoSrc(form.photo_url)} alt="aperçu" className="h-16 w-24 rounded-lg border border-slate-200 object-cover" />
                   <Button variant="outline" size="sm" onClick={() => set("photo_url", "")}>Changer</Button>
                 </div>
               ) : (

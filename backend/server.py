@@ -1,5 +1,5 @@
-from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Form, Query, Request
-from fastapi.responses import Response
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Request
+from fastapi.responses import JSONResponse, Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -23,6 +23,8 @@ from reports import build_conformity_pdf, build_costs_csv, build_vehicle_pdf
 from technical_data import TECH_FIELD_DEFS
 import astra_data
 from astra_data import AstraLookupError
+from auth import (authenticate_request, check_lockout, clear_failures, create_access_token,
+                  hash_password, record_failure, seed_admin, verify_password)
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -38,6 +40,64 @@ api_router = APIRouter(prefix="/api")
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Authentification — superadmin unique (JWT Bearer 24 h)
+# ---------------------------------------------------------------------------
+auth_router = APIRouter(prefix="/api/auth")
+
+
+async def require_auth(request: Request) -> dict:
+    return await authenticate_request(request, db)
+
+
+class LoginPayload(BaseModel):
+    email: str
+    password: str
+
+
+class ChangePasswordPayload(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@auth_router.post("/login")
+async def auth_login(payload: LoginPayload, request: Request):
+    email = payload.email.strip().lower()
+    ip = request.client.host if request.client else "unknown"
+    identifier = f"{ip}|{email}"
+    await check_lockout(db, identifier)
+    user = await db.users.find_one({"email": email})
+    if not user or not verify_password(payload.password, user.get("password_hash", "")):
+        await record_failure(db, identifier)
+        raise HTTPException(status_code=401, detail="Email ou mot de passe incorrect")
+    await clear_failures(db, identifier)
+    safe = {k: v for k, v in user.items() if k not in ("_id", "password_hash")}
+    return {"token": create_access_token(user["id"], user["email"]), "user": safe}
+
+
+@auth_router.get("/me")
+async def auth_me(user: dict = Depends(require_auth)):
+    return user
+
+
+@auth_router.post("/change-password")
+async def auth_change_password(payload: ChangePasswordPayload, user: dict = Depends(require_auth)):
+    if len(payload.new_password) < 8:
+        raise HTTPException(status_code=422, detail="Le nouveau mot de passe doit contenir au moins 8 caractères.")
+    full = await db.users.find_one({"id": user["id"]})
+    if not full or not verify_password(payload.current_password, full.get("password_hash", "")):
+        raise HTTPException(status_code=401, detail="Mot de passe actuel incorrect")
+    await db.users.update_one({"id": user["id"]}, {"$set": {
+        "password_hash": hash_password(payload.new_password),
+        "password_changed_in_app": True,
+        "updated_at": datetime.now(timezone.utc).isoformat()}})
+    return {"status": "ok"}
+
+
+@auth_router.post("/logout")
+async def auth_logout(user: dict = Depends(require_auth)):
+    return {"status": "ok"}
 
 # ---------------------------------------------------------------------------
 # Object storage helpers (Emergent object storage)
@@ -2013,6 +2073,12 @@ async def startup():
     except Exception as e:
         logger.error(f"Index creation failed: {e}")
     try:
+        await db.users.create_index("email", unique=True)
+        await db.login_attempts.create_index("identifier", unique=True)
+        await seed_admin(db)
+    except Exception as e:
+        logger.error(f"Auth seed failed: {e}")
+    try:
         init_storage()
         logger.info("Storage initialized")
     except Exception as e:
@@ -2071,7 +2137,8 @@ async def startup():
         logger.error(f"ASTRA auto-import start failed: {e}")
 
 
-app.include_router(api_router)
+app.include_router(auth_router)
+app.include_router(api_router, dependencies=[Depends(require_auth)])
 
 app.add_middleware(
     CORSMiddleware,
@@ -2081,10 +2148,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

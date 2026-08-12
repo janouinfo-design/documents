@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Search, Plus, ChevronRight, Truck, Sparkles, Loader2, FileDown, Database, Fuel } from "lucide-react";
-import { getVehicles, fillDemoAdmin, conformityReportUrl, costsCsvUrl } from "@/lib/api";
+import { getVehicles, fillDemoAdmin, conformityReportUrl, costsCsvUrl, photoSrc } from "@/lib/api";
 import { fmtKm } from "@/lib/format";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -161,7 +161,7 @@ export default function Vehicles() {
                       <div className="flex items-center gap-3">
                         <div className="h-11 w-16 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100">
                           {v.photo_url ? (
-                            <img src={v.photo_url} alt={v.plaque} className="h-full w-full object-cover" />
+                            <img src={photoSrc(v.photo_url)} alt={v.plaque} className="h-full w-full object-cover" />
                           ) : (
                             <div className="flex h-full w-full items-center justify-center text-slate-300">
                               <Truck className="h-5 w-5" />

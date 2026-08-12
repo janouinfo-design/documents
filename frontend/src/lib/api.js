@@ -3,7 +3,40 @@ import axios from "axios";
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
 
+const TOKEN_KEY = "lt_token";
+export const getToken = () => localStorage.getItem(TOKEN_KEY);
+export const setToken = (t) => (t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY));
+
 const http = axios.create({ baseURL: API });
+http.interceptors.request.use((config) => {
+  const t = getToken();
+  if (t) config.headers.Authorization = `Bearer ${t}`;
+  return config;
+});
+http.interceptors.response.use(
+  (r) => r,
+  (error) => {
+    const url = String(error?.config?.url || "");
+    if (error?.response?.status === 401 && !url.includes("/auth/login") && !url.includes("/auth/change-password")) {
+      setToken(null);
+      if (!window.location.pathname.startsWith("/login")) window.location.assign("/login");
+    }
+    return Promise.reject(error);
+  }
+);
+
+const withToken = (url) => {
+  const t = getToken();
+  if (!t) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(t)}`;
+};
+
+// Authentification
+export const authLogin = (email, password) =>
+  http.post("/auth/login", { email, password }).then((r) => r.data);
+export const authMe = () => http.get("/auth/me").then((r) => r.data);
+export const authChangePassword = (current_password, new_password) =>
+  http.post("/auth/change-password", { current_password, new_password }).then((r) => r.data);
 
 export const fileUrl = (path, { download = false, filename } = {}) => {
   if (!path) return "";
@@ -11,7 +44,7 @@ export const fileUrl = (path, { download = false, filename } = {}) => {
   if (download) params.set("download", "true");
   if (filename) params.set("filename", filename);
   const qs = params.toString();
-  return `${API}/files/${path}${qs ? `?${qs}` : ""}`;
+  return withToken(`${API}/files/${path}${qs ? `?${qs}` : ""}`);
 };
 
 // Resolve a media reference that may be an external url or a storage path
@@ -20,6 +53,9 @@ export const mediaSrc = (item) => {
   if (item.path) return fileUrl(item.path);
   return item.url || "";
 };
+
+// Ajoute le jeton aux URLs de photos stockées pointant vers /api/files
+export const photoSrc = (url) => (url && url.includes("/api/files/") ? withToken(url) : url);
 
 // Vehicles
 export const getVehicles = () => http.get("/vehicles").then((r) => r.data);
@@ -106,9 +142,9 @@ export const revertTechnicalField = (id, field) =>
   http.post(`/vehicles/${id}/enrich-technical/revert`, { field }).then((r) => r.data);
 export const getConsumptionRanking = () =>
   http.get("/fleet/consumption-ranking").then((r) => r.data);
-export const conformityReportUrl = () => `${API}/reports/conformite.pdf`;
-export const costsCsvUrl = () => `${API}/reports/couts.csv`;
-export const vehicleReportUrl = (id) => `${API}/reports/vehicule/${id}.pdf`;
+export const conformityReportUrl = () => withToken(`${API}/reports/conformite.pdf`);
+export const costsCsvUrl = () => withToken(`${API}/reports/couts.csv`);
+export const vehicleReportUrl = (id) => withToken(`${API}/reports/vehicule/${id}.pdf`);
 export const enrichTechnical = (id) =>
   http.post(`/vehicles/${id}/enrich-technical`, null, { timeout: 60000 }).then((r) => r.data);
 export const applyTechnicalEnrichment = (id, payload) =>

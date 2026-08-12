@@ -1,6 +1,13 @@
+import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Truck, CalendarClock, Bell, Layers3 } from "lucide-react";
+import { LayoutDashboard, Truck, CalendarClock, Bell, Layers3, UserCircle2, KeyRound, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useAuth } from "@/context/AuthContext";
+import ChangePasswordDialog from "@/components/ChangePasswordDialog";
 
 const NAV = [
   { to: "/", label: "Tableau de bord", icon: LayoutDashboard, testId: "nav-dashboard" },
@@ -55,17 +62,53 @@ function TopTabs() {
   );
 }
 
+function UserMenu() {
+  const { user, logout } = useAuth();
+  const [pwdOpen, setPwdOpen] = useState(false);
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            data-testid="user-menu-btn"
+            aria-label="Compte"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900"
+          >
+            <UserCircle2 className="h-6 w-6" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-60">
+          <DropdownMenuLabel data-testid="user-menu-email" className="truncate text-xs font-normal text-slate-500">
+            {user?.email}
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem data-testid="user-menu-change-password" onSelect={() => setPwdOpen(true)}>
+            <KeyRound className="mr-2 h-4 w-4 text-slate-400" /> Changer le mot de passe
+          </DropdownMenuItem>
+          <DropdownMenuItem data-testid="user-menu-logout" onSelect={logout} className="text-red-600 focus:text-red-600">
+            <LogOut className="mr-2 h-4 w-4" /> Se déconnecter
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <ChangePasswordDialog open={pwdOpen} onOpenChange={setPwdOpen} />
+    </>
+  );
+}
+
 export default function Layout({ children }) {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/85 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-[1400px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
           <Brand />
-          <div className="hidden flex-col text-right sm:flex">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Module</p>
-            <p className="font-display text-sm font-bold leading-none tracking-tight text-slate-900">
-              Gestion administrative de flotte
-            </p>
+          <div className="flex items-center gap-4">
+            <div className="hidden flex-col text-right sm:flex">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Module</p>
+              <p className="font-display text-sm font-bold leading-none tracking-tight text-slate-900">
+                Gestion administrative de flotte
+              </p>
+            </div>
+            <UserMenu />
           </div>
         </div>
         <div className="border-t border-slate-100">

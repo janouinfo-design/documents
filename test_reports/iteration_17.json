@@ -1,0 +1,37 @@
+{
+  "summary": "Frontend-only end-to-end test of the new JWT superadmin auth (login, session, change-password, logout, PDF token, regressions). 22/24 checks pass. One clear UX bug: entering a WRONG current password in the Change Password dialog logs the user out (redirect to /login) instead of showing pwd-error, because the axios 401 interceptor whitelists only /auth/login. All other flows pass: guard/redirect, bad-password error, correct login, user menu (email + change-password + logout items), lt_token persisted in localStorage, F5 session persistence, client-side validations (<8 chars, mismatch), successful change → toast → dialog closed, logout clears token, re-login with new password works, old password refused, ORIGINAL password RESTORED and final login with the original password verified OK. Vehicles page renders with images (0 broken/11), vehicle drawer opens, Timeline and Alertes pages load, and Rapport PDF is exported through window.open with ?token= (fetched status 200, no 401). No console 401s during normal navigation (the one 401 captured is the deliberate wrong-current-password test).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/auth/change-password", "issue": "Returns 401 on wrong current_password. Combined with the frontend's global 401 interceptor this causes an unwanted logout. Either return 400/422 for wrong-current, or exclude /auth/change-password from the interceptor's redirect (frontend fix preferred)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "ChangePasswordDialog + api.js axios interceptor",
+        "issue": "Submitting the change-password form with a wrong CURRENT password triggers the axios 401 response interceptor in /app/frontend/src/lib/api.js (lines 16-25), which clears lt_token and redirects to /login. Expected behavior: keep the user logged in and display 'Mot de passe actuel incorrect' via pwd-error. Reproduce: log in, open user menu → 'Changer le mot de passe', enter wrong current password + valid new/confirm, click Enregistrer → user is silently logged out. Fix: whitelist '/auth/change-password' in the 401 interceptor exactly like '/auth/login' is whitelisted, so authChangePassword rejects into the dialog's setError branch.",
+        "selector": "[data-testid=\"pwd-error\"]",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "In /app/frontend/src/lib/api.js, extend the 401 interceptor whitelist: skip the setToken(null)+redirect for URLs containing '/auth/change-password' (and ideally '/auth/me' too, since a token expiry mid-bootstrap is already handled by AuthContext catch). Concretely, change the guard to something like: const url = String(error?.config?.url || ''); if (error?.response?.status === 401 && !url.includes('/auth/login') && !url.includes('/auth/change-password')) { ... }"
+  ],
+  "critical_code_review_comments": [
+    "api.js 401 interceptor is too aggressive: it treats any 401 as a session-expiry logout, but /auth/change-password legitimately returns 401 on wrong current_password. Whitelist that route (and any other auth-verification route that can legitimately return 401 without meaning session-invalid).",
+    "AuthContext.logout() uses window.location.assign('/login') — fine, but the interceptor also does window.location.assign('/login') and clears the token. Consider centralizing logout in AuthContext so React state stays in sync (currently the interceptor mutates localStorage but does not call setUser(null) from context)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (backend not retested per request)", "frontend": "92% (22/24 assertions)"},
+  "seed_data_creation": "None. Password was temporarily rotated to 'TempAgent-2026!' during the change-password flow and RESTORED to the original value from /app/memory/test_credentials.md; a final re-login with the ORIGINAL password was verified. login_attempts collection was not touched (only one bad-password login attempt was performed).",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "admin@logitrak.ch / LT-OSTR72MutpBKWB! (from /app/memory/test_credentials.md, restored after test)",
+  "context_for_next_testing_agent": "All auth testids exist and behave correctly (login-email-input, login-password-input, login-submit-btn, login-error, user-menu-btn, user-menu-email, user-menu-change-password, user-menu-logout, change-password-dialog, pwd-current-input, pwd-new-input, pwd-confirm-input, pwd-error, pwd-submit-btn, auth-loading). Token key in localStorage = 'lt_token'. Report/photo URLs use ?token= via withToken() in api.js. Only outstanding issue is the 401 interceptor whitelist for /auth/change-password. When retesting the fix, replay: login → open change-password dialog → wrong current + valid new/confirm → expect pwd-error visible AND user still on the current page (no redirect to /login) AND lt_token unchanged.",
+  "rca_of_the_issue": "Root cause: /app/frontend/src/lib/api.js lines 16-25 — the axios response interceptor treats every 401 as a session-invalid event and unconditionally clears the token + redirects to /login, only whitelisting the /auth/login endpoint. The change-password endpoint returns 401 on a wrong current_password (backend design confirmed by main agent self-test), so the interceptor kicks in, ChangePasswordDialog's own catch block never gets to setError(), the dialog unmounts, and the user is forcibly logged out. Fix: whitelist '/auth/change-password' (and, optionally, use a dedicated header/flag on requests that should not trigger the global logout)."
+}

@@ -7,7 +7,7 @@ import {
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { getVehicle, getDocuments, vehicleReportUrl } from "@/lib/api";
+import { getVehicle, getDocuments, vehicleReportUrl, photoSrc } from "@/lib/api";
 import { fmtKm } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import StatusBadge from "@/components/StatusBadge";
@@ -88,7 +88,7 @@ export default function VehicleDrawer({ open, onOpenChange, vehicleId, initialTa
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
                 <div className="h-28 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 sm:h-24 sm:w-40">
                   {vehicle.photo_url ? (
-                    <img src={vehicle.photo_url} alt={vehicle.plaque} className="h-full w-full object-cover" />
+                    <img src={photoSrc(vehicle.photo_url)} alt={vehicle.plaque} className="h-full w-full object-cover" />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center text-slate-300"><Car className="h-8 w-8" /></div>
                   )}

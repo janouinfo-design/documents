@@ -37,6 +37,9 @@ async def aclient():
     server_mod.db = server_mod.client[os.environ["DB_NAME"]]
     transport = ASGITransport(app=server_mod.app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as ac:
+        r = await ac.post("/api/auth/login", json={
+            "email": os.environ["ADMIN_EMAIL"], "password": os.environ["ADMIN_PASSWORD"]})
+        ac.headers["Authorization"] = f"Bearer {r.json()['token']}"
         yield ac
 
 
