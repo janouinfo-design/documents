@@ -159,11 +159,17 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - [x] Testé : testing agent it.8 (iteration_8.json) — 503 fail-fast validé par monkeypatch (EMERGENT_KEY='', .env intact, aucun document créé), happy-path scan réel OK, NotAllowedError frontend OK, régressions pages OK. Catch différencié réappliqué post-rapport (avait été perdu) — pytest test_scan_failfast.py 4/4. Cas iframe validé par revue de code (simulation window.top fragile en headless).
 - ⚠️ **Action utilisateur requise pour résoudre l'analyse en prod** : renseigner EMERGENT_LLM_KEY dans ~/documents/deploy/.env (clé = Universal Key du profil Emergent) puis `docker compose up -d backend`. Puis Save to GitHub + git pull + rebuild pour obtenir les nouveaux messages/bouton plein écran.
 
+## Implemented — Itération 9 · Bannière config + Rapport de conformité PDF (2026-08-12)
+- [x] `GET /api/config/status` → {scan_configured, technical_data_configured}. **Bannière ambre** (ConfigBanner) sur la page Véhicules quand une clé serveur manque (EMERGENT_LLM_KEY et/ou SWISSCARINFO_API_KEY), avec consigne deploy/.env. En preview : liste uniquement SwissCarInfo (scan configuré).
+- [x] `GET /api/reports/conformite.pdf` (fpdf2 2.8.8, paysage A4, module reports.py) : titre + synthèse (conformes/avertissements/critiques/expirés), tableau « Échéances & conformité » (leasing/assurance/contrôle + jours restants/échu + statut), tableau « Coûts leasing & assurance » (mensualité, mois restants, coût restant, prime annuelle) avec **ligne TOTAL** et montants CHF format suisse (1'234). Audit action=download à chaque export. Bouton « Rapport PDF » (report-pdf-btn) sur la page Véhicules.
+- [x] Dépendances : fpdf2 ajouté à requirements.txt + Dockerfile backend (+ COPY reports.py).
+- [x] Tests : testing agent it.9 — backend 9/9 pytest (headers/contenu PDF via pymupdf, cross-check dates & coûts vs /api/vehicles, audit), frontend 100 % (bannière 1 item SwissCarInfo, bouton PDF, régressions Dashboard/Véhicules/Échéances/Alertes/Base technique). iteration_9.json.
+
 ## Backlog (prioritized)
 - Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.
 - Phase 3+ (gros chantiers, à cadrer 1 par 1): modules Contrats & renouvellements, Conducteurs, Clients, Modèles, Corbeille/Favoris/Partagés ; permissions/rôles + auth ; multi-tenant.
 - P1: Envoi e-mail RÉEL des alertes (attente EMAIL_PROVIDER/API_KEY/FROM/RECIPIENTS).
-- P2: Export PDF/CSV des coûts (leasing/assurance) et rapport de conformité.
+- P2: Export PDF/CSV des coûts (leasing/assurance) et rapport de conformité. ✅ FAIT it.9 (PDF) — reste CSV si demandé.
 - P2: Vue calendrier (grille mensuelle) en complément de la timeline.
 - P3: Refactor server.py en routers ; upload async.
 

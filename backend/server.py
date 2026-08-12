@@ -19,6 +19,7 @@ from datetime import datetime, timezone, date, timedelta
 
 from extraction import (DOC_TYPES, FIELD_DEFS, enhance_and_pdf, get_provider,
                         pdf_to_images_b64, prepare_image_b64, normalize_value)
+from reports import build_conformity_pdf
 from technical_data import TECH_FIELD_DEFS, get_technical_provider, TechnicalLookupError
 
 ROOT_DIR = Path(__file__).parent
@@ -1413,6 +1414,24 @@ async def technical_data_status():
     provider = get_technical_provider()
     return {"configured": provider is not None,
             "provider": "swisscarinfo" if provider else None}
+
+
+@api_router.get("/config/status")
+async def config_status():
+    return {"scan_configured": bool(EMERGENT_KEY),
+            "technical_data_configured": get_technical_provider() is not None}
+
+
+@api_router.get("/reports/conformite.pdf")
+async def conformity_report():
+    vehicles = await db.vehicles.find({}, {"_id": 0}).sort("plaque", 1).to_list(1000)
+    for v in vehicles:
+        v["metrics"] = compute_metrics(v)
+    pdf_bytes = build_conformity_pdf(vehicles)
+    await audit("download", "report", None, "conformite", None,
+                f"Export PDF du rapport de conformité flotte ({len(vehicles)} véhicules)")
+    return Response(content=pdf_bytes, media_type="application/pdf",
+                    headers={"Content-Disposition": 'attachment; filename="rapport-conformite-logitrak.pdf"'})
 
 
 class TechnicalApply(BaseModel):

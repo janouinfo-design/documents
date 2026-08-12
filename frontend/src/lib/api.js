@@ -97,6 +97,8 @@ export const getVehicleHistory = (id) => http.get(`/vehicles/${id}/history`).the
 
 // Enrichissement technique externe (SwissCarInfo — données officielles OFROU)
 export const getTechnicalStatus = () => http.get("/technical-data/status").then((r) => r.data);
+export const getConfigStatus = () => http.get("/config/status").then((r) => r.data);
+export const conformityReportUrl = () => `${API}/reports/conformite.pdf`;
 export const enrichTechnical = (id) =>
   http.post(`/vehicles/${id}/enrich-technical`, null, { timeout: 60000 }).then((r) => r.data);
 export const applyTechnicalEnrichment = (id, payload) =>
