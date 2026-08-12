@@ -1707,6 +1707,37 @@ async def enrich_technical_batch(request: Request):
     return {"total": len(out), "found": found, "results": out}
 
 
+@api_router.get("/fleet/consumption-ranking")
+async def fleet_consumption_ranking():
+    vehicles = await db.vehicles.find({}, {"_id": 0}).sort("plaque", 1).to_list(1000)
+    items, missing = [], []
+    for v in vehicles:
+        off = v.get("conso_officielle_l_100km")
+        real = v.get("conso_reelle_l_100km")
+        base = {"vehicle_id": v["id"], "plaque": v.get("plaque"),
+                "marque": v.get("marque"), "modele": v.get("modele"),
+                "type_carburant": v.get("type_carburant"),
+                "conso_officielle": off if off not in (None, "") else None,
+                "conso_officielle_norme": v.get("conso_officielle_norme"),
+                "conso_reelle": real if real not in (None, "") else None,
+                "conso_reelle_source": v.get("conso_reelle_source")}
+        if base["conso_officielle"] is None and base["conso_reelle"] is None:
+            missing.append(base)
+            continue
+        ref = base["conso_reelle"] if base["conso_reelle"] is not None else base["conso_officielle"]
+        item = {**base, "ref": float(ref),
+                "basis": "reelle" if base["conso_reelle"] is not None else "officielle"}
+        if base["conso_officielle"] is not None and base["conso_reelle"] is not None:
+            delta = round(float(base["conso_reelle"]) - float(base["conso_officielle"]), 1)
+            item["ecart_l"] = delta
+            item["ecart_pct"] = round(delta / float(base["conso_officielle"]) * 100) if float(base["conso_officielle"]) else None
+        items.append(item)
+    items.sort(key=lambda x: x["ref"])
+    for i, it in enumerate(items):
+        it["rang"] = i + 1
+    return {"classement": items, "sans_donnees": missing, "total": len(vehicles)}
+
+
 @api_router.get("/vehicles/{vehicle_id}/history")
 async def get_vehicle_history(vehicle_id: str):
     return await db.audit_logs.find(

@@ -104,6 +104,8 @@ export const enrichFleet = () =>
   http.post("/vehicles/enrich-technical/batch", null, { timeout: 120000 }).then((r) => r.data);
 export const revertTechnicalField = (id, field) =>
   http.post(`/vehicles/${id}/enrich-technical/revert`, { field }).then((r) => r.data);
+export const getConsumptionRanking = () =>
+  http.get("/fleet/consumption-ranking").then((r) => r.data);
 export const conformityReportUrl = () => `${API}/reports/conformite.pdf`;
 export const costsCsvUrl = () => `${API}/reports/couts.csv`;
 export const vehicleReportUrl = (id) => `${API}/reports/vehicule/${id}.pdf`;

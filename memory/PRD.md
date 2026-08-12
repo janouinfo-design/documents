@@ -218,6 +218,11 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - [x] **Préparation déploiement VPS** : docker-compose validé (volume `logitrak-fleet_astra_data`, ASTRA_DATA_DIR=/data/astra), Dockerfile backend inclut astra_data.py, .dockerignore/.gitignore excluent les 1,6 Go de datasets, deploy/README.md mis à jour (section ASTRA auto-import + OCR Claude). Le déploiement lui-même reste à faire par l'utilisateur : Save to GitHub → git pull → docker compose up -d --build.
 - [x] **Tests** : pytest test_astra.py étendu à 25 tests (apply→previous_value→revert e2e, 404/422) — 25/25 ; PDF vérifié par décompression des streams ; testing agent it.15 (frontend) : **100 % (3/3 flux + régressions)**, état restauré (iteration_15.json).
 
+## Implemented — Itération 17 · Comparateur de consommation flotte (2026-08-12)
+- [x] **Backend** : GET `/api/fleet/consumption-ranking` — classement du plus sobre au plus gourmand (référence = conso réelle si mesurée, sinon officielle), écart réel-officiel en L et % (`ecart_l`, `ecart_pct`), rangs, section `sans_donnees` pour les véhicules sans consommation. Aucune écriture. Tests `tests/test_fleet_ranking.py` 3/3 (tri, écart 0.9 L/15 %, sans-données).
+- [x] **UI** : bouton « Consommation » (icône carburant, `conso-open-btn`) sur la page Véhicules → `FleetConsumptionDialog` : lignes classées avec pastille de rang (1 = vert, dernier = rouge), doubles barres proportionnelles Officielle (grise, norme affichée) / Réelle (verte si ≤ officielle, rouge sinon), badge d'écart (+0.9 L · +12 % rouge / vert si négatif / « officielle inconnue » sinon), pastilles des véhicules sans données + aide (Base technique ASTRA ou conso réelle).
+- [x] **Testé** : pytest 3/3 + testing agent it.16 frontend **100 %** (mono et multi-véhicules avec rangs/couleurs/écarts corrects, restauration d'état vérifiée, 0 erreur console) — iteration_16.json. Données réelles : BE 579928 rang 1 (7.2 → 8.1, +12 %).
+
 ## Backlog (prioritized)
 - Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.
 - Phase 3+ (gros chantiers, à cadrer 1 par 1): modules Contrats & renouvellements, Conducteurs, Clients, Modèles, Corbeille/Favoris/Partagés ; permissions/rôles + auth ; multi-tenant.
