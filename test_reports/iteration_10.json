@@ -1,0 +1,20 @@
+{
+  "summary": "Testé les 2 nouvelles fonctionnalités LogiTrak — Export CSV coûts flotte (/api/reports/couts.csv) et Fiche PDF individuelle (/api/reports/vehicule/{id}.pdf). Backend : 10/10 tests pytest passent — CSV avec BOM UTF-8, séparateur ';', 15 colonnes en-tête (accents corrects), 12 lignes véhicules + ligne TOTAL, dates JJ.MM.AAAA, cross-check mensualité/prime/coût restant sur >=2 véhicules avec GET /api/vehicles ; fiche PDF véhicule BE 579928 : 200 application/pdf, filename fiche-be-579928.pdf, contient 'Fiche véhicule', plaque, toutes les sections (Identité/Moteur/Leasing/Assurance/Contrôle/Documents/Historique), 7.2 L/100 km WLTP présent ; 404 avec detail 'Véhicule introuvable' pour id inexistant ; audit_logs action='download' entity='report' incrémenté de +2 après téléchargement CSV + PDF véhicule (entity_id contient 'couts_csv' et 'vehicule_...'). Frontend : bouton data-testid='export-menu-btn' présent sur /vehicules ; clic ouvre dropdown avec data-testid='report-pdf-btn' + 'report-csv-btn' visibles ; ouverture drawer BE 579928 → bouton data-testid='vehicle-report-btn' visible dans l'en-tête à côté du statut 'Expiré', il reste visible sur les 4 premiers onglets testés (Général, Leasing, Assurance, Carte grise) ; window.open appelé avec URL correcte {REACT_APP_BACKEND_URL}/api/reports/vehicule/d1099b53-...-3d1b9e1fdcb0.pdf. Régression : config-banner visible (SwissCarInfo), boutons Véhicule + Données démo intacts, page /vehicules charge sans erreur console, drawer + onglets fonctionnels.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_reports_csv_and_vehicle.py",
+    "/app/test_reports/pytest/pytest_reports_csv_vehicle.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py to_list(1000) pour /reports/couts.csv comme pour /reports/conformite.pdf : bien pour 12 véhicules, prévoir pagination/streaming au-delà de 1000 (non bloquant).",
+    "Le CSV BOM est ajouté par concaténation de chaîne avant Response ; OK. Alternative : media_type charset=utf-8-sig. Non bloquant."
+  ],
+  "updated_files": ["/app/backend/tests/test_reports_csv_and_vehicle.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Aucune. Les tests ajoutent 3 entrées audit_logs action='download' entity='report' (design intentionnel).",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "CSV en-têtes réels : 'Fin de leasing' (pas 'Fin leasing'), 'Mensualité CHF' / 'Coût restant CHF' / 'Prime annuelle CHF' (sans parenthèses). 15 colonnes, ligne TOTAL en dernier, BOM UTF-8. Fiche PDF véhicule : filename 'fiche-{plaque-slug}.pdf' (plaque_slug = plaque en minuscules avec espaces→'-'). Bouton Fiche PDF est dans l'en-tête du drawer (persistant tous onglets). Véhicule test : d1099b53-a118-42d8-adfc-3d1b9e1fdcb0 / BE 579928 / conso 7.2 WLTP + 8.1 manuelle."
+}

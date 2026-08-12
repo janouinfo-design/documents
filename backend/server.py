@@ -19,7 +19,7 @@ from datetime import datetime, timezone, date, timedelta
 
 from extraction import (DOC_TYPES, FIELD_DEFS, enhance_and_pdf, get_provider,
                         pdf_to_images_b64, prepare_image_b64, normalize_value)
-from reports import build_conformity_pdf
+from reports import build_conformity_pdf, build_costs_csv, build_vehicle_pdf
 from technical_data import TECH_FIELD_DEFS, get_technical_provider, TechnicalLookupError
 
 ROOT_DIR = Path(__file__).parent
@@ -1432,6 +1432,37 @@ async def conformity_report():
                 f"Export PDF du rapport de conformité flotte ({len(vehicles)} véhicules)")
     return Response(content=pdf_bytes, media_type="application/pdf",
                     headers={"Content-Disposition": 'attachment; filename="rapport-conformite-logitrak.pdf"'})
+
+
+@api_router.get("/reports/couts.csv")
+async def costs_csv_report():
+    vehicles = await db.vehicles.find({}, {"_id": 0}).sort("plaque", 1).to_list(1000)
+    for v in vehicles:
+        v["metrics"] = compute_metrics(v)
+    csv_text = build_costs_csv(vehicles)
+    await audit("download", "report", None, "couts_csv", None,
+                f"Export CSV des coûts flotte ({len(vehicles)} véhicules)")
+    return Response(content="\ufeff" + csv_text, media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="couts-flotte-logitrak.csv"'})
+
+
+@api_router.get("/reports/vehicule/{vehicle_id}.pdf")
+async def vehicle_report(vehicle_id: str):
+    vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Véhicule introuvable")
+    vehicle["metrics"] = compute_metrics(vehicle)
+    history = await db.audit_logs.find(
+        {"vehicle_id": vehicle_id}, {"_id": 0}).sort("created_at", -1).to_list(30)
+    documents = await db.documents.find(
+        {"vehicle_id": vehicle_id, "is_deleted": False}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    pdf_bytes = build_vehicle_pdf(vehicle, history, documents,
+                                  {k: v["label"] for k, v in DOC_TYPES.items()})
+    await audit("download", "report", None, f"vehicule_{vehicle_id}", vehicle_id,
+                f"Export PDF de la fiche véhicule {vehicle.get('plaque')}")
+    plaque_slug = re.sub(r"\W+", "-", vehicle.get("plaque") or vehicle_id).strip("-").lower()
+    return Response(content=pdf_bytes, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="fiche-{plaque_slug}.pdf"'})
 
 
 class TechnicalApply(BaseModel):

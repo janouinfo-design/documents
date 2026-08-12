@@ -99,6 +99,8 @@ export const getVehicleHistory = (id) => http.get(`/vehicles/${id}/history`).the
 export const getTechnicalStatus = () => http.get("/technical-data/status").then((r) => r.data);
 export const getConfigStatus = () => http.get("/config/status").then((r) => r.data);
 export const conformityReportUrl = () => `${API}/reports/conformite.pdf`;
+export const costsCsvUrl = () => `${API}/reports/couts.csv`;
+export const vehicleReportUrl = (id) => `${API}/reports/vehicule/${id}.pdf`;
 export const enrichTechnical = (id) =>
   http.post(`/vehicles/${id}/enrich-technical`, null, { timeout: 60000 }).then((r) => r.data);
 export const applyTechnicalEnrichment = (id, payload) =>

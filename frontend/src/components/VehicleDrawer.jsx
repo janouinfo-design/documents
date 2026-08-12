@@ -2,11 +2,12 @@ import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Car, FileText, ShieldCheck, ScrollText, Images, ClipboardCheck, FolderTree,
-  Gauge, MapPin, User, Radio, Loader2, Hash,
+  Gauge, MapPin, User, Radio, Loader2, Hash, FileDown,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { getVehicle, getDocuments } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { getVehicle, getDocuments, vehicleReportUrl } from "@/lib/api";
 import { fmtKm } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import StatusBadge from "@/components/StatusBadge";
@@ -98,6 +99,15 @@ export default function VehicleDrawer({ open, onOpenChange, vehicleId, initialTa
                       {vehicle.plaque}
                     </SheetTitle>
                     <StatusBadge level={m.overall} testId="drawer-overall-status" />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      data-testid="vehicle-report-btn"
+                      onClick={() => window.open(vehicleReportUrl(vehicle.id), "_blank", "noopener")}
+                      className="gap-1.5"
+                    >
+                      <FileDown className="h-3.5 w-3.5" /> Fiche PDF
+                    </Button>
                   </div>
                   <SheetDescription className="mt-0.5 text-sm text-slate-500">
                     {vehicle.marque} {vehicle.modele} · {vehicle.annee}

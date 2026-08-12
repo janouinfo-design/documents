@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Search, Plus, ChevronRight, Truck, Sparkles, Loader2, FileDown } from "lucide-react";
-import { getVehicles, fillDemoAdmin, conformityReportUrl } from "@/lib/api";
+import { getVehicles, fillDemoAdmin, conformityReportUrl, costsCsvUrl } from "@/lib/api";
 import { fmtKm } from "@/lib/format";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,9 @@ import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
 import NewVehicleDialog from "@/components/NewVehicleDialog";
 import NavixyBar from "@/components/NavixyBar";
 import ConfigBanner from "@/components/ConfigBanner";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import { lvl } from "@/lib/status";
 import { cn } from "@/lib/utils";
 
@@ -81,14 +84,21 @@ export default function Vehicles() {
             {seeding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-amber-500" />}
             Données démo
           </Button>
-          <Button
-            data-testid="report-pdf-btn"
-            onClick={() => window.open(conformityReportUrl(), "_blank", "noopener")}
-            variant="outline"
-            className="gap-2 border-slate-300 text-slate-700 hover:bg-slate-50"
-          >
-            <FileDown className="h-4 w-4" /> Rapport PDF
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button data-testid="export-menu-btn" variant="outline" className="gap-2 border-slate-300 text-slate-700 hover:bg-slate-50">
+                <FileDown className="h-4 w-4" /> Exporter
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem data-testid="report-pdf-btn" onClick={() => window.open(conformityReportUrl(), "_blank", "noopener")}>
+                Rapport de conformité (PDF)
+              </DropdownMenuItem>
+              <DropdownMenuItem data-testid="report-csv-btn" onClick={() => window.open(costsCsvUrl(), "_blank", "noopener")}>
+                Coûts de la flotte (CSV)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 

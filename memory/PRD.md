@@ -165,6 +165,11 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - [x] Dépendances : fpdf2 ajouté à requirements.txt + Dockerfile backend (+ COPY reports.py).
 - [x] Tests : testing agent it.9 — backend 9/9 pytest (headers/contenu PDF via pymupdf, cross-check dates & coûts vs /api/vehicles, audit), frontend 100 % (bannière 1 item SwissCarInfo, bouton PDF, régressions Dashboard/Véhicules/Échéances/Alertes/Base technique). iteration_9.json.
 
+## Implemented — Itération 10 · Export CSV + Fiche PDF véhicule (2026-08-12)
+- [x] `GET /api/reports/couts.csv` : coûts flotte pour Excel — BOM UTF-8, séparateur ';', 15 colonnes (leasing/assurance/contrôle + statut), dates JJ.MM.AAAA, ligne TOTAL. Menu déroulant « Exporter » (export-menu-btn) sur la page Véhicules regroupe Rapport PDF (report-pdf-btn) + CSV (report-csv-btn).
+- [x] `GET /api/reports/vehicule/{id}.pdf` : fiche individuelle portrait A4 (reports.py build_vehicle_pdf) — Identité & exploitation, Moteur & consommation, Leasing, Assurance, Contrôle technique, Documents (fichiers non supprimés), Historique (30 derniers audits). Filename fiche-{plaque}.pdf, 404 propre. Bouton « Fiche PDF » (vehicle-report-btn) dans l'en-tête du drawer (visible sur tous les onglets). Audit download pour chaque export.
+- [x] Tests : testing agent it.10 — backend 10/10 pytest (BOM/colonnes/TOTAL/cross-check API, contenu fiche PDF via pymupdf, 404, audit +2), frontend 100 % (dropdown, bouton drawer persistant, régressions bannière/pages). iteration_10.json.
+
 ## Backlog (prioritized)
 - Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.
 - Phase 3+ (gros chantiers, à cadrer 1 par 1): modules Contrats & renouvellements, Conducteurs, Clients, Modèles, Corbeille/Favoris/Partagés ; permissions/rôles + auth ; multi-tenant.
