@@ -15,6 +15,7 @@ DOC_TYPES = {
     "assurance": {"label": "Assurance", "folder": "Assurance"},
     "leasing": {"label": "Contrat de leasing", "folder": "Leasing"},
     "controle_technique": {"label": "Expertise / Contrôle technique", "folder": "Contrôle technique"},
+    "vignette": {"label": "Vignette autoroutière", "folder": "Vignette"},
     "facture": {"label": "Facture véhicule", "folder": "Factures"},
     "amende": {"label": "Amende", "folder": "Divers"},
     "autre": {"label": "Autre document", "folder": "Divers"},
@@ -36,6 +37,7 @@ FIELD_DEFS = {
         {"key": "poids_vide", "label": "Poids à vide (kg)", "target": "root", "kind": "int"},
         {"key": "poids_total", "label": "Poids total (kg)", "target": "carte_grise", "kind": "int"},
         {"key": "categorie", "label": "Catégorie", "target": "root", "kind": "str"},
+        {"key": "couleur", "label": "Couleur", "target": "carte_grise", "kind": "str"},
         {"key": "nombre_places", "label": "Nombre de places", "target": "carte_grise", "kind": "int"},
         {"key": "co2_g_km", "label": "CO₂ (g/km)", "target": "root", "kind": "float"},
     ],
@@ -70,6 +72,15 @@ FIELD_DEFS = {
         {"key": "date_prochain", "label": "Prochain contrôle", "target": "controle_technique", "kind": "date"},
         {"key": "centre", "label": "Centre / office", "target": "controle_technique", "kind": "str"},
         {"key": "resultat", "label": "Résultat", "target": "controle_technique", "kind": "str"},
+    ],
+    "vignette": [
+        {"key": "annee", "label": "Année", "target": "document", "kind": "int"},
+        {"key": "type_vignette", "label": "Type (e-vignette / autocollante)", "target": "document", "kind": "str"},
+        {"key": "plaque", "label": "Immatriculation mentionnée", "target": "document", "kind": "str"},
+        {"key": "date_achat", "label": "Date d'achat", "target": "document", "kind": "date"},
+        {"key": "date_expiration", "label": "Date d'expiration", "target": "document", "kind": "date"},
+        {"key": "prix_chf", "label": "Prix (CHF)", "target": "document", "kind": "float"},
+        {"key": "statut", "label": "Statut", "target": "document", "kind": "str"},
     ],
     "facture": [
         {"key": "fournisseur", "label": "Fournisseur", "target": "document", "kind": "str"},
@@ -174,8 +185,11 @@ def _schema_lines(dtype: str) -> str:
 
 def build_prompt(document_type: str = None) -> str:
     if document_type and document_type in FIELD_DEFS:
-        intro = (f'Ce document est de type "{document_type}" ({DOC_TYPES[document_type]["label"]}). '
-                 "Extrais uniquement les champs de ce type.")
+        intro = (f'Type attendu : "{document_type}" ({DOC_TYPES[document_type]["label"]}). '
+                 "Extrais les champs de ce type. Indique cependant dans \"document_type\" le type que TU "
+                 "détectes réellement sur le document, choisi parmi : "
+                 + ", ".join(f'"{k}" ({v["label"]})' for k, v in DOC_TYPES.items())
+                 + " — même s'il diffère du type attendu.")
         schemas = f"Champs à extraire :\n{_schema_lines(document_type)}"
     else:
         intro = ("Détermine d'abord le type du document parmi : "
@@ -188,9 +202,10 @@ def build_prompt(document_type: str = None) -> str:
         + intro + "\n\n" + schemas + "\n\n"
         "Réponds UNIQUEMENT avec un objet JSON strict de la forme :\n"
         '{"document_type": "<type>", "type_confidence": <0..1>, '
-        '"fields": {"<champ>": {"value": <valeur>, "confidence": <0..1>}}}\n'
+        '"fields": {"<champ>": {"value": <valeur>, "confidence": <0..1>, "status": "found|uncertain|missing"}}}\n'
         "Règles STRICTES :\n"
-        "- N'INVENTE JAMAIS une valeur absente ou illisible : omets le champ ou mets value à null.\n"
+        "- N'INVENTE JAMAIS une valeur absente ou illisible : status \"missing\", value null, confidence 0.\n"
+        "- status \"found\" si la valeur est clairement lisible, \"uncertain\" si la lecture est douteuse.\n"
         "- Dates au format YYYY-MM-DD. Nombres en numérique pur, sans unité ni séparateur de milliers.\n"
         "- confidence reflète honnêtement ta certitude de lecture (0 à 1), par champ.\n"
         "- Plaque suisse au format 'GE 123456'. Carburant en français (Diesel, Essence, Électrique, Hybride…).\n"
@@ -239,11 +254,52 @@ class LlmVisionProvider(DocumentExtractionProvider):
             fields = {}
         fields = {k: (v if isinstance(v, dict) else {"value": v, "confidence": None})
                   for k, v in fields.items()}
+        for v in fields.values():
+            st = v.get("status")
+            if st not in ("found", "uncertain", "missing"):
+                conf = v.get("confidence")
+                if v.get("value") in (None, ""):
+                    st = "missing"
+                elif isinstance(conf, (int, float)) and conf < 0.6:
+                    st = "uncertain"
+                else:
+                    st = "found"
+            v["status"] = st
         return {
             "document_type": parsed.get("document_type"),
             "type_confidence": parsed.get("type_confidence"),
             "fields": fields,
         }
+
+
+def check_image_quality(data: bytes) -> dict:
+    """Contrôle qualité non-LLM (résolution + netteté). level: ok | warning | blocked.
+    Bloque uniquement si l'image est réellement inexploitable."""
+    from PIL import Image, ImageFilter, ImageStat, ImageOps
+    try:
+        img = Image.open(io.BytesIO(data))
+        img = ImageOps.exif_transpose(img)
+    except Exception:
+        return {"level": "blocked", "issues": ["image illisible"]}
+    w, h = img.size
+    if min(w, h) < 250:
+        return {"level": "blocked", "issues": [f"résolution insuffisante ({w}×{h} px)"]}
+    issues, level = [], "ok"
+    if min(w, h) < 550:
+        issues.append(f"résolution faible ({w}×{h} px)")
+        level = "warning"
+    g = img.convert("L")
+    if max(g.size) > 1000:
+        g.thumbnail((1000, 1000))
+    edges = g.filter(ImageFilter.FIND_EDGES)
+    edges = edges.crop((2, 2, edges.width - 2, edges.height - 2))
+    var = ImageStat.Stat(edges).var[0]
+    if var < 5:
+        return {"level": "blocked", "issues": issues + ["image extrêmement floue ou vide"]}
+    if var < 40:
+        issues.append("image floue")
+        level = "warning"
+    return {"level": level, "issues": issues}
 
 
 def enhance_and_pdf(images_bytes: list):

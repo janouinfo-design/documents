@@ -19,6 +19,7 @@ export const DOC_TYPE_OPTIONS = [
   { key: "assurance", label: "Assurance" },
   { key: "leasing", label: "Contrat de leasing" },
   { key: "controle_technique", label: "Expertise / Contrôle technique" },
+  { key: "vignette", label: "Vignette autoroutière" },
   { key: "facture", label: "Facture véhicule" },
   { key: "amende", label: "Amende" },
   { key: "autre", label: "Autre document" },
@@ -81,6 +82,7 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
   const [failedDocId, setFailedDocId] = useState(null);
   const [validating, setValidating] = useState(false);
   const [cropFile, setCropFile] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
   const scannerRef = useRef(null);
   const overlayRef = useRef(null);
   const detectTimerRef = useRef(null);
@@ -455,7 +457,13 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
         )}
 
         {step === "capture" && (
-          <div className="space-y-4">
+          <div
+            className={cn("space-y-4 rounded-xl transition-shadow", dragOver && "ring-2 ring-emerald-500 ring-offset-4")}
+            data-testid="scan-dropzone"
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => { e.preventDefault(); setDragOver(false); addFiles(e.dataTransfer.files); }}
+          >
             {(askType || chosenType) && (
               <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
                 <span className="text-xs font-semibold text-slate-600">
@@ -529,7 +537,7 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
               </div>
             ) : (
               <p className="rounded-xl border-2 border-dashed border-slate-200 p-6 text-center text-sm text-slate-400">
-                Aucune page ajoutée pour l'instant
+                Aucune page ajoutée — glissez-déposez un fichier ici ou utilisez les boutons ci-dessus
               </p>
             )}
             {pages.length > 0 && pages.every((p) => !p.isPdf) && pages.some((p) => p.fromCamera) && (
@@ -599,6 +607,31 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
 
         {step === "review" && result && (
           <div className="space-y-5" data-testid="scan-review">
+            {result.type_mismatch && docType === result.type_mismatch.expected && (
+              <div data-testid="scan-type-mismatch" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+                <p className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>
+                    Ce document semble être <strong>{result.type_mismatch.detected_label}</strong> et non{" "}
+                    <strong>{result.type_mismatch.expected_label}</strong>.
+                  </span>
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  data-testid="scan-use-detected-type"
+                  onClick={() => reanalyze(result.type_mismatch.detected)}
+                  className="mt-2 gap-1.5 border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" /> Utiliser le type détecté ({result.type_mismatch.detected_label})
+                </Button>
+              </div>
+            )}
+            {result.quality_warnings?.length > 0 && (
+              <div data-testid="scan-quality-warning" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                Qualité de l'image limitée ({result.quality_warnings.join(", ")}) — vérifiez attentivement les valeurs extraites.
+              </div>
+            )}
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Type de document détecté</p>
@@ -645,7 +678,10 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
                       <div key={f.field} className="rounded-lg border border-amber-200 bg-white p-3">
                         <div className="flex items-center justify-between gap-2">
                           <p className="text-xs font-bold uppercase tracking-[0.08em] text-slate-500">{f.label}</p>
-                          <ConfidenceBadge value={f.confidence} />
+                          <span className="flex items-center gap-1.5">
+                            <StatusBadgeField status={f.status} />
+                            <ConfidenceBadge value={f.confidence} />
+                          </span>
                         </div>
                         <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                           <button
@@ -691,9 +727,29 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
 
             {normals.length > 0 ? (
               <div className="space-y-3">
-                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                  Données détectées — décochez pour ignorer, modifiez si besoin
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                    Données détectées — décochez pour ignorer, modifiez si besoin
+                  </p>
+                  <div className="flex gap-3 text-xs font-semibold">
+                    <button
+                      type="button"
+                      data-testid="fields-select-all"
+                      onClick={() => setRows((r) => { const n = { ...r }; normals.forEach((f) => { n[f.field] = { ...n[f.field], apply: true }; }); return n; })}
+                      className="text-emerald-700 underline hover:text-emerald-900"
+                    >
+                      Tout sélectionner
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="fields-deselect-all"
+                      onClick={() => setRows((r) => { const n = { ...r }; normals.forEach((f) => { n[f.field] = { ...n[f.field], apply: false }; }); return n; })}
+                      className="text-slate-500 underline hover:text-slate-800"
+                    >
+                      Tout désélectionner
+                    </button>
+                  </div>
+                </div>
                 {normals.map((f) => {
                   const row = rows[f.field] || {};
                   return (
@@ -702,7 +758,10 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
                           <label className="text-xs font-bold uppercase tracking-[0.08em] text-slate-500">{f.label}</label>
-                          <ConfidenceBadge value={f.confidence} />
+                          <span className="flex items-center gap-1.5">
+                            <StatusBadgeField status={f.status} />
+                            <ConfidenceBadge value={f.confidence} />
+                          </span>
                         </div>
                         <Input
                           className="mt-1.5"
@@ -723,6 +782,12 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
                   Aucune donnée exploitable détectée. Le document sera simplement classé dans « {typeLabel(docType)} ».
                 </p>
               )
+            )}
+
+            {result.missing_fields?.length > 0 && (
+              <p className="text-xs text-slate-400" data-testid="scan-missing-fields">
+                Non lisibles sur le document : {result.missing_fields.join(" · ")}
+              </p>
             )}
 
             <div className="flex flex-col-reverse justify-between gap-2 border-t border-slate-100 pt-4 sm:flex-row">

@@ -182,6 +182,16 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - ⚠️ VPS : ajouter ANTHROPIC_API_KEY dans ~/documents/deploy/.env puis recreate backend. EMERGENT_LLM_KEY devient optionnelle (secours).
 - Note mineure non bloquante (it.11) : TestAuditLog::test_download_audit_created flaky en exécution parallèle (état audit concurrent), passe en isolé — sans lien avec Claude.
 
+## Implemented — Itération 13 · Mission « Lecture intelligente des documents » — audit + écarts (2026-08-12)
+- [x] **Audit préalable présenté et validé par l'utilisateur** : ~80 % du cahier des charges déjà en place (acquisition unifiée, bibliothèque centrale, Claude, conflits, validation humaine, composants mutualisés). Choix confirmés : rester **sans auth/tenant** (chantier séparé plus tard) ; QC bloquant seulement si inexploitable ; Vignette avec schéma complet ; garder confidence + status.
+- [x] **Incohérence de type** : Claude classifie toujours (liste des types dans le prompt même en mode forcé) → réponse `type_mismatch{expected,detected,labels,confidence}` + `detected_type` stocké → bandeau ⚠️ « Ce document semble être X et non Y » + bouton « Utiliser le type détecté » (réutilise reanalyze/document_id, pas de nouveau fichier). Testé E2E : assurance scannée en carte grise → détecté assurance 0.97.
+- [x] **Status par champ** `found|uncertain|missing` EN PLUS de confidence (normalisation provider + fallback seuil 0.6) → badge « Incertain » UI + ligne « Non lisibles sur le document : … » (`missing_fields`).
+- [x] **Contrôle qualité pré-analyse** (extraction.py check_image_quality, non-LLM) : bloquant 422 uniquement si inexploitable (<250 px ou variance de bords <5 — bords FIND_EDGES recadrés de 2 px pour éviter l'artefact de bordure) ; sinon `quality_warnings` non bloquants affichés en revue. Exécuté AVANT stockage et appel Claude (aucun coût gaspillé).
+- [x] **Type « Vignette autoroutière »** (dossier Vignette, champs : annee, type_vignette e-vignette/autocollante, plaque, date_achat, date_expiration, prix_chf, statut — target document ; justificatif = le fichier) + champ **couleur** carte grise. Compteur `applied` du validate inclut désormais les champs target=document.
+- [x] **Traçabilité complétée** : imported_by, analyzed_at, detected_type, quality_warnings, validated_by sur le document ; original jamais altéré.
+- [x] **Onglet Documents** : recherche par nom (doc-search-input, ouvre tous les dossiers), dossier Vignette, badges statut d'analyse par document (Validé/Analysé/Échec/Analyse…). **Dialog scan** : glisser-déposer (scan-dropzone) + Tout sélectionner/désélectionner dans la revue.
+- [x] Tests : testing agent it.12 — 10/10 backend (mismatch, re-scan, vignette+validate, QC bloquant/warning, traçabilité, aucune écriture avant validation, ~4 appels Claude), frontend 100 % 0 erreur console. Fix post-rapport : compteur applied (10/10 re-passés). iteration_12.json + tests/test_docscan_iter12.py.
+
 ## Backlog (prioritized)
 - Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.
 - Phase 3+ (gros chantiers, à cadrer 1 par 1): modules Contrats & renouvellements, Conducteurs, Clients, Modèles, Corbeille/Favoris/Partagés ; permissions/rôles + auth ; multi-tenant.

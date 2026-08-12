@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime, timezone, date, timedelta
 
-from extraction import (DOC_TYPES, FIELD_DEFS, enhance_and_pdf, get_provider,
+from extraction import (DOC_TYPES, FIELD_DEFS, check_image_quality, enhance_and_pdf, get_provider,
                         pdf_to_images_b64, prepare_image_b64, normalize_value)
 from reports import build_conformity_pdf, build_costs_csv, build_vehicle_pdf
 from technical_data import TECH_FIELD_DEFS, get_technical_provider, TechnicalLookupError
@@ -1161,9 +1161,12 @@ def _build_review_fields(vehicle: dict, defs_list: list, raw_fields: dict) -> li
         current = _get_current(vehicle, fd["target"], key)
         has_current = not _is_empty(current)
         conflict = has_current and not _same_value(current, value)
+        status = info.get("status")
+        if status not in ("found", "uncertain", "missing"):
+            status = "uncertain" if (conf is not None and conf < 0.6) else "found"
         out.append({
             "field": key, "label": fd["label"], "target": fd["target"], "kind": fd["kind"],
-            "value": value, "confidence": conf,
+            "value": value, "confidence": conf, "status": status,
             "current_value": current if has_current else None,
             "conflict": conflict,
         })
@@ -1194,6 +1197,7 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
         raise HTTPException(status_code=400, detail="Type de document inconnu")
 
     images_b64 = []
+    quality_warnings = []
     if document_id:
         # Ré-analyse d'un document déjà téléversé (changement de type, nouvel essai)
         record = await db.documents.find_one(
@@ -1226,6 +1230,16 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
             if len(data) > MAX_FILE_SIZE:
                 raise HTTPException(status_code=413, detail=f"Fichier trop volumineux (max {MAX_FILE_SIZE_MB} Mo)")
             inputs.append((f, data, ext))
+        for f, data, ext in inputs:
+            if ext == "pdf":
+                continue
+            q = check_image_quality(data)
+            if q["level"] == "blocked":
+                raise HTTPException(status_code=422,
+                                    detail="Certains éléments du document ne sont pas suffisamment lisibles ("
+                                           + ", ".join(q["issues"]) +
+                                           "). Veuillez reprendre la photo ou importer un document de meilleure qualité.")
+            quality_warnings.extend(q["issues"])
         as_pdf_flag = (as_pdf or "").strip().lower() in ("1", "true", "yes")
         pages, total_size = [], 0
         if as_pdf_flag and all(ext != "pdf" for _, _, ext in inputs):
@@ -1278,7 +1292,7 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
             "content_type": pages[0]["content_type"],
             "size": total_size, "pages": pages,
             "document_type": document_type, "extraction_status": "processing",
-            "source": "scan", "is_deleted": False,
+            "source": "scan", "imported_by": "utilisateur", "is_deleted": False,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         await db.documents.insert_one(dict(record))
@@ -1301,13 +1315,27 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
         return {"document_id": record["id"], "extraction_status": "failed",
                 "error": err_msg}
 
-    dtype = document_type or result.get("document_type") or "autre"
+    detected = result.get("document_type")
+    if detected not in DOC_TYPES:
+        detected = None
+    dtype = document_type or detected or "autre"
     if dtype not in DOC_TYPES:
         dtype = "autre"
+    type_mismatch = None
+    if document_type and detected and detected != document_type:
+        type_mismatch = {"expected": document_type, "expected_label": DOC_TYPES[document_type]["label"],
+                         "detected": detected, "detected_label": DOC_TYPES[detected]["label"],
+                         "confidence": result.get("type_confidence")}
     fields = _build_review_fields(vehicle, FIELD_DEFS.get(dtype, []), result.get("fields"))
+    defs_labels = {d["key"]: d["label"] for d in FIELD_DEFS.get(dtype, [])}
+    missing_fields = [defs_labels[k] for k, v in (result.get("fields") or {}).items()
+                      if k in defs_labels and isinstance(v, dict) and v.get("status") == "missing"]
     await db.documents.update_one({"id": record["id"]}, {"$set": {
         "extraction_status": "done", "document_type": dtype,
         "type_confidence": result.get("type_confidence"),
+        "detected_type": detected,
+        "analyzed_at": datetime.now(timezone.utc).isoformat(),
+        "quality_warnings": quality_warnings,
         "folder": DOC_TYPES[dtype]["folder"],
         "extracted_fields": fields,
     }})
@@ -1315,6 +1343,8 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
                 f"Scan {DOC_TYPES[dtype]['label']} — {len(fields)} champ(s) détecté(s)")
     return {"document_id": record["id"], "extraction_status": "done",
             "document_type": dtype, "type_confidence": result.get("type_confidence"),
+            "detected_type": detected, "type_mismatch": type_mismatch,
+            "quality_warnings": quality_warnings, "missing_fields": missing_fields,
             "pages_count": len(images_b64), "fields": fields}
 
 
@@ -1381,15 +1411,15 @@ async def validate_scanned_document(doc_id: str, payload: DocumentValidate, requ
 
     await db.documents.update_one({"id": doc_id}, {"$set": {
         "document_type": dtype, "folder": DOC_TYPES[dtype]["folder"],
-        "validated_at": now, "validated_fields": payload.fields,
+        "validated_at": now, "validated_by": "utilisateur", "validated_fields": payload.fields,
         "document_data": doc_data, "extraction_status": "validated",
     }})
     await audit("validate", "document", request, doc_id, vehicle["id"],
-                f"Validation {type_label} — {len(applied)} champ(s) appliqué(s)")
+                f"Validation {type_label} — {len(applied) + len(doc_data)} champ(s) appliqué(s)")
 
     fresh = await db.vehicles.find_one({"id": vehicle["id"]}, {"_id": 0})
     fresh["metrics"] = compute_metrics(fresh)
-    return {"ok": True, "applied": len(applied), "document_id": doc_id, "vehicle": fresh}
+    return {"ok": True, "applied": len(applied) + len(doc_data), "document_id": doc_id, "vehicle": fresh}
 
 
 @api_router.get("/vehicles/{vehicle_id}/field-meta")

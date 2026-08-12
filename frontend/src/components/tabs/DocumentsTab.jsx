@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   FileText, ShieldCheck, ScrollText, ClipboardCheck, Receipt, Images,
-  FileSignature, FolderArchive, Plus,
+  FileSignature, FolderArchive, Plus, Search, Ticket,
 } from "lucide-react";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { SectionCard } from "@/components/Field";
 import DocFolderSection from "@/components/DocFolderSection";
 import ScanDocumentDialog from "@/components/ScanDocumentDialog";
@@ -14,6 +15,7 @@ const FOLDERS = [
   { name: "Assurance", icon: ShieldCheck },
   { name: "Carte grise", icon: ScrollText },
   { name: "Contrôle technique", icon: ClipboardCheck },
+  { name: "Vignette", icon: Ticket },
   { name: "Factures", icon: Receipt },
   { name: "États des lieux", icon: Images },
   { name: "Contrats", icon: FileSignature },
@@ -21,9 +23,20 @@ const FOLDERS = [
 ];
 
 export default function DocumentsTab({ vehicle, onSaved, docs, refetchDocs }) {
-  const count = (folder) => docs.filter((d) => d.folder === folder).length;
-  const onChange = () => { refetchDocs?.(); onSaved?.(); };
   const [scanOpen, setScanOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [openFolders, setOpenFolders] = useState(["Leasing"]);
+  const onChange = () => { refetchDocs?.(); onSaved?.(); };
+
+  useEffect(() => {
+    if (search.trim()) setOpenFolders(FOLDERS.map((f) => f.name));
+  }, [search]);
+
+  const term = search.trim().toLowerCase();
+  const visibleDocs = term
+    ? docs.filter((d) => (d.original_filename || "").toLowerCase().includes(term))
+    : docs;
+  const count = (folder) => visibleDocs.filter((d) => d.folder === folder).length;
 
   return (
     <>
@@ -37,7 +50,17 @@ export default function DocumentsTab({ vehicle, onSaved, docs, refetchDocs }) {
           </Button>
         }
       >
-        <Accordion type="multiple" defaultValue={["Leasing"]} className="space-y-2">
+        <div className="relative mb-4">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Input
+            data-testid="doc-search-input"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Rechercher un document par nom…"
+            className="pl-9"
+          />
+        </div>
+        <Accordion type="multiple" value={openFolders} onValueChange={setOpenFolders} className="space-y-2">
           {FOLDERS.map(({ name, icon: Icon }) => (
             <AccordionItem key={name} value={name} className="overflow-hidden rounded-xl border border-slate-200 bg-white px-0">
               <AccordionTrigger className="px-4 py-3 hover:no-underline" data-testid={`folder-${name.replace(/\s/g, "-").toLowerCase()}`}>
@@ -50,7 +73,7 @@ export default function DocumentsTab({ vehicle, onSaved, docs, refetchDocs }) {
                 </div>
               </AccordionTrigger>
               <AccordionContent className="border-t border-slate-100 px-4 py-4">
-                <DocFolderSection vehicleId={vehicle.id} folder={name} docs={docs} onChange={onChange} compact />
+                <DocFolderSection vehicleId={vehicle.id} folder={name} docs={visibleDocs} onChange={onChange} compact />
               </AccordionContent>
             </AccordionItem>
           ))}

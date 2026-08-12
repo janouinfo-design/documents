@@ -17,6 +17,13 @@ const iconFor = (ct = "") => {
   return { Icon: File, color: "text-slate-400 bg-slate-100" };
 };
 
+const ANALYSIS_BADGE = {
+  validated: { label: "Validé", cls: "bg-emerald-50 text-emerald-700" },
+  done: { label: "Analysé", cls: "bg-sky-50 text-sky-700" },
+  failed: { label: "Échec analyse", cls: "bg-red-50 text-red-600" },
+  processing: { label: "Analyse…", cls: "bg-slate-100 text-slate-500" },
+};
+
 export default function DocFolderSection({ vehicleId, folder, docs = [], onChange, compact = false }) {
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState(null);
@@ -69,7 +76,17 @@ export default function DocFolderSection({ vehicleId, folder, docs = [], onChang
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-slate-800">{d.original_filename}</p>
-                  <p className="text-xs text-slate-400">{fileSize(d.size)} · {dateFr(d.created_at)}</p>
+                  <p className="flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
+                    <span>{fileSize(d.size)} · {dateFr(d.created_at)}</span>
+                    {ANALYSIS_BADGE[d.extraction_status] && (
+                      <span
+                        className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-bold", ANALYSIS_BADGE[d.extraction_status].cls)}
+                        data-testid={`doc-status-${d.id}`}
+                      >
+                        {ANALYSIS_BADGE[d.extraction_status].label}
+                      </span>
+                    )}
+                  </p>
                 </div>
                 <div className="flex items-center gap-1">
                   <button onClick={() => setPreview(d)} data-testid={`doc-preview-${d.id}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Aperçu">

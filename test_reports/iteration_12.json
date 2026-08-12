@@ -1,0 +1,35 @@
+{
+  "summary": "Itération 12 (LogiTrak, mono-tenant sans auth) — validation phases A+B (type mismatch, status par champ, quality gate, type 'Vignette autoroutière', traçabilité, onglet Documents amélioré). Suite dédiée /app/backend/tests/test_docscan_iter12.py = 10 tests, 10 PASS (4 appels Claude réels : mismatch assurance, ré-analyse assurance, scan vignette, low-res permis — budget respecté). Frontend E2E via /vehicules → open-vehicle → tab-documents : doc-search-input présent, dossier 'Vignette' visible, 'Vignette autoroutière' présent dans le dialogue scan, scan-dropzone avec texte 'glissez-déposez un fichier ici', dialog cancel propre. Régression : navigation Dashboard/Véhicules/Échéances/Alertes sans aucune erreur console (0), boutons Synchroniser + Exporter visibles. Documents de test créés (assur.jpg, vignette.jpg, lowres.jpg) supprimés via fixture pytest ; 4 assur_soon.pdf résiduels d'itérations précédentes également nettoyés. Véhicule réservé d1099b53 (BE 579928) préservé intact.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/documents/{id}/validate (type=vignette)", "issue": "`applied` (compteur retourné) reste à 0 quand tous les champs ont target=document (cas de la vignette). Les données sont bien persistées dans document_data + validated_fields + extraction_status='validated', et le doc a validated_by/validated_at, donc pas de perte de donnée. Point sémantique : la spec dit 'applied contient les champs target document' — envisager d'incrémenter aussi pour les champs target=document, ou de renommer le compteur pour éviter la confusion UI."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_docscan_iter12.py",
+    "/app/test_reports/pytest/iter12.xml"
+  ],
+  "action_items": [
+    "Clarifier la sémantique du champ `applied` renvoyé par /api/documents/{id}/validate : soit compter aussi les champs target=document (ex. vignette), soit exposer un compteur distinct `document_data_applied` pour éviter que l'UI n'affiche « 0 champ appliqué » après une validation vignette réussie."
+  ],
+  "critical_code_review_comments": [
+    "server.py validate_scanned_document (~ligne 1379): pour target='document', le code fait `continue` avant `applied.append(...)`. Les champs target=document sont invisibles dans le compteur retourné — vérifier que l'UI n'affiche pas un message trompeur après validation d'une vignette.",
+    "extraction.py check_image_quality: seuils bien calibrés (250 px = bloquant, 550 px = warning ; variance <5 = bloquant, <40 = warning). Le test 500×350 passe correctement avec quality_warnings non bloquant. RAS.",
+    "server.py scan endpoint (~ligne 1236): le contrôle qualité s'exécute AVANT l'insertion en DB et avant l'appel LLM → aucun doc/appel Claude gaspillé sur une image inexploitable. Correctement implémenté."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_docscan_iter12.py (nouveau)"
+  ],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "100% (checks UI iter12 OK, 0 erreur console)"},
+  "seed_data_creation": "Docs de scan de test (assur.jpg, vignette.jpg, lowres.jpg) créés sur 1-Enyaq 01 Bern (id 6d00f932) puis supprimés via fixture. 4 assur_soon.pdf résiduels d'itérations antérieures également nettoyés. Véhicule d1099b53 (BE 579928) intact. Aucune modification .env.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "test_docscan_iter12.py couvre : quality-blocked 422 sans doc créé, type_mismatch (attestation assurance scannée en permis_circulation → detected='assurance' expected='permis_circulation' avec confidence, missing_fields ≥3, status par champ, aucune écriture véhicule avant validate, traçabilité imported_by/analyzed_at/detected_type/quality_warnings), re-scan avec document_id + type corrigé (aucun nouveau doc), scan vignette (type_vignette/date_achat/date_expiration/prix_chf/statut ≥3 extraits, folder 'Vignette', validate → document_data + validated_by + validated_fields), warning low-res 500×350 non bloquant. Budget Claude respecté (~4 appels). Vérifier ensuite si l'action item sur `applied` doit être traité.",
+  "rca_of_the_issue": "Aucun défaut fonctionnel bloquant. Seul point sémantique : le compteur `applied` du endpoint validate ne comptabilise pas les champs target=document (ex. tous les champs vignette), ce qui peut prêter à confusion côté UI mais n'affecte pas la persistance ni la traçabilité (extraction_status='validated', document_data et validated_fields correctement remplis)."
+}
