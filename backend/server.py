@@ -20,7 +20,9 @@ from datetime import datetime, timezone, date, timedelta
 from extraction import (DOC_TYPES, FIELD_DEFS, check_image_quality, enhance_and_pdf, get_provider,
                         pdf_to_images_b64, prepare_image_b64, normalize_value)
 from reports import build_conformity_pdf, build_costs_csv, build_vehicle_pdf
-from technical_data import TECH_FIELD_DEFS, get_technical_provider, TechnicalLookupError
+from technical_data import TECH_FIELD_DEFS
+import astra_data
+from astra_data import AstraLookupError
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -1442,16 +1444,59 @@ async def _can_locked_keys(vehicle_id: str) -> set:
 
 @api_router.get("/technical-data/status")
 async def technical_data_status():
-    provider = get_technical_provider()
-    return {"configured": provider is not None,
-            "provider": "swisscarinfo" if provider else None}
+    imported = await astra_data.is_imported(db)
+    return {"configured": imported, "provider": "astra" if imported else None,
+            "detail": "Base officielle ASTRA/OFROU (copie locale)" if imported
+            else "Données ASTRA non importées — POST /api/astra/import"}
 
 
 @api_router.get("/config/status")
 async def config_status():
     return {"scan_configured": bool(ANTHROPIC_KEY or EMERGENT_KEY),
             "scan_provider": "claude" if ANTHROPIC_KEY else ("gpt" if EMERGENT_KEY else None),
-            "technical_data_configured": get_technical_provider() is not None}
+            "technical_data_configured": await astra_data.is_imported(db)}
+
+
+# ---------------------------------------------------------------------------
+# Données officielles ASTRA/OFROU (locales) — import & recherche
+# ---------------------------------------------------------------------------
+@api_router.get("/astra/status")
+async def astra_status_endpoint():
+    return await astra_data.astra_status(db)
+
+
+@api_router.post("/astra/import")
+async def astra_import_endpoint(datasets: Optional[str] = None,
+                                download: bool = True, force: bool = False):
+    names = [d.strip() for d in datasets.split(",") if d.strip()] if datasets else None
+    if names:
+        unknown = [n for n in names if n not in astra_data.DATASETS]
+        if unknown:
+            raise HTTPException(status_code=400, detail=f"Datasets inconnus : {', '.join(unknown)}")
+    if astra_data.import_running():
+        raise HTTPException(status_code=409, detail="Un import ASTRA est déjà en cours.")
+    asyncio.create_task(astra_data.run_import(db, datasets=names, download=download, force_download=force))
+    return {"started": True, "datasets": names or list(astra_data.DATASETS)}
+
+
+@api_router.get("/astra/search")
+async def astra_search(homologation: Optional[str] = None,
+                       vin: Optional[str] = None, plate: Optional[str] = None):
+    if homologation:
+        key = astra_data.normalize_approval(homologation)
+        result = await astra_data.lookup_homologation(db, key) if key else None
+        if result:
+            return {"found": True, **result}
+        return {"found": False, "reason": "not_found",
+                "message": f"Homologation « {homologation} » introuvable dans les données ASTRA locales (TAS + TG)."}
+    if vin:
+        return {"found": False, "reason": "vin_lookup_requires_edatenblatt",
+                "message": "La recherche par VIN (dataset eDatenblatt) est prévue en phase 3."}
+    if plate:
+        return {"found": False, "reason": "plate_lookup_unavailable_without_external_provider",
+                "message": "La recherche par plaque seule n'est pas disponible sans fournisseur externe. "
+                           "Utilisez le n° d'homologation (case 24), le VIN ou scannez la carte grise."}
+    raise HTTPException(status_code=400, detail="Paramètre requis : homologation, vin ou plate")
 
 
 @api_router.get("/reports/conformite.pdf")
@@ -1501,6 +1546,7 @@ class TechnicalApply(BaseModel):
     fields: dict = Field(default_factory=dict)
     matched_by: Optional[str] = None
     retrieved_at: Optional[str] = None
+    provider: Optional[str] = None
 
 
 @api_router.post("/vehicles/{vehicle_id}/enrich-technical")
@@ -1508,16 +1554,10 @@ async def enrich_technical(vehicle_id: str, request: Request):
     vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
     if not vehicle:
         raise HTTPException(status_code=404, detail="Véhicule introuvable")
-    provider = get_technical_provider()
-    if provider is None:
-        raise HTTPException(status_code=503,
-                            detail="Fournisseur de données techniques non configuré — renseignez SWISSCARINFO_API_KEY puis redémarrez le backend.")
     try:
-        result = provider.lookup(plate=vehicle.get("plaque") or None,
-                                 homologation_number=vehicle.get("numero_homologation") or None,
-                                 vin=vehicle.get("vin") or None)
-    except TechnicalLookupError as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        result = await astra_data.resolve_vehicle_data(db, vehicle)
+    except AstraLookupError as e:
+        raise HTTPException(status_code=e.http_status, detail=str(e))
     can_locked = await _can_locked_keys(vehicle_id)
     main = result.get("fields") or {}
     raw = {k: {"value": v, "confidence": None} for k, v in main.items() if k not in can_locked}
@@ -1529,9 +1569,10 @@ async def enrich_technical(vehicle_id: str, request: Request):
         variantes.append({"label": var.get("label"),
                           "fields": _build_review_fields(vehicle, TECH_FIELD_DEFS, vraw)})
     await audit("enrich", "vehicle", request, vehicle_id, vehicle_id,
-                f"Recherche base technique SwissCarInfo ({result.get('matched_by')}) — {len(fields)} champ(s) trouvé(s)")
+                f"Recherche base officielle ASTRA/OFROU ({result.get('provider')}) — {len(fields)} champ(s) trouvé(s)")
     return {"provider": result.get("provider"), "matched_by": result.get("matched_by"),
-            "retrieved_at": result.get("retrieved_at"),
+            "retrieved_at": result.get("retrieved_at"), "match": result.get("match"),
+            "lookup_ms": result.get("lookup_ms"),
             "requires_variant_choice": len(variantes) > 0, "variantes": variantes,
             "fields": fields}
 
@@ -1573,13 +1614,13 @@ async def apply_technical_enrichment(vehicle_id: str, payload: TechnicalApply, r
         await db.vehicle_field_meta.update_one(
             {"vehicle_id": vehicle["id"], "field": fpath},
             {"$set": {"label": fd["label"], "source": "external_vehicle_database",
-                      "provider": "swisscarinfo", "source_ref": payload.matched_by or "",
+                      "provider": payload.provider or "astra_tas", "source_ref": payload.matched_by or "",
                       "retrieved_at": payload.retrieved_at or "", "confidence": None,
                       "validated_by": "utilisateur", "validated_at": now, "updated_at": now}},
             upsert=True)
         old_txt = old if not _is_empty(old) else "—"
         await audit("modify", "vehicle", request, vehicle["id"], vehicle["id"],
-                    f"{fd['label']}: {old_txt} → {new} (source: Base technique SwissCarInfo)")
+                    f"{fd['label']}: {old_txt} → {new} (source: Base officielle ASTRA/OFROU)")
 
     fresh = await db.vehicles.find_one({"id": vehicle["id"]}, {"_id": 0})
     fresh["metrics"] = compute_metrics(fresh)
@@ -1851,6 +1892,11 @@ async def startup():
         await db.vehicle_field_meta.create_index([("vehicle_id", 1), ("field", 1)], unique=True)
         await db.audit_logs.create_index([("vehicle_id", 1), ("created_at", -1)])
         await db.fuel_snapshots.create_index([("vehicle_id", 1), ("day", 1)], unique=True)
+        await db.astra_tas.create_index("_key", unique=True)
+        await db.astra_tg.create_index("_key", unique=True)
+        await db.astra_tas_emissions.create_index([("_key", 1), ("seq", 1)], unique=True)
+        await db.astra_tg_verbrauch.create_index([("_key", 1), ("seq", 1)], unique=True)
+        await db.astra_import_runs.create_index([("dataset", 1), ("started_at", -1)])
     except Exception as e:
         logger.error(f"Index creation failed: {e}")
     try:
@@ -1888,11 +1934,28 @@ async def startup():
                 logger.error(f"Scheduled alerts failed: {e}")
 
         scheduler.add_job(daily_job, IntervalTrigger(hours=24), id="daily-sync-alerts", replace_existing=True)
+        if astra_data.sync_enabled():
+            async def astra_sync_job():
+                try:
+                    await astra_data.run_import(db, download=True, force_download=True)
+                except Exception as e:
+                    logger.error(f"Scheduled ASTRA sync failed: {e}")
+
+            scheduler.add_job(astra_sync_job, IntervalTrigger(days=30),
+                              id="astra-monthly-sync", replace_existing=True)
         scheduler.start()
         app.state.scheduler = scheduler
         logger.info("Scheduler started: daily Navixy sync + deadline alerts")
     except Exception as e:
         logger.error(f"Scheduler start failed: {e}")
+    try:
+        if astra_data.sync_enabled() and not astra_data.import_running():
+            pending = await astra_data.pending_datasets(db)
+            if pending:
+                logger.info("ASTRA auto-import au démarrage: %s", pending)
+                asyncio.create_task(astra_data.run_import(db, datasets=pending, download=True))
+    except Exception as e:
+        logger.error(f"ASTRA auto-import start failed: {e}")
 
 
 app.include_router(api_router)
@@ -1905,6 +1968,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.on_event("shutdown")
+async def shutdown_db_client():
+    client.close()
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

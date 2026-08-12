@@ -49,21 +49,28 @@ def original_vehicle(api):
 
 # --------------------------- 1. technical-data/status ---------------------------
 class TestTechnicalDataStatus:
-    def test_status_unconfigured(self, api):
+    def test_status_astra(self, api):
         r = api.get(f"{BASE_URL}/api/technical-data/status")
         assert r.status_code == 200
         d = r.json()
-        assert d == {"configured": False, "provider": None}
+        assert isinstance(d["configured"], bool)
+        assert d["provider"] == ("astra" if d["configured"] else None)
 
 
-# --------------------------- 2. enrich-technical 503 ---------------------------
-class TestEnrichTechnicalUnconfigured:
-    def test_returns_503_with_french_message(self, api):
-        r = api.post(f"{BASE_URL}/api/vehicles/{VEHICLE_ID}/enrich-technical")
-        assert r.status_code == 503
-        detail = r.json().get("detail", "")
-        assert "non configuré" in detail
-        assert "SWISSCARINFO_API_KEY" in detail
+# --------------------------- 2. enrich-technical sans homologation ---------------------------
+class TestEnrichTechnicalWithoutHomologation:
+    def test_returns_explicit_french_error(self, api, mongo, original_vehicle):
+        # Sans n° d'homologation : 422 (plaque seule indisponible) ; 503 si données non importées.
+        orig = original_vehicle.get("numero_homologation")
+        mongo.vehicles.update_one({"id": VEHICLE_ID}, {"$set": {"numero_homologation": ""}})
+        try:
+            r = api.post(f"{BASE_URL}/api/vehicles/{VEHICLE_ID}/enrich-technical")
+            assert r.status_code in (422, 503)
+            detail = r.json().get("detail", "")
+            assert "homologation" in detail.lower() or "astra" in detail.lower()
+        finally:
+            mongo.vehicles.update_one({"id": VEHICLE_ID},
+                                      {"$set": {"numero_homologation": orig or ""}})
 
     def test_returns_404_for_unknown_vehicle(self, api):
         r = api.post(f"{BASE_URL}/api/vehicles/does-not-exist-xyz/enrich-technical")
@@ -79,8 +86,9 @@ class TestEnrichApply:
             payload = {
                 "fields": {"conso_officielle_l_100km": 6.5,
                            "conso_officielle_norme": "WLTP"},
-                "matched_by": "plate",
+                "matched_by": "homologation",
                 "retrieved_at": "2026-06-20T10:00:00+00:00",
+                "provider": "astra_tas",
             }
             r = api.post(f"{BASE_URL}/api/vehicles/{VEHICLE_ID}/enrich-technical/apply",
                          json=payload)
@@ -99,15 +107,15 @@ class TestEnrichApply:
             m = next((m for m in metas if m["field"] == "conso_officielle_l_100km"), None)
             assert m is not None, "field-meta absent"
             assert m["source"] == "external_vehicle_database"
-            assert m["provider"] == "swisscarinfo"
-            assert m.get("source_ref") == "plate"
+            assert m["provider"] == "astra_tas"
+            assert m.get("source_ref") == "homologation"
 
-            # audit entry mentions 'Base technique SwissCarInfo'
+            # audit entry mentions 'Base officielle ASTRA/OFROU'
             r3 = api.get(f"{BASE_URL}/api/vehicles/{VEHICLE_ID}/history")
             assert r3.status_code == 200
             hist = r3.json()
-            assert any("Base technique SwissCarInfo" in (e.get("detail") or "")
-                       for e in hist), "audit history missing SwissCarInfo mention"
+            assert any("Base officielle ASTRA/OFROU" in (e.get("detail") or "")
+                       for e in hist), "audit history missing ASTRA mention"
         finally:
             # restore original values
             restore = {}

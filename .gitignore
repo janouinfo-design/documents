@@ -63,6 +63,7 @@ chainlit.md
 
 # Data and databases
 agenthub/agents/youtube/db
+backend/astra_data/
 
 # Archive files and large assets
 **/*.zip
@@ -98,3 +99,6 @@ frontend/node_modules/.cache/default-development/10.pack
 frontend/node_modules/.cache/default-development/6.pack
 frontend/node_modules/.cache/default-development/2.pack
 frontend/node_modules/.cache/default-development/3.pack
+frontend/node_modules/.cache/default-development/14.pack
+backend/astra_data/TG-Automobil.txt
+backend/astra_data/TAS_Automobil.csv

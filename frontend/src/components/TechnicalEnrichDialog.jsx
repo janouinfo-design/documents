@@ -7,7 +7,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { enrichTechnical, applyTechnicalEnrichment } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-const MATCHED_LABELS = { plate: "plaque d'immatriculation", homologation: "n° d'homologation" };
+const MATCHED_LABELS = { plate: "plaque d'immatriculation", homologation: "n° d'homologation (case 24)", vin: "VIN" };
+const PROVIDER_LABELS = { astra_tas: "Registre TAS", astra_tg: "Registre TG (historique dès 1995)", swisscarinfo: "SwissCarInfo" };
 const fmtDateTime = (iso) => {
   try {
     return new Date(iso).toLocaleString("fr-CH", { dateStyle: "medium", timeStyle: "short" });
@@ -21,6 +22,7 @@ export default function TechnicalEnrichDialog({ open, onOpenChange, vehicle, onA
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [notConfigured, setNotConfigured] = useState(false);
+  const [missingHomologation, setMissingHomologation] = useState(false);
   const [variantIdx, setVariantIdx] = useState(null);
   const [rows, setRows] = useState({});
   const [applying, setApplying] = useState(false);
@@ -37,6 +39,7 @@ export default function TechnicalEnrichDialog({ open, onOpenChange, vehicle, onA
     setStep("loading");
     setError(null);
     setNotConfigured(false);
+    setMissingHomologation(false);
     setData(null);
     setVariantIdx(null);
     setRows({});
@@ -50,6 +53,7 @@ export default function TechnicalEnrichDialog({ open, onOpenChange, vehicle, onA
       }
     } catch (e) {
       setNotConfigured(e?.response?.status === 503);
+      setMissingHomologation(e?.response?.status === 422);
       setError(e?.response?.data?.detail || "Recherche impossible — réessayez plus tard.");
       setStep("error");
     }
@@ -84,6 +88,7 @@ export default function TechnicalEnrichDialog({ open, onOpenChange, vehicle, onA
         fields: buildPayload(),
         matched_by: data.matched_by,
         retrieved_at: data.retrieved_at,
+        provider: data.provider,
       });
       toast.success(res.applied > 0 ? `${res.applied} champ(s) mis à jour depuis la base technique` : "Aucune modification appliquée");
       onApplied?.();
@@ -100,9 +105,14 @@ export default function TechnicalEnrichDialog({ open, onOpenChange, vehicle, onA
   const sourceInfo = data && (
     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4" data-testid="tech-source-info">
       <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Source des données</p>
-      <p className="mt-1 text-sm font-semibold text-slate-800">SwissCarInfo — base d'homologation officielle (OFROU/ASTRA)</p>
+      <p className="mt-1 text-sm font-semibold text-slate-800">Base officielle ASTRA/OFROU — homologations suisses (copie locale)</p>
+      {data.match && (
+        <p className="mt-0.5 text-xs font-medium text-slate-600" data-testid="tech-match-info">
+          {[data.match.make, data.match.model].filter(Boolean).join(" ")} · homologation {data.match.approval_no}
+        </p>
+      )}
       <p className="mt-0.5 text-xs text-slate-500">
-        Trouvé par {MATCHED_LABELS[data.matched_by] || data.matched_by} · Récupéré le {fmtDateTime(data.retrieved_at)}
+        {PROVIDER_LABELS[data.provider] || data.provider} · Trouvé par {MATCHED_LABELS[data.matched_by] || data.matched_by} · Récupéré le {fmtDateTime(data.retrieved_at)}
       </p>
       {step === "review" && variantIdx != null && (
         <p className="mt-0.5 text-xs text-slate-500">
@@ -133,23 +143,28 @@ export default function TechnicalEnrichDialog({ open, onOpenChange, vehicle, onA
         {step === "loading" && (
           <div className="flex flex-col items-center gap-3 py-12" data-testid="tech-loading">
             <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
-            <p className="text-sm font-medium text-slate-700">Interrogation de SwissCarInfo…</p>
-            <p className="text-xs text-slate-400">Plaque en priorité, n° d'homologation en secours</p>
+            <p className="text-sm font-medium text-slate-700">Interrogation de la base officielle ASTRA/OFROU…</p>
+            <p className="text-xs text-slate-400">Recherche locale par n° d'homologation (case 24) — aucune clé externe requise</p>
           </div>
         )}
 
         {step === "error" && (
           <div className="space-y-4 py-4 text-center" data-testid="tech-error">
-            {notConfigured ? <KeyRound className="mx-auto h-8 w-8 text-slate-400" /> : <AlertTriangle className="mx-auto h-8 w-8 text-red-400" />}
+            {notConfigured ? <KeyRound className="mx-auto h-8 w-8 text-slate-400" /> : <AlertTriangle className={cn("mx-auto h-8 w-8", missingHomologation ? "text-amber-400" : "text-red-400")} />}
             <p className="text-sm text-slate-600" data-testid="tech-error-message">{error}</p>
             {notConfigured && (
               <p className="mx-auto max-w-md text-xs text-slate-400">
-                Renseignez la clé API SwissCarInfo (variable SWISSCARINFO_API_KEY côté serveur) puis redémarrez le backend pour activer l'enrichissement technique.
+                Les données officielles ASTRA (registres TAS + TG) ne sont pas encore importées sur ce serveur. L'import se lance automatiquement au démarrage, ou manuellement via POST /api/astra/import.
+              </p>
+            )}
+            {missingHomologation && (
+              <p className="mx-auto max-w-md text-xs text-slate-500" data-testid="tech-hint-missing-homologation">
+                Le plus simple : scannez la carte grise (onglet Carte grise) — le n° d'homologation est extrait automatiquement — ou saisissez-le via « Modifier ».
               </p>
             )}
             <div className="flex justify-center gap-2">
               <Button variant="outline" data-testid="tech-close-btn" onClick={() => onOpenChange(false)}>Fermer</Button>
-              {!notConfigured && (
+              {!notConfigured && !missingHomologation && (
                 <Button data-testid="tech-retry-btn" onClick={search} className="gap-2 bg-slate-900 hover:bg-slate-800">
                   <RefreshCw className="h-4 w-4" /> Réessayer
                 </Button>

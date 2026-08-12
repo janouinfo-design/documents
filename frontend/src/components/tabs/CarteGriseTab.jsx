@@ -50,7 +50,7 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
       .then((metas) => {
         if (!on) return;
         const m = (metas || [])
-          .filter((x) => x.provider === "swisscarinfo")
+          .filter((x) => ["astra_tas", "astra_tg", "swisscarinfo"].includes(x.provider))
           .sort((a, b) => (b.retrieved_at || "").localeCompare(a.retrieved_at || ""))[0];
         setSwissMeta(m || null);
       })
@@ -247,7 +247,7 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
             </div>
             {swissMeta && (
               <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-400" data-testid="tech-provenance-note">
-                Source : SwissCarInfo — données officielles OFROU · dernière récupération le {dateFr((swissMeta.retrieved_at || "").slice(0, 10))}
+                Source : {swissMeta.provider === "swisscarinfo" ? "SwissCarInfo — données officielles OFROU" : "Base officielle ASTRA/OFROU (copie locale)"} · dernière récupération le {dateFr((swissMeta.retrieved_at || "").slice(0, 10))}
               </p>
             )}
           </SectionCard>

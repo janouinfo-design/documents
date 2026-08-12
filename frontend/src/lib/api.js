@@ -95,7 +95,7 @@ export const validateScannedDocument = (docId, payload) =>
 export const getFieldMeta = (id) => http.get(`/vehicles/${id}/field-meta`).then((r) => r.data);
 export const getVehicleHistory = (id) => http.get(`/vehicles/${id}/history`).then((r) => r.data);
 
-// Enrichissement technique externe (SwissCarInfo — données officielles OFROU)
+// Enrichissement technique — base officielle ASTRA/OFROU (locale, sans clé)
 export const getTechnicalStatus = () => http.get("/technical-data/status").then((r) => r.data);
 export const getConfigStatus = () => http.get("/config/status").then((r) => r.data);
 export const conformityReportUrl = () => `${API}/reports/conformite.pdf`;

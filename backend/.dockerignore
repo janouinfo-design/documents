@@ -5,3 +5,7 @@ tests
 test_reports
 .env
 .pytest_cache
+astra_data/
+__pycache__/
+tests/
+.env

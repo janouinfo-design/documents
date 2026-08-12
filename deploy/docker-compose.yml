@@ -31,9 +31,11 @@ services:
       DB_NAME: ${DB_NAME:-logitrak_fleet}
       STORAGE_BACKEND: local
       LOCAL_STORAGE_DIR: /data/storage
+      ASTRA_DATA_DIR: /data/astra
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
     volumes:
       - storage_data:/data/storage
+      - astra_data:/data/astra
     depends_on:
       mongo:
         condition: service_healthy
@@ -63,3 +65,5 @@ volumes:
     name: logitrak-fleet_mongo_data
   storage_data:
     name: logitrak-fleet_storage_data
+  astra_data:
+    name: logitrak-fleet_astra_data

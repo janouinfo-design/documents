@@ -7,7 +7,7 @@ export default function ConfigBanner() {
   if (!data || (data.scan_configured && data.technical_data_configured)) return null;
   const missing = [];
   if (!data.scan_configured) missing.push("Scan de documents (OCR) : clé ANTHROPIC_API_KEY (Claude) ou EMERGENT_LLM_KEY manquante");
-  if (!data.technical_data_configured) missing.push("Base technique SwissCarInfo : clé SWISSCARINFO_API_KEY manquante");
+  if (!data.technical_data_configured) missing.push("Base technique ASTRA/OFROU : données officielles non importées (import automatique au démarrage, ou POST /api/astra/import)");
   return (
     <div data-testid="config-banner" className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
       <p className="flex items-center gap-2 text-sm font-semibold text-amber-900">

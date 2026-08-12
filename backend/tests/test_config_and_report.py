@@ -25,11 +25,11 @@ class TestConfigStatus:
         assert isinstance(data["technical_data_configured"], bool)
 
     def test_config_status_preview_values(self):
-        # Preview: scan configured, SwissCarInfo not configured
+        # Preview: scan configuré (Claude) ; base technique = données ASTRA importées
         r = requests.get(f"{API}/config/status", timeout=15)
         data = r.json()
         assert data["scan_configured"] is True, data
-        assert data["technical_data_configured"] is False, data
+        assert data["technical_data_configured"] is True, data
 
 
 # ---- /api/reports/conformite.pdf ----

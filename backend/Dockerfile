@@ -21,7 +21,7 @@ RUN pip install --no-cache-dir emergentintegrations \
     --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/ \
     || echo "emergentintegrations non installé (OCR désactivé jusqu'à configuration)"
 
-COPY server.py extraction.py technical_data.py reports.py ./
+COPY server.py extraction.py technical_data.py astra_data.py reports.py ./
 
 EXPOSE 8001
 
