@@ -63,7 +63,7 @@ export const deleteInspection = (insId) => http.delete(`/inspections/${insId}`).
 export const getDashboard = () => http.get("/dashboard").then((r) => r.data);
 export const getTimeline = () => http.get("/timeline").then((r) => r.data);
 
-// Navixy integration
+// Synchronisation télématique
 export const getNavixyStatus = () => http.get("/navixy/status").then((r) => r.data);
 export const navixySync = () => http.post("/navixy/sync").then((r) => r.data);
 

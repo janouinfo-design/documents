@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import StatusBadge from "@/components/StatusBadge";
 import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
 import NewVehicleDialog from "@/components/NewVehicleDialog";
-import NavixyBar from "@/components/NavixyBar";
+import SyncButton from "@/components/SyncButton";
 import ConfigBanner from "@/components/ConfigBanner";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
@@ -99,12 +99,11 @@ export default function Vehicles() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          <SyncButton />
         </div>
       </div>
 
       <ConfigBanner />
-
-      <NavixyBar />
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">

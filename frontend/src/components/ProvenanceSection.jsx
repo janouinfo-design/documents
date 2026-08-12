@@ -6,7 +6,7 @@ import { dateFr } from "@/lib/format";
 
 const SOURCE_LABELS = {
   document_scan: "Scan de document",
-  navixy: "Navixy",
+  navixy: "Télématique",
   manual: "Manuel",
   can: "CAN",
   fuel_import: "Import carburant",

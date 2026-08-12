@@ -158,18 +158,18 @@ class NavixyError(Exception):
 
 def navixy_post(path: str, payload: dict = None) -> dict:
     if not NAVIXY_HASH:
-        raise NavixyError("Clé API Navixy non configurée")
+        raise NavixyError("Clé API de synchronisation non configurée")
     body = {"hash": NAVIXY_HASH}
     if payload:
         body.update(payload)
     try:
         resp = requests.post(f"{NAVIXY_BASE_URL}{path}", json=body, timeout=30)
     except requests.RequestException as exc:
-        raise NavixyError(f"Erreur réseau Navixy: {exc}")
+        raise NavixyError(f"Erreur réseau du service de synchronisation: {exc}")
     try:
         data = resp.json()
     except ValueError:
-        raise NavixyError(f"Réponse Navixy invalide (HTTP {resp.status_code})")
+        raise NavixyError(f"Réponse du service de synchronisation invalide (HTTP {resp.status_code})")
     if isinstance(data, dict) and data.get("success") is False:
         status = data.get("status", {}) or {}
         raise NavixyError(status.get("description") or "Erreur Navixy")
@@ -948,7 +948,7 @@ async def navixy_status():
         info = navixy_post("/user/get_info")
     except NavixyError as e:
         return {"connected": False, "configured": True, "error": str(e)}
-    account = (info.get("paas_settings", {}) or {}).get("service_title") or "Navixy"
+    account = (info.get("paas_settings", {}) or {}).get("service_title") or "Télématique"
     imported = await db.vehicles.count_documents({"source": "navixy"})
     return {
         "connected": True,
@@ -984,7 +984,7 @@ async def vehicle_live(vehicle_id: str):
         raise HTTPException(status_code=404, detail="Véhicule introuvable")
     tid = v.get("navixy_tracker_id")
     if not tid:
-        raise HTTPException(status_code=400, detail="Véhicule non lié à un tracker Navixy")
+        raise HTTPException(status_code=400, detail="Véhicule non lié à un tracker GPS")
     try:
         states = navixy_post("/tracker/get_states", {"trackers": [tid]}).get("states", {}) or {}
         cres = navixy_post("/tracker/counter/value/list", {"type": "odometer", "trackers": [tid]}).get("value", {}) or {}

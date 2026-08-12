@@ -170,6 +170,11 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - [x] `GET /api/reports/vehicule/{id}.pdf` : fiche individuelle portrait A4 (reports.py build_vehicle_pdf) — Identité & exploitation, Moteur & consommation, Leasing, Assurance, Contrôle technique, Documents (fichiers non supprimés), Historique (30 derniers audits). Filename fiche-{plaque}.pdf, 404 propre. Bouton « Fiche PDF » (vehicle-report-btn) dans l'en-tête du drawer (visible sur tous les onglets). Audit download pour chaque export.
 - [x] Tests : testing agent it.10 — backend 10/10 pytest (BOM/colonnes/TOTAL/cross-check API, contenu fiche PDF via pymupdf, 404, audit +2), frontend 100 % (dropdown, bouton drawer persistant, régressions bannière/pages). iteration_10.json.
 
+## Implemented — Itération 11 · Bouton Synchroniser + retrait du mot « Navixy » (2026-08-12)
+- [x] La grande barre noire de synchronisation (NavixyBar) est remplacée par un simple bouton « Synchroniser » (SyncButton, data-testid sync-btn) dans la barre d'actions de la page Véhicules — pastille verte/rouge selon connexion, tooltip statut (x/x véhicules importés), désactivé si non connecté. NavixyBar.jsx supprimé.
+- [x] Mot « Navixy » retiré de TOUS les textes visibles : toasts de sync (« Synchronisation réussie · N véhicules »), provenance (source → « Télématique »), messages d'erreur backend (« Clé API de synchronisation non configurée », « Réponse du service de synchronisation invalide », « Véhicule non lié à un tracker GPS », fallback compte → « Télématique »). Les identifiants techniques internes (navixy_tracker_id, endpoints /api/navixy/*, variables env) restent inchangés — invisibles pour l'utilisateur, aucune rupture d'API.
+- [x] Self-testé (screenshot + clic réel) : bouton visible/actif, aucune occurrence visible de « Navixy » dans la page, sync E2E OK (12 véhicules mis à jour), ancienne barre absente.
+
 ## Backlog (prioritized)
 - Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.
 - Phase 3+ (gros chantiers, à cadrer 1 par 1): modules Contrats & renouvellements, Conducteurs, Clients, Modèles, Corbeille/Favoris/Partagés ; permissions/rôles + auth ; multi-tenant.
