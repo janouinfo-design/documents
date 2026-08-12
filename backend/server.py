@@ -1473,7 +1473,7 @@ async def astra_import_endpoint(datasets: Optional[str] = None,
         unknown = [n for n in names if n not in astra_data.DATASETS]
         if unknown:
             raise HTTPException(status_code=400, detail=f"Datasets inconnus : {', '.join(unknown)}")
-    if astra_data.import_running():
+    if await astra_data.import_active(db):
         raise HTTPException(status_code=409, detail="Un import ASTRA est déjà en cours.")
     asyncio.create_task(astra_data.run_import(db, datasets=names, download=download, force_download=force))
     return {"started": True, "datasets": names or list(astra_data.DATASETS)}
@@ -1490,8 +1490,18 @@ async def astra_search(homologation: Optional[str] = None,
         return {"found": False, "reason": "not_found",
                 "message": f"Homologation « {homologation} » introuvable dans les données ASTRA locales (TAS + TG)."}
     if vin:
-        return {"found": False, "reason": "vin_lookup_requires_edatenblatt",
-                "message": "La recherche par VIN (dataset eDatenblatt) est prévue en phase 3."}
+        if await db.astra_edatenblatt.estimated_document_count() == 0:
+            return {"found": False, "reason": "edatenblatt_not_imported",
+                    "message": "Recherche par VIN indisponible — dataset eDatenblatt non importé "
+                               "(POST /api/astra/import?datasets=edatenblatt)."}
+        try:
+            result = await astra_data.lookup_vin(db, vin)
+        except AstraLookupError as e:
+            return {"found": False, "reason": e.code, "message": str(e)}
+        if result:
+            return {"found": True, **result}
+        return {"found": False, "reason": "not_found",
+                "message": f"VIN « {vin} » introuvable dans les fiches eDatenblatt (véhicules importés dès ~2023)."}
     if plate:
         return {"found": False, "reason": "plate_lookup_unavailable_without_external_provider",
                 "message": "La recherche par plaque seule n'est pas disponible sans fournisseur externe. "
@@ -1625,6 +1635,36 @@ async def apply_technical_enrichment(vehicle_id: str, payload: TechnicalApply, r
     fresh = await db.vehicles.find_one({"id": vehicle["id"]}, {"_id": 0})
     fresh["metrics"] = compute_metrics(fresh)
     return {"ok": True, "applied": len(applied), "vehicle": fresh}
+
+
+@api_router.post("/vehicles/enrich-technical/batch")
+async def enrich_technical_batch(request: Request):
+    if not await astra_data.is_imported(db):
+        raise HTTPException(status_code=503,
+                            detail="Base technique ASTRA non importée — lancez POST /api/astra/import.")
+    vehicles = await db.vehicles.find({}, {"_id": 0}).sort("plaque", 1).to_list(1000)
+    out = []
+    for v in vehicles:
+        base = {"vehicle_id": v["id"], "plaque": v.get("plaque"),
+                "marque": v.get("marque"), "modele": v.get("modele")}
+        try:
+            result = await astra_data.resolve_vehicle_data(db, v)
+        except AstraLookupError as e:
+            out.append({**base, "status": e.code, "message": str(e)})
+            continue
+        can_locked = await _can_locked_keys(v["id"])
+        main = result.get("fields") or {}
+        raw = {k: {"value": val, "confidence": None} for k, val in main.items() if k not in can_locked}
+        fields = _build_review_fields(v, TECH_FIELD_DEFS, raw)
+        out.append({**base, "status": "found", "provider": result.get("provider"),
+                    "matched_by": result.get("matched_by"), "retrieved_at": result.get("retrieved_at"),
+                    "match": result.get("match"),
+                    "requires_variant_choice": bool(result.get("variantes")),
+                    "fields": fields})
+    found = sum(1 for r in out if r["status"] == "found")
+    await audit("enrich", "vehicle", request, "fleet", None,
+                f"Recherche flotte base officielle ASTRA/OFROU — {found}/{len(out)} véhicule(s) trouvé(s)")
+    return {"total": len(out), "found": found, "results": out}
 
 
 @api_router.get("/vehicles/{vehicle_id}/history")
@@ -1896,6 +1936,8 @@ async def startup():
         await db.astra_tg.create_index("_key", unique=True)
         await db.astra_tas_emissions.create_index([("_key", 1), ("seq", 1)], unique=True)
         await db.astra_tg_verbrauch.create_index([("_key", 1), ("seq", 1)], unique=True)
+        await db.astra_edatenblatt.create_index("_key")
+        await db.astra_edatenblatt.create_index([("_key", 1), ("sig", 1)])
         await db.astra_import_runs.create_index([("dataset", 1), ("started_at", -1)])
     except Exception as e:
         logger.error(f"Index creation failed: {e}")
@@ -1949,7 +1991,7 @@ async def startup():
     except Exception as e:
         logger.error(f"Scheduler start failed: {e}")
     try:
-        if astra_data.sync_enabled() and not astra_data.import_running():
+        if astra_data.sync_enabled() and not await astra_data.import_active(db):
             pending = await astra_data.pending_datasets(db)
             if pending:
                 logger.info("ASTRA auto-import au démarrage: %s", pending)

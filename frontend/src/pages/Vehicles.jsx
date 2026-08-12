@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Search, Plus, ChevronRight, Truck, Sparkles, Loader2, FileDown } from "lucide-react";
+import { Search, Plus, ChevronRight, Truck, Sparkles, Loader2, FileDown, Database } from "lucide-react";
 import { getVehicles, fillDemoAdmin, conformityReportUrl, costsCsvUrl } from "@/lib/api";
 import { fmtKm } from "@/lib/format";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,8 @@ import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
 import NewVehicleDialog from "@/components/NewVehicleDialog";
 import SyncButton from "@/components/SyncButton";
 import ConfigBanner from "@/components/ConfigBanner";
+import AstraStatusDialog from "@/components/AstraStatusDialog";
+import FleetEnrichDialog from "@/components/FleetEnrichDialog";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
@@ -23,6 +25,8 @@ export default function Vehicles() {
   const [q, setQ] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [seeding, setSeeding] = useState(false);
+  const [astraOpen, setAstraOpen] = useState(false);
+  const [fleetOpen, setFleetOpen] = useState(false);
   const { data: vehicles = [], isLoading } = useQuery({ queryKey: ["vehicles"], queryFn: getVehicles });
 
   const onFillDemo = async () => {
@@ -84,6 +88,21 @@ export default function Vehicles() {
             {seeding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-amber-500" />}
             Données démo
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button data-testid="astra-menu-btn" variant="outline" className="gap-2 border-slate-300 text-slate-700 hover:bg-slate-50">
+                <Database className="h-4 w-4" /> Base technique
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem data-testid="fleet-enrich-menu-item" onClick={() => setFleetOpen(true)}>
+                Enrichir la flotte (ASTRA)
+              </DropdownMenuItem>
+              <DropdownMenuItem data-testid="astra-status-menu-item" onClick={() => setAstraOpen(true)}>
+                État des données officielles
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button data-testid="export-menu-btn" variant="outline" className="gap-2 border-slate-300 text-slate-700 hover:bg-slate-50">
@@ -178,6 +197,8 @@ export default function Vehicles() {
       </div>
 
       <NewVehicleDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <AstraStatusDialog open={astraOpen} onOpenChange={setAstraOpen} />
+      <FleetEnrichDialog open={fleetOpen} onOpenChange={setFleetOpen} />
     </div>
   );
 }

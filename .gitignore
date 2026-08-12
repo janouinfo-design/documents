@@ -102,3 +102,4 @@ frontend/node_modules/.cache/default-development/3.pack
 frontend/node_modules/.cache/default-development/14.pack
 backend/astra_data/TG-Automobil.txt
 backend/astra_data/TAS_Automobil.csv
+backend/astra_data/eDatenblatt.csv

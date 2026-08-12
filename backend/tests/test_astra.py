@@ -113,6 +113,36 @@ class TestParsers:
         assert res2["variantes"] == []
         assert res2["fields"]["conso_officielle_l_100km"] == 6.8
 
+    def test_parse_edatenblatt(self, tmp_path):
+        hdr = ("StageOfCompletionCode;0.1. Make;0.2. TypeApprovalNumber;0.2. Type;0.2. Variant;0.2. Version;"
+               "0.2.1. CommercialName;0.10. VehicleIdentificationNumber;23. PureElectricVehIndicator;"
+               "23.1. ClassOfHybridVehicleCode;25. EngineCapacity;26. FuelCode;27.1. MaximumNetPower;"
+               "13. MassOfTheVehicleInRunningOrder;16.1. TechnPermMaxLadenMass;42. NrOfSeatingPositions;"
+               "49. CombinedCO2;49. CombinedFuelConsumption;49. WLTPCombinedCO2;49. WLTPCombinedFuelCons;"
+               "49. WLTPWeightedCombinedCO2;49. WLTPWeightedCombinedFuelCons;0.11. DateOfManufactureVeh")
+        row = ("C;BMW;e1*2007/46*1797*17;G3X;85BZ;IAV500BB;X3 xDrive30d;WBA85BZ070;;;2993;20;210.00;"
+               "2010;2550;5;;;165;6.3;;;22.02.2024")
+        p = tmp_path / "edb.csv"
+        p.write_text(hdr + "\n" + row + "\n", encoding="utf-8")
+        docs = list(astra_data.parse_edatenblatt(str(p)))
+        assert len(docs) == 1
+        d = docs[0]
+        assert d["_key"] == "WBA85BZ070"
+        assert d["make"] == "BMW"
+        assert d["fuel_code"] == "20"
+        assert d["engine_capacity"] == 2993
+        assert d["power_kw"] == 210.0
+        assert d["co2_wltp"] == 165.0
+        assert d["conso_wltp"] == 6.3
+        f = astra_data._edb_fields(d)
+        assert f["type_carburant"] == "Diesel"
+        assert f["conso_officielle_norme"] == "WLTP"
+        assert f["co2_g_km"] == 165.0
+
+    def test_normalize_vin(self):
+        assert astra_data.normalize_vin("wba-85bz0 70ck12345") == "WBA85BZ070CK12345"
+        assert astra_data.normalize_vin("") is None
+
 
 # --------------------------- API : statut & limitations ---------------------------
 class TestAstraApi:
@@ -121,7 +151,7 @@ class TestAstraApi:
         assert r.status_code == 200
         d = r.json()
         assert "datasets" in d and "imported" in d
-        for name in ("tas", "tas_emission", "tg", "tg_verbrauch"):
+        for name in ("tas", "tas_emission", "tg", "tg_verbrauch", "edatenblatt"):
             assert name in d["datasets"]
 
     def test_plate_lookup_unavailable(self):
@@ -131,11 +161,11 @@ class TestAstraApi:
         assert d["found"] is False
         assert d["reason"] == "plate_lookup_unavailable_without_external_provider"
 
-    def test_vin_lookup_phase3(self):
+    def test_vin_lookup_unknown(self):
         r = requests.get(f"{BASE_URL}/api/astra/search", params={"vin": "ZAR93000012345678"}, timeout=30)
         d = r.json()
         assert d["found"] is False
-        assert "edatenblatt" in d["reason"]
+        assert d["reason"] in ("not_found", "edatenblatt_not_imported", "ambiguous_vin")
 
 
 # --------------------------- API : recherche & resolver (après import) ---------------------------
@@ -187,15 +217,16 @@ class TestLookupAfterImport:
             mongo.vehicles.update_one({"id": v["id"]}, {"$set": {"numero_homologation": orig or ""}})
 
     def test_enrich_missing_homologation_422(self, imported, mongo):
-        v = mongo.vehicles.find_one({}, {"id": 1, "numero_homologation": 1})
-        orig = v.get("numero_homologation")
-        mongo.vehicles.update_one({"id": v["id"]}, {"$set": {"numero_homologation": ""}})
+        v = mongo.vehicles.find_one({}, {"id": 1, "numero_homologation": 1, "vin": 1})
+        orig_h, orig_vin = v.get("numero_homologation"), v.get("vin")
+        mongo.vehicles.update_one({"id": v["id"]}, {"$set": {"numero_homologation": "", "vin": ""}})
         try:
             r = requests.post(f"{BASE_URL}/api/vehicles/{v['id']}/enrich-technical", timeout=30)
             assert r.status_code == 422, r.text
             assert "plaque" in r.json()["detail"].lower()
         finally:
-            mongo.vehicles.update_one({"id": v["id"]}, {"$set": {"numero_homologation": orig or ""}})
+            mongo.vehicles.update_one({"id": v["id"]}, {"$set": {
+                "numero_homologation": orig_h or "", "vin": orig_vin or ""}})
 
     def test_enrich_unknown_homologation_404(self, imported, mongo):
         v = mongo.vehicles.find_one({}, {"id": 1, "numero_homologation": 1})
@@ -205,5 +236,81 @@ class TestLookupAfterImport:
             r = requests.post(f"{BASE_URL}/api/vehicles/{v['id']}/enrich-technical", timeout=30)
             assert r.status_code == 404, r.text
             assert "introuvable" in r.json()["detail"].lower()
+        finally:
+            mongo.vehicles.update_one({"id": v["id"]}, {"$set": {"numero_homologation": orig or ""}})
+
+
+# --------------------------- API : recherche VIN (eDatenblatt) ---------------------------
+@pytest.fixture(scope="module")
+def edb_imported(mongo):
+    if mongo.astra_edatenblatt.estimated_document_count() == 0:
+        pytest.skip("Dataset eDatenblatt non importé dans cet environnement")
+    return True
+
+
+class TestVinLookup:
+    def test_search_vin_known(self, edb_imported, mongo):
+        doc = mongo.astra_edatenblatt.find_one({}, {"_key": 1, "make": 1})
+        assert doc
+        vin17 = doc["_key"] + "1234567"
+        r = requests.get(f"{BASE_URL}/api/astra/search", params={"vin": vin17}, timeout=30)
+        assert r.status_code == 200
+        d = r.json()
+        if d["found"]:
+            assert d["provider"] == "astra_edatenblatt"
+            assert d["matched_by"] == "vin"
+            assert d["match"]["vin_prefix"] == doc["_key"]
+        else:
+            assert d["reason"] == "ambiguous_vin", d
+
+    def test_search_vin_not_found(self, edb_imported):
+        r = requests.get(f"{BASE_URL}/api/astra/search", params={"vin": "ZZZ0000000ZZZZZZZ"}, timeout=30)
+        d = r.json()
+        assert d["found"] is False
+        assert d["reason"] == "not_found"
+
+    def test_enrich_by_vin_fallback(self, edb_imported, mongo):
+        edb = mongo.astra_edatenblatt.find_one({}, {"_key": 1})
+        v = mongo.vehicles.find_one({}, {"id": 1, "numero_homologation": 1, "vin": 1})
+        orig_h, orig_vin = v.get("numero_homologation"), v.get("vin")
+        mongo.vehicles.update_one({"id": v["id"]}, {"$set": {
+            "numero_homologation": "", "vin": edb["_key"] + "1234567"}})
+        try:
+            r = requests.post(f"{BASE_URL}/api/vehicles/{v['id']}/enrich-technical", timeout=30)
+            assert r.status_code in (200, 502, 409), r.text
+            if r.status_code == 200:
+                d = r.json()
+                assert d["provider"] == "astra_edatenblatt"
+                assert d["matched_by"] == "vin"
+        finally:
+            mongo.vehicles.update_one({"id": v["id"]}, {"$set": {
+                "numero_homologation": orig_h or "", "vin": orig_vin or ""}})
+
+
+# --------------------------- API : enrichissement flotte ---------------------------
+class TestFleetBatch:
+    def test_batch_shape_and_statuses(self, imported):
+        r = requests.post(f"{BASE_URL}/api/vehicles/enrich-technical/batch", timeout=120)
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d["total"] >= 1
+        assert len(d["results"]) == d["total"]
+        for res in d["results"]:
+            assert res["status"] in ("found", "missing_homologation", "not_found", "ambiguous_vin", "not_imported")
+            assert "vehicle_id" in res and "plaque" in res
+            if res["status"] == "found":
+                assert isinstance(res["fields"], list)
+
+    def test_batch_found_with_seeded_homologation(self, imported, mongo):
+        v = mongo.vehicles.find_one({}, {"id": 1, "numero_homologation": 1})
+        orig = v.get("numero_homologation")
+        mongo.vehicles.update_one({"id": v["id"]}, {"$set": {"numero_homologation": KNOWN_APPROVAL}})
+        try:
+            r = requests.post(f"{BASE_URL}/api/vehicles/enrich-technical/batch", timeout=120)
+            d = r.json()
+            row = next(x for x in d["results"] if x["vehicle_id"] == v["id"])
+            assert row["status"] == "found"
+            assert row["provider"] in ("astra_tas", "astra_tg")
+            assert d["found"] >= 1
         finally:
             mongo.vehicles.update_one({"id": v["id"]}, {"$set": {"numero_homologation": orig or ""}})

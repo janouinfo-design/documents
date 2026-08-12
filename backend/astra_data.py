@@ -2,15 +2,17 @@
 Source principale du resolver technique : aucune clé ni fournisseur externe requis."""
 import asyncio
 import csv
+import hashlib
 import logging
 import os
 import re
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
 from pymongo import ReplaceOne
+from pymongo.errors import DuplicateKeyError
 
 from technical_data import TechnicalLookupError
 
@@ -47,6 +49,14 @@ DATASETS = {
         "collection": "astra_tg_verbrauch",
         "multi": True,
     },
+    "edatenblatt": {
+        "label": "eDatenblatt — fiches COC par VIN",
+        "url": f"{ASTRA_BASE}/3000-eDatenblatt/eDatenblatt.csv",
+        "filename": "eDatenblatt.csv",
+        "collection": "astra_edatenblatt",
+        "multi": False,
+        "dedupe_sig": True,
+    },
 }
 
 # Codes carburant suisses (documentation officielle TARGA/ASTRA)
@@ -61,6 +71,17 @@ FUEL_LABELS = {
 }
 # CO₂ = 0 légitime uniquement pour ces motorisations
 ELECTRIC_FUELS = {"E", "W", "X"}
+
+# Codes carburant numériques eDatenblatt (table officielle "Codes")
+EDB_FUEL_LABELS = {
+    "10": "Essence", "11": "Essence E5", "12": "Essence E10", "13": "Essence E15",
+    "14": "Essence E25", "15": "Éthanol", "16": "Éthanol E85", "18": "Éthanol E75",
+    "19": "Mélange", "20": "Diesel", "21": "Biodiesel", "22": "ED95",
+    "23": "GTL (Diesel)", "24": "BTL (Diesel)", "25": "CTL (Diesel)", "26": "HVO (Diesel)",
+    "27": "XTL", "30": "GPL", "40": "Gaz naturel (CNG)", "44": "Biométhane",
+    "50": "Hydrogène", "60": "GNL", "81": "Diesel B5", "82": "Diesel B7",
+    "90": "Autres", "91": "Air comprimé",
+}
 
 GEARBOX_KINDS = {"m": "manuelle", "a": "automatique", "s": "semi-automatique",
                  "v": "CVT", "d": "double embrayage", "e": "électrique (rapport fixe)"}
@@ -88,15 +109,25 @@ def normalize_approval(s):
     return key or None
 
 
+def normalize_vin(s):
+    if not s:
+        return None
+    v = re.sub(r"[^A-Z0-9]", "", str(s).upper())
+    return v or None
+
+
 def gearbox_label(code):
     c = (code or "").strip()
-    m = re.match(r"^([A-Za-z])(\d+)?$", c)
+    m = re.match(r"^([A-Za-z])(\d+)?", c)
     if not m:
         return c or "Variante"
     kind = GEARBOX_KINDS.get(m.group(1).lower())
     if not kind:
         return f"Boîte {c}"
-    return f"Boîte {kind}" + (f" ({m.group(2)} rapports)" if m.group(2) else "")
+    label = f"Boîte {kind}" + (f" ({m.group(2)} rapports)" if m.group(2) else "")
+    if len(c) > len(m.group(0)):
+        label += f" — {c}"
+    return label
 
 
 # ---------------------------------------------------------------------------
@@ -245,8 +276,44 @@ def parse_tg_verbrauch(path):
             }
 
 
+def parse_edatenblatt(path):
+    _TRUE = {"1", "true", "yes", "x", "ja", "oui"}
+    with open(path, encoding="utf-8-sig", newline="") as f:
+        reader = csv.reader(f, delimiter=";")
+        header = next(reader)
+        idx = {c.strip(): i for i, c in enumerate(header)}
+        for row in reader:
+            vin = normalize_vin(_g(row, idx, "0.10. VehicleIdentificationNumber"))
+            if not vin:
+                continue
+            yield {
+                "_key": vin[:10],
+                "approval_eu": _g(row, idx, "0.2. TypeApprovalNumber") or None,
+                "make": _g(row, idx, "0.1. Make") or None,
+                "commercial_name": _g(row, idx, "0.2.1. CommercialName") or None,
+                "type": _g(row, idx, "0.2. Type") or None,
+                "variant": _g(row, idx, "0.2. Variant") or None,
+                "version": _g(row, idx, "0.2. Version") or None,
+                "fuel_code": _g(row, idx, "26. FuelCode") or None,
+                "hybrid_class": _g(row, idx, "23.1. ClassOfHybridVehicleCode") or None,
+                "is_electric": _g(row, idx, "23. PureElectricVehIndicator").lower() in _TRUE,
+                "engine_capacity": _to_int(_g(row, idx, "25. EngineCapacity")),
+                "power_kw": _to_float(_g(row, idx, "27.1. MaximumNetPower")),
+                "curb_weight": _to_int(_g(row, idx, "13. MassOfTheVehicleInRunningOrder")),
+                "gross_weight": _to_int(_g(row, idx, "16.1. TechnPermMaxLadenMass")),
+                "seats": _to_int(_g(row, idx, "42. NrOfSeatingPositions")),
+                "conso_nedc": _to_float(_g(row, idx, "49. CombinedFuelConsumption")),
+                "co2_nedc": _to_float0(_g(row, idx, "49. CombinedCO2")),
+                "conso_wltp": _to_float(_g(row, idx, "49. WLTPCombinedFuelCons")),
+                "co2_wltp": _to_float0(_g(row, idx, "49. WLTPCombinedCO2")),
+                "conso_wltp_weighted": _to_float(_g(row, idx, "49. WLTPWeightedCombinedFuelCons")),
+                "co2_wltp_weighted": _to_float0(_g(row, idx, "49. WLTPWeightedCombinedCO2")),
+            }
+
+
 PARSERS = {"tas": parse_tas, "tas_emission": parse_tas_emission,
-           "tg": parse_tg, "tg_verbrauch": parse_tg_verbrauch}
+           "tg": parse_tg, "tg_verbrauch": parse_tg_verbrauch,
+           "edatenblatt": parse_edatenblatt}
 
 
 # ---------------------------------------------------------------------------
@@ -257,6 +324,35 @@ _IMPORT_RUNNING = False
 
 def import_running() -> bool:
     return _IMPORT_RUNNING
+
+
+async def _acquire_lock(db) -> bool:
+    """Verrou atomique en base — empêche deux imports concurrents (multi-process/hot-reload)."""
+    now = datetime.now(timezone.utc)
+    until = (now + timedelta(minutes=30)).isoformat()
+    res = await db.astra_locks.update_one(
+        {"_id": "import", "locked_until": {"$lt": now.isoformat()}},
+        {"$set": {"locked_until": until}})
+    if res.modified_count:
+        return True
+    try:
+        await db.astra_locks.insert_one({"_id": "import", "locked_until": until})
+        return True
+    except DuplicateKeyError:
+        return False
+
+
+async def _release_lock(db):
+    await db.astra_locks.update_one(
+        {"_id": "import"},
+        {"$set": {"locked_until": datetime.now(timezone.utc).isoformat()}})
+
+
+async def import_active(db) -> bool:
+    if _IMPORT_RUNNING:
+        return True
+    doc = await db.astra_locks.find_one({"_id": "import"})
+    return bool(doc and doc.get("locked_until", "") > datetime.now(timezone.utc).isoformat())
 
 
 def download_file(url, path, force=False):
@@ -297,7 +393,11 @@ async def import_dataset(db, name, download=False, force_download=False):
         seq_key, seq_n = None, -1
         for doc in PARSERS[name](path):
             read += 1
-            if ds["multi"]:
+            if ds.get("dedupe_sig"):
+                sig = hashlib.md5(repr(sorted(doc.items())).encode()).hexdigest()[:16]
+                doc["sig"] = sig
+                filt = {"_key": doc["_key"], "sig": sig}
+            elif ds["multi"]:
                 if doc["_key"] == seq_key:
                     seq_n += 1
                 else:
@@ -334,7 +434,8 @@ async def import_dataset(db, name, download=False, force_download=False):
 
 async def run_import(db, datasets=None, download=True, force_download=False):
     global _IMPORT_RUNNING
-    if _IMPORT_RUNNING:
+    if _IMPORT_RUNNING or not await _acquire_lock(db):
+        logger.info("ASTRA: import déjà en cours — nouvelle demande ignorée")
         return [{"status": "already_running"}]
     _IMPORT_RUNNING = True
     try:
@@ -342,6 +443,7 @@ async def run_import(db, datasets=None, download=True, force_download=False):
         return [await import_dataset(db, n, download, force_download) for n in names]
     finally:
         _IMPORT_RUNNING = False
+        await _release_lock(db)
 
 
 async def pending_datasets(db):
@@ -360,7 +462,7 @@ async def is_imported(db) -> bool:
 
 async def astra_status(db):
     out = {"data_dir": data_dir(), "sync_enabled": sync_enabled(),
-           "import_running": import_running(), "datasets": {}}
+           "import_running": await import_active(db), "datasets": {}}
     for name, ds in DATASETS.items():
         path = os.path.join(data_dir(), ds["filename"])
         file_info = {"present": os.path.exists(path)}
@@ -379,8 +481,8 @@ async def astra_status(db):
 
 
 # ---------------------------------------------------------------------------
-# Resolver — priorité : ASTRA TAS local → ASTRA TG local → saisie manuelle.
-# Plaque seule : indisponible sans fournisseur externe. VIN : phase 3 (eDatenblatt).
+# Resolver — priorité : ASTRA TAS local → ASTRA TG local → eDatenblatt (VIN) → manuel.
+# Plaque seule : indisponible sans fournisseur externe.
 # AutoRef / NHTSA vPIC : crochets réservés, désactivés (aucun appel implémenté).
 # ---------------------------------------------------------------------------
 def _base_fields(doc):
@@ -470,6 +572,90 @@ async def lookup_homologation(db, key):
     return None
 
 
+# ---------------------------------------------------------------------------
+# Recherche par VIN (eDatenblatt — VIN anonymisés aux 10 premiers caractères)
+# ---------------------------------------------------------------------------
+def edb_fuel_label(doc):
+    if doc.get("is_electric"):
+        return "Électrique"
+    base = EDB_FUEL_LABELS.get(doc.get("fuel_code") or "", doc.get("fuel_code") or None)
+    if base and doc.get("hybrid_class"):
+        return f"{base} / Électrique (hybride)"
+    return base
+
+
+def _edb_fields(doc):
+    conso, norme = None, None
+    for v, n in ((doc.get("conso_wltp"), "WLTP"), (doc.get("conso_wltp_weighted"), "WLTP"),
+                 (doc.get("conso_nedc"), "NEDC")):
+        if v:
+            conso, norme = v, n
+            break
+    co2, co2n = None, None
+    for v, n in ((doc.get("co2_wltp"), "WLTP"), (doc.get("co2_wltp_weighted"), "WLTP"),
+                 (doc.get("co2_nedc"), "NEDC")):
+        if v is not None and (v > 0 or doc.get("is_electric")):
+            co2, co2n = v, n
+            break
+    return {
+        "type_carburant": edb_fuel_label(doc),
+        "cylindree_cm3": doc.get("engine_capacity"),
+        "puissance_kw": doc.get("power_kw"),
+        "poids_vide": doc.get("curb_weight"),
+        "poids_total": doc.get("gross_weight"),
+        "nombre_places": doc.get("seats"),
+        "conso_officielle_l_100km": conso,
+        "conso_officielle_norme": norme if conso else None,
+        "co2_g_km": co2,
+        "co2_norme": co2n,
+    }
+
+
+async def lookup_vin(db, vin):
+    v = normalize_vin(vin)
+    if not v or len(v) < 10:
+        return None
+    prefix = v[:10]
+    rows = await db.astra_edatenblatt.find({"_key": prefix}, {"_id": 0}).to_list(300)
+    if not rows:
+        return None
+    groups, seen = [], set()
+    for r in rows:
+        f = {k: val for k, val in _edb_fields(r).items() if val is not None}
+        sig = tuple(sorted(f.items()))
+        if sig in seen:
+            continue
+        seen.add(sig)
+        groups.append((r, f))
+    first = groups[0][0]
+    base = {
+        "provider": "astra_edatenblatt", "matched_by": "vin",
+        "retrieved_at": datetime.now(timezone.utc).isoformat(),
+        "match": {"approval_no": first.get("approval_eu"), "make": first.get("make"),
+                  "model": first.get("commercial_name") or first.get("type"),
+                  "vin_prefix": prefix, "dataset": "eDatenblatt",
+                  "candidates": len(groups)},
+    }
+    if len(groups) == 1:
+        return {**base, "fields": groups[0][1], "variantes": []}
+    if len(groups) > 12:
+        raise AstraLookupError(
+            f"VIN trop ambigu — {len(groups)} configurations possibles pour le préfixe {prefix}. "
+            "Renseignez le n° d'homologation (case 24 du permis de circulation) pour une correspondance exacte.",
+            "ambiguous_vin", 409)
+    common = {k: v2 for k, v2 in groups[0][1].items()
+              if all(g[1].get(k) == v2 for g in groups[1:])}
+    variantes = []
+    for r, f in groups:
+        diff = {k: v2 for k, v2 in f.items() if k not in common}
+        parts = [r.get("commercial_name") or r.get("type"), r.get("version") or r.get("variant")]
+        if r.get("power_kw"):
+            parts.append(f"{r['power_kw']:g} kW")
+        variantes.append({"label": " · ".join(str(x) for x in parts if x) or "Variante",
+                          "fields": diff})
+    return {**base, "fields": common, "variantes": variantes}
+
+
 async def resolve_vehicle_data(db, vehicle):
     t0 = time.perf_counter()
     if not await is_imported(db):
@@ -478,18 +664,34 @@ async def resolve_vehicle_data(db, vehicle):
             "se lance automatiquement au démarrage (ASTRA_SYNC_ENABLED=true) ou manuellement "
             "via POST /api/astra/import.", "not_imported", 503)
     key = normalize_approval(vehicle.get("numero_homologation"))
-    if not key:
+    vin = (vehicle.get("vin") or "").strip()
+    result = None
+    if key:
+        result = await lookup_homologation(db, key)
+    if result is None and vin:
+        result = await lookup_vin(db, vin)
+    if result is None:
+        if key:
+            raise AstraLookupError(
+                f"Homologation « {vehicle.get('numero_homologation')} » introuvable dans les données "
+                "officielles ASTRA locales (registres TAS et TG"
+                + (", VIN sans correspondance eDatenblatt" if vin else "")
+                + "). Vérifiez la case 24 du permis de circulation.",
+                "not_found", 404)
+        if vin:
+            if await db.astra_edatenblatt.estimated_document_count() == 0:
+                raise AstraLookupError(
+                    "Recherche par VIN indisponible — le dataset eDatenblatt n'est pas encore importé "
+                    "(POST /api/astra/import?datasets=edatenblatt).", "not_imported", 503)
+            raise AstraLookupError(
+                f"VIN « {vin} » introuvable dans les fiches eDatenblatt (véhicules importés dès ~2023). "
+                "Renseignez le n° d'homologation (case 24 du permis de circulation).",
+                "not_found", 404)
         raise AstraLookupError(
-            "Aucun n° d'homologation renseigné (case 24 du permis de circulation). "
-            "La recherche par plaque seule n'est pas disponible sans fournisseur externe payant, "
-            "et la recherche par VIN (eDatenblatt) arrivera en phase 3. "
-            "Scannez la carte grise ou saisissez le n° d'homologation, puis relancez.",
+            "Aucun n° d'homologation (case 24) ni VIN renseigné. "
+            "La recherche par plaque seule n'est pas disponible sans fournisseur externe payant. "
+            "Scannez la carte grise ou saisissez le n° d'homologation ou le VIN, puis relancez.",
             "missing_homologation", 422)
-    result = await lookup_homologation(db, key)
-    if not result:
-        raise AstraLookupError(
-            f"Homologation « {vehicle.get('numero_homologation')} » introuvable dans les données "
-            "officielles ASTRA locales (registres TAS et TG). Vérifiez la case 24 du permis de circulation.",
-            "not_found", 404)
     result["lookup_ms"] = round((time.perf_counter() - t0) * 1000, 1)
     return result
+

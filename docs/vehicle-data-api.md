@@ -20,6 +20,7 @@ LogiTrak intègre une **Vehicle Data API interne** fondée sur les jeux de donn�
 | `tas_emission` | `TAS_Emission.csv` (~92 Mo) | `astra_tas_emissions` | Consommation & CO₂ WLTP/NEDC par boîte de vitesses |
 | `tg` | `TG-Automobil.txt` (~323 Mo, TSV, Latin-1) | `astra_tg` | Homologations historiques TG/TARGA dès 1995 |
 | `tg_verbrauch` | `verbrauch.txt` (~19 Mo, TSV, Latin-1) | `astra_tg_verbrauch` | Consommation, CO₂, classe énergie des TG |
+| `edatenblatt` | `eDatenblatt.csv` (~807 Mo, CSV `;`) | `astra_edatenblatt` | Fiches COC par VIN (véhicules importés dès ~2023) : données techniques + WLTP. Dédupliquées par (préfixe VIN, empreinte de configuration) |
 
 L'import est **streaming** (jamais de fichier complet en mémoire) : lecture ligne à ligne,
 lots de 1000 `ReplaceOne` upserts, suivi dans `astra_import_runs` (statut, lignes lues,
@@ -30,14 +31,29 @@ Codes carburant traduits selon la documentation officielle TARGA (B=Essence, D=D
 E=Électrique, C=Essence/Électrique, F=Diesel/Électrique, N=CNG, etc.). CO₂ = 0 accepté
 uniquement pour les motorisations électriques/hydrogène (E, W, X).
 
-## Ordre de résolution (Phase 2 — `astra_data.resolve_vehicle_data`)
+## Ordre de résolution (Phase 2-3 — `astra_data.resolve_vehicle_data`)
 
 1. **ASTRA TAS local** (recherche par n° d'homologation normalisé)
 2. **ASTRA TG local** (historique dès 1995)
-3. *(réservé, désactivé)* AutoRef — uniquement si configuré un jour ; aucun appel implémenté
-4. *(réservé, désactivé)* NHTSA vPIC — jamais présenté comme homologation suisse
-5. Données du scan Claude (carte grise) — flux existant, extrait le n° d'homologation
-6. Saisie manuelle
+3. **eDatenblatt local** (recherche par VIN — repli si l'homologation est absente ou introuvable)
+4. *(réservé, désactivé)* AutoRef — uniquement si configuré un jour ; aucun appel implémenté
+5. *(réservé, désactivé)* NHTSA vPIC — jamais présenté comme homologation suisse
+6. Données du scan Claude (carte grise) — flux existant, extrait le n° d'homologation
+7. Saisie manuelle
+
+### Recherche par VIN (eDatenblatt)
+
+Les VIN publiés par l'ASTRA sont **anonymisés aux 10 premiers caractères** (WMI + descripteur
++ année-modèle). La correspondance se fait donc sur le **préfixe de 10 caractères** du VIN de
+la flotte. Si plusieurs configurations partagent le préfixe :
+- propositions identiques → dédupliquées automatiquement ;
+- champs communs proposés directement, champs divergents présentés comme **variantes** à
+  choisir (modèle · version · puissance) ;
+- plus de 12 configurations → erreur explicite `ambiguous_vin` (409) demandant l'homologation.
+
+Les champs sont sourcés directement de la fiche eDatenblatt (carburant via table de codes
+officielle, hybride/électrique via `PureElectricVehIndicator` et `ClassOfHybridVehicleCode`,
+consommation/CO₂ WLTP combinés — pondérés pour les hybrides rechargeables — sinon NEDC).
 
 ### Limitations explicites
 
@@ -45,8 +61,9 @@ uniquement pour les motorisations électriques/hydrogène (E, W, X).
   gratuit plaque → véhicule n'existe en Suisse. L'API répond :
   `{"found": false, "reason": "plate_lookup_unavailable_without_external_provider"}`.
   L'UI explique : utiliser le n° d'homologation (case 24), le VIN ou scanner la carte grise.
-- **VIN : phase 3.** Le dataset eDatenblatt (~807 Mo, VIN → homologation) sera importé en
-  phase 3. En attendant : `{"found": false, "reason": "vin_lookup_requires_edatenblatt"}`.
+- **VIN : couverture partielle.** eDatenblatt ne couvre que les véhicules immatriculés
+  via la procédure électronique (~2023+). Les véhicules plus anciens nécessitent le
+  n° d'homologation.
 
 ## Endpoints
 
@@ -55,8 +72,10 @@ uniquement pour les motorisations électriques/hydrogène (E, W, X).
 | GET | `/api/astra/status` | État détaillé : datasets, nb documents, fichiers, derniers runs, import en cours |
 | POST | `/api/astra/import` | Lance l'import en arrière-plan. Query : `datasets=tas,tg` (défaut tous), `download` (déf. true), `force` (re-télécharge). 409 si déjà en cours |
 | GET | `/api/astra/search?homologation=1AA101` | Recherche directe → `{found, provider, fields, variantes, match}` |
-| GET | `/api/astra/search?plate=…` / `?vin=…` | Réponses de limitation explicites (voir ci-dessus) |
-| POST | `/api/vehicles/{id}/enrich-technical` | Resolver complet pour un véhicule : 200 avec champs à valider, **422** si pas d'homologation, **404** si introuvable, **503** si données non importées |
+| GET | `/api/astra/search?vin=WBA85BZ070…` | Recherche VIN (préfixe 10 car.) → résultat, `not_found`, `ambiguous_vin` ou `edatenblatt_not_imported` |
+| GET | `/api/astra/search?plate=…` | Réponse de limitation explicite (voir ci-dessus) |
+| POST | `/api/vehicles/{id}/enrich-technical` | Resolver complet pour un véhicule : 200 avec champs à valider, **422** si ni homologation ni VIN, **404** si introuvable, **409** VIN ambigu, **503** si données non importées |
+| POST | `/api/vehicles/enrich-technical/batch` | **Enrichissement flotte** : résout tous les véhicules en un appel, retourne par véhicule statut + champs review (AUCUNE écriture — l'application reste explicite par véhicule) |
 | POST | `/api/vehicles/{id}/enrich-technical/apply` | Application **après validation utilisateur** uniquement (payload : fields choisis, provider, matched_by) |
 | GET | `/api/technical-data/status` | `{configured, provider: "astra"}` selon présence des données |
 
@@ -106,11 +125,21 @@ démarrage dans le volume dédié.
 
 1. Save to GitHub → `cd ~/documents && git pull`
 2. `cd deploy && docker compose up -d --build`
-3. Au premier démarrage, le backend télécharge (~790 Mo) puis importe (~5-10 min).
+3. Au premier démarrage, le backend télécharge (~1,6 Go) puis importe (~10-15 min).
    Suivi : `curl http://127.0.0.1:8090/api/astra/status`
 
-## Phase 3 (roadmap, non implémentée)
+## Interface
 
-- Import `eDatenblatt.csv` (~807 Mo) → recherche par VIN exact.
+- **Véhicules → « Base technique »** (menu) :
+  - *Enrichir la flotte (ASTRA)* : recherche groupée, revue par véhicule (champs sans
+    conflit appliqués après validation explicite ; conflits et variantes renvoyés vers la fiche).
+  - *État des données officielles* : nb d'enregistrements par dataset, dernier import,
+    bouton « Mettre à jour les données » (import manuel en arrière-plan avec suivi).
+- **Fiche véhicule → Carte grise → « Base technique »** : recherche individuelle avec
+  conflits/variantes/validation. Après un **scan de carte grise** qui extrait le
+  n° d'homologation, la recherche s'ouvre automatiquement (aucune écriture sans validation).
+
+## Phase suivante (roadmap, non implémentée)
+
 - Fallbacks optionnels AutoRef (`AUTOREF_ENABLED`) / NHTSA vPIC (`NHTSA_ENABLED`) —
   uniquement si l'utilisateur fournit accès/documentation fiable.

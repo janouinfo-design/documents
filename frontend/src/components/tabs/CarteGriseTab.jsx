@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Pencil, Loader2, ScrollText, Calendar, Weight, Users,
@@ -42,6 +42,15 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
   const [saving, setSaving] = useState(false);
   const [techOpen, setTechOpen] = useState(false);
   const [swissMeta, setSwissMeta] = useState(null);
+  const scanValidatedRef = useRef(false);
+
+  useEffect(() => {
+    if (scanValidatedRef.current && vehicle.numero_homologation) {
+      scanValidatedRef.current = false;
+      toast.info("N° d'homologation détecté — recherche dans la base officielle ASTRA/OFROU…");
+      setTechOpen(true);
+    }
+  }, [vehicle.numero_homologation]);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   useEffect(() => {
@@ -50,7 +59,7 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
       .then((metas) => {
         if (!on) return;
         const m = (metas || [])
-          .filter((x) => ["astra_tas", "astra_tg", "swisscarinfo"].includes(x.provider))
+          .filter((x) => ["astra_tas", "astra_tg", "astra_edatenblatt", "swisscarinfo"].includes(x.provider))
           .sort((a, b) => (b.retrieved_at || "").localeCompare(a.retrieved_at || ""))[0];
         setSwissMeta(m || null);
       })
@@ -116,7 +125,7 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
         testIdPrefix="cg-scan"
         title="Scan intelligent — Permis de circulation"
         description="Photographiez ou importez le permis : plaque, VIN, carburant, cylindrée, puissance, poids… sont extraits puis soumis à votre validation."
-        onValidated={() => { onSaved?.(); refetchDocs?.(); }}
+        onValidated={() => { scanValidatedRef.current = !vehicle.numero_homologation; onSaved?.(); refetchDocs?.(); }}
       />
 
       {edit ? (

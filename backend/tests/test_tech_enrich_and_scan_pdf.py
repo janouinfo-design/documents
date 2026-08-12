@@ -60,9 +60,11 @@ class TestTechnicalDataStatus:
 # --------------------------- 2. enrich-technical sans homologation ---------------------------
 class TestEnrichTechnicalWithoutHomologation:
     def test_returns_explicit_french_error(self, api, mongo, original_vehicle):
-        # Sans n° d'homologation : 422 (plaque seule indisponible) ; 503 si données non importées.
-        orig = original_vehicle.get("numero_homologation")
-        mongo.vehicles.update_one({"id": VEHICLE_ID}, {"$set": {"numero_homologation": ""}})
+        # Sans n° d'homologation NI VIN : 422 (plaque seule indisponible) ; 503 si données non importées.
+        orig_h = original_vehicle.get("numero_homologation")
+        orig_v = original_vehicle.get("vin")
+        mongo.vehicles.update_one({"id": VEHICLE_ID},
+                                  {"$set": {"numero_homologation": "", "vin": ""}})
         try:
             r = api.post(f"{BASE_URL}/api/vehicles/{VEHICLE_ID}/enrich-technical")
             assert r.status_code in (422, 503)
@@ -70,7 +72,8 @@ class TestEnrichTechnicalWithoutHomologation:
             assert "homologation" in detail.lower() or "astra" in detail.lower()
         finally:
             mongo.vehicles.update_one({"id": VEHICLE_ID},
-                                      {"$set": {"numero_homologation": orig or ""}})
+                                      {"$set": {"numero_homologation": orig_h or "",
+                                                "vin": orig_v or ""}})
 
     def test_returns_404_for_unknown_vehicle(self, api):
         r = api.post(f"{BASE_URL}/api/vehicles/does-not-exist-xyz/enrich-technical")

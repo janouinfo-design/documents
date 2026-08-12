@@ -98,6 +98,10 @@ export const getVehicleHistory = (id) => http.get(`/vehicles/${id}/history`).the
 // Enrichissement technique — base officielle ASTRA/OFROU (locale, sans clé)
 export const getTechnicalStatus = () => http.get("/technical-data/status").then((r) => r.data);
 export const getConfigStatus = () => http.get("/config/status").then((r) => r.data);
+export const getAstraStatus = () => http.get("/astra/status").then((r) => r.data);
+export const astraImport = () => http.post("/astra/import").then((r) => r.data);
+export const enrichFleet = () =>
+  http.post("/vehicles/enrich-technical/batch", null, { timeout: 120000 }).then((r) => r.data);
 export const conformityReportUrl = () => `${API}/reports/conformite.pdf`;
 export const costsCsvUrl = () => `${API}/reports/couts.csv`;
 export const vehicleReportUrl = (id) => `${API}/reports/vehicule/${id}.pdf`;

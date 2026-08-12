@@ -8,7 +8,7 @@ import { enrichTechnical, applyTechnicalEnrichment } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const MATCHED_LABELS = { plate: "plaque d'immatriculation", homologation: "n° d'homologation (case 24)", vin: "VIN" };
-const PROVIDER_LABELS = { astra_tas: "Registre TAS", astra_tg: "Registre TG (historique dès 1995)", swisscarinfo: "SwissCarInfo" };
+const PROVIDER_LABELS = { astra_tas: "Registre TAS", astra_tg: "Registre TG (historique dès 1995)", astra_edatenblatt: "Fiche eDatenblatt (COC, par VIN)", swisscarinfo: "SwissCarInfo" };
 const fmtDateTime = (iso) => {
   try {
     return new Date(iso).toLocaleString("fr-CH", { dateStyle: "medium", timeStyle: "short" });
