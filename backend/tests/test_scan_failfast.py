@@ -58,6 +58,7 @@ class TestScanFailFastNoKey:
     @pytest.mark.asyncio
     async def test_fail_fast_503_message(self, aclient, vehicle_id, monkeypatch):
         monkeypatch.setattr(server_mod, "EMERGENT_KEY", "", raising=False)
+        monkeypatch.setattr(server_mod, "ANTHROPIC_KEY", "", raising=False)
 
         r_before = await aclient.get(f"/api/vehicles/{vehicle_id}/documents")
         assert r_before.status_code == 200
@@ -81,6 +82,7 @@ class TestScanFailFastNoKey:
     @pytest.mark.asyncio
     async def test_fail_fast_before_type_validation(self, aclient, vehicle_id, monkeypatch):
         monkeypatch.setattr(server_mod, "EMERGENT_KEY", "", raising=False)
+        monkeypatch.setattr(server_mod, "ANTHROPIC_KEY", "", raising=False)
         img = _small_jpg()
         r = await aclient.post(
             f"/api/vehicles/{vehicle_id}/documents/scan",
@@ -92,6 +94,7 @@ class TestScanFailFastNoKey:
     @pytest.mark.asyncio
     async def test_unknown_vehicle_still_404(self, aclient, monkeypatch):
         monkeypatch.setattr(server_mod, "EMERGENT_KEY", "", raising=False)
+        monkeypatch.setattr(server_mod, "ANTHROPIC_KEY", "", raising=False)
         img = _small_jpg()
         r = await aclient.post(
             "/api/vehicles/DOES-NOT-EXIST/documents/scan",

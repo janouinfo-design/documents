@@ -200,6 +200,10 @@ class TestScanPermisJpg:
                 payload_fields[k] = by_key[k]["value"]
         assert payload_fields, "no expected fields detected — LLM regressed?"
 
+        # Reset target fields first so `applied` is deterministic across runs
+        session.put(f"{API}/vehicles/{target_vehicle['id']}",
+                    json={"type_carburant": "", "puissance_kw": 0, "cylindree_cm3": 0}, timeout=30)
+
         r = session.post(f"{API}/documents/{doc_id}/validate",
                          json={"document_type": "permis_circulation", "fields": payload_fields},
                          timeout=60)

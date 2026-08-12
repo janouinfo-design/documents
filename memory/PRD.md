@@ -175,6 +175,13 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - [x] Mot « Navixy » retiré de TOUS les textes visibles : toasts de sync (« Synchronisation réussie · N véhicules »), provenance (source → « Télématique »), messages d'erreur backend (« Clé API de synchronisation non configurée », « Réponse du service de synchronisation invalide », « Véhicule non lié à un tracker GPS », fallback compte → « Télématique »). Les identifiants techniques internes (navixy_tracker_id, endpoints /api/navixy/*, variables env) restent inchangés — invisibles pour l'utilisateur, aucune rupture d'API.
 - [x] Self-testé (screenshot + clic réel) : bouton visible/actif, aucune occurrence visible de « Navixy » dans la page, sync E2E OK (12 véhicules mis à jour), ancienne barre absente.
 
+## Implemented — Itération 12 · OCR via Claude Anthropic (2026-08-12)
+- [x] **Provider OCR remplacé par Claude Sonnet 4.6** (choix utilisateur, clé Anthropic personnelle fournie et configurée dans backend/.env preview — variable ANTHROPIC_API_KEY, jamais exposée). extraction.py : classe générique LlmVisionProvider(api_key, llm_provider, model) via emergentintegrations ; get_provider(emergent_key, anthropic_key) → **Claude prioritaire si ANTHROPIC_API_KEY présente, GPT/Emergent en secours automatique**. Override possible via DOC_EXTRACTION_PROVIDER/DOC_EXTRACTION_MODEL.
+- [x] server.py : fail-fast 503 seulement si LES DEUX clés absentes (message citant ANTHROPIC_API_KEY et EMERGENT_LLM_KEY) ; /api/config/status expose scan_provider ('claude'/'gpt'/null) ; ConfigBanner mise à jour. deploy/.env.example : ANTHROPIC_API_KEY= ajouté.
+- [x] Tests : scan E2E réel avec Claude → type assurance 0.99, 7 champs corrects (self-test) ; suite pytest complète 67 passed / 1 skipped (tests mis à jour : failfast patch 2 clés, docscan reset déterministe, skip endpoint OCR obsolète) ; testing agent it.11 100 % backend+frontend (flux UI scan complet via Claude ~6 s, régressions OK). iteration_11.json.
+- ⚠️ VPS : ajouter ANTHROPIC_API_KEY dans ~/documents/deploy/.env puis recreate backend. EMERGENT_LLM_KEY devient optionnelle (secours).
+- Note mineure non bloquante (it.11) : TestAuditLog::test_download_audit_created flaky en exécution parallèle (état audit concurrent), passe en isolé — sans lien avec Claude.
+
 ## Backlog (prioritized)
 - Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.
 - Phase 3+ (gros chantiers, à cadrer 1 par 1): modules Contrats & renouvellements, Conducteurs, Clients, Modèles, Corbeille/Favoris/Partagés ; permissions/rôles + auth ; multi-tenant.

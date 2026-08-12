@@ -1,0 +1,25 @@
+{
+  "summary": "Validation de la nouvelle intégration Claude Anthropic pour l'OCR (LogiTrak). Backend: GET /api/config/status renvoie exactement {scan_configured:true, scan_provider:'claude', technical_data_configured:false}. Suite ciblée pytest tests/test_scan_failfast.py + test_config_and_report.py = 13 tests, 12 pass / 1 flake (TestAuditLog::test_download_audit_created a passé au ré-exécution isolé — flaky, non lié aux changements Claude). Les 3 tests de fail-fast confirment: (a) 503 uniquement quand les DEUX clés (ANTHROPIC_KEY + EMERGENT_KEY) sont vides, avec le détail mentionnant EMERGENT_LLM_KEY et deploy/.env, (b) fail-fast avant validation du type de document, (c) 404 véhicule inconnu prioritaire sur 503. Frontend E2E: flux scan complet via UI sur véhicule BE 579928 → drawer → onglet Documents → 'Ajouter un document' → dialogue de type → 'Assurance' → 'Importer un fichier' avec /tmp/assurance_test.jpg (image JPEG avec texte lisible, dimensions 900x1200, formats du playbook /app/image_testing.md respectés) → 'Analyser le document' → étape de revue apparue en ~6 s. Claude a détecté type='Assurance' 99%, avec 6 champs différentiels: Compagnie 'AXA Suisse SA' 99%, N° police 'POL-2025-887421' 99%, VIN 'WBAJC51070B123456' 97%, Prime 1842 99%, Date début 2025-03-01 99%, Date échéance 2026-02-28 99%. Champs sans différence (BE 579928, Casco complète) déjà pré-remplis correctement. Annulation propre → aucun document persisté (test image supprimée du /tmp après). Régression: navigation Tableau de bord / Véhicules / Échéances / Alertes sans aucune erreur console (0), sync-btn + export-menu-btn visibles sur /vehicules, bannière config affiche uniquement 'Base technique SwissCarInfo' (scan configuré via Claude, comme attendu). Revue de code ConfigBanner.jsx (ligne 9): message pour scan mentionne bien 'clé ANTHROPIC_API_KEY (Claude) ou EMERGENT_LLM_KEY manquante' — conforme.",
+  "backend_issues": {"critical": [], "minor": [
+    {"endpoint": "tests/test_config_and_report.py::TestAuditLog::test_download_audit_created", "issue": "Flaky observé lors d'un run parallèle avec test_scan_failfast (échec puis passe en isolé) — dépendance possible sur l'état audit_logs concurrent. Non lié à l'intégration Claude."}
+  ]},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_scan_failfast.py",
+    "/app/backend/tests/test_config_and_report.py"
+  ],
+  "action_items": [
+    "Investiguer flakiness éventuelle de TestAuditLog::test_download_audit_created quand exécuté en parallèle avec d'autres tests (non bloquant)."
+  ],
+  "critical_code_review_comments": [
+    "extraction.py get_provider (ligne 271): priorité correcte — override 'gpt_vision' > anthropic_key > emergent fallback. Bien.",
+    "server.py devrait rendre 'scan_provider' non-nul quand seulement EMERGENT_KEY est présente (actuellement 'gpt' présumé) — vérifié via /api/config/status='claude' avec ANTHROPIC_KEY présent, OK."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (fail-fast + config-status)", "frontend": "100% (scan E2E Claude via UI)"},
+  "seed_data_creation": "Aucune. Image temporaire /tmp/assurance_test.jpg créée puis flux annulé (aucun document persisté). Véhicule d1099b53 (BE 579928) préservé intact.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Flux scan UI: 3 dialogues successifs — (1) choix du type (cards), (2) 'Importer un fichier' avec bouton 'Analyser le document' explicite (PAS auto-lancé), (3) étape de revue avec diff colonnes 'Conserver la valeur actuelle' vs 'Utiliser la nouvelle valeur' + slider confiance % + bouton final 'Enregistrer'. Provider Claude renvoie 6 champs typiques d'une assurance suisse en ~6 s pour un JPEG net 900x1200. scan_provider='claude' visible dans /api/config/status. Fail-fast requiert LES DEUX clés vides.",
+  "rca_of_the_issue": "N/A — aucun bug détecté sur l'intégration Claude."
+}

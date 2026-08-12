@@ -42,8 +42,9 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
 EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
+ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY")
 APP_NAME = "logitrak-fleet"
-extraction_provider = get_provider(EMERGENT_KEY)
+extraction_provider = get_provider(EMERGENT_KEY, ANTHROPIC_KEY)
 storage_key = None
 STORAGE_BACKEND = (os.environ.get("STORAGE_BACKEND") or "emergent").lower()
 LOCAL_STORAGE_DIR = os.environ.get("ADMIN_DOCS_STORAGE_PATH") or os.environ.get("LOCAL_STORAGE_DIR") or "/data/storage"
@@ -1185,10 +1186,10 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
     vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
     if not vehicle:
         raise HTTPException(status_code=404, detail="Véhicule introuvable")
-    if not EMERGENT_KEY:
+    if not (ANTHROPIC_KEY or EMERGENT_KEY):
         raise HTTPException(status_code=503,
-                            detail="Scan non configuré sur ce serveur — renseignez EMERGENT_LLM_KEY "
-                                   "(deploy/.env sur le VPS) puis redémarrez le backend.")
+                            detail="Scan non configuré sur ce serveur — renseignez ANTHROPIC_API_KEY (Claude) "
+                                   "ou EMERGENT_LLM_KEY (deploy/.env sur le VPS) puis redémarrez le backend.")
     if document_type and document_type not in DOC_TYPES:
         raise HTTPException(status_code=400, detail="Type de document inconnu")
 
@@ -1292,9 +1293,9 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
         if isinstance(e, (ImportError, ModuleNotFoundError)):
             err_msg = ("Module OCR absent du serveur (emergentintegrations) — "
                        "reconstruisez l'image backend (docker compose build backend).")
-        elif isinstance(e, RuntimeError) and "EMERGENT_LLM_KEY" in str(e):
-            err_msg = ("Scan non configuré sur ce serveur — renseignez EMERGENT_LLM_KEY "
-                       "(deploy/.env sur le VPS) puis redémarrez le backend.")
+        elif isinstance(e, RuntimeError) and "clé d'extraction" in str(e):
+            err_msg = ("Scan non configuré sur ce serveur — renseignez ANTHROPIC_API_KEY (Claude) "
+                       "ou EMERGENT_LLM_KEY (deploy/.env sur le VPS) puis redémarrez le backend.")
         else:
             err_msg = "Analyse impossible. Réessayez ou saisissez les données manuellement."
         return {"document_id": record["id"], "extraction_status": "failed",
@@ -1418,7 +1419,8 @@ async def technical_data_status():
 
 @api_router.get("/config/status")
 async def config_status():
-    return {"scan_configured": bool(EMERGENT_KEY),
+    return {"scan_configured": bool(ANTHROPIC_KEY or EMERGENT_KEY),
+            "scan_provider": "claude" if ANTHROPIC_KEY else ("gpt" if EMERGENT_KEY else None),
             "technical_data_configured": get_technical_provider() is not None}
 
 

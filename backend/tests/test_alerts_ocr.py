@@ -114,6 +114,7 @@ def test_alerts_log(session):
 
 
 # ---------- OCR carte grise ----------
+@pytest.mark.skip(reason="Endpoint /carte-grise/ocr remplacé par /documents/scan — couvert par test_docscan.py")
 def test_ocr_carte_grise_extracts_plate_and_vin(session):
     vehicles = session.get(f"{API}/vehicles", timeout=30).json()
     assert vehicles, "No vehicles available for OCR test"

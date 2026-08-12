@@ -206,21 +206,24 @@ class DocumentExtractionProvider:
         raise NotImplementedError
 
 
-class GptVisionProvider(DocumentExtractionProvider):
-    def __init__(self, api_key: str, model: str = "gpt-5.4"):
+class LlmVisionProvider(DocumentExtractionProvider):
+    """Extraction vision via LLM — Claude (clé Anthropic directe) ou GPT (clé Emergent)."""
+
+    def __init__(self, api_key: str, llm_provider: str = "openai", model: str = "gpt-5.4"):
         self.api_key = api_key
+        self.llm_provider = llm_provider
         self.model = model
 
     async def analyze(self, images_b64: list, document_type: str = None) -> dict:
         if not self.api_key:
-            raise RuntimeError("EMERGENT_LLM_KEY manquante — extraction indisponible")
+            raise RuntimeError("Aucune clé d'extraction configurée (ANTHROPIC_API_KEY ou EMERGENT_LLM_KEY)")
         from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
         chat = LlmChat(
             api_key=self.api_key,
             session_id=f"docscan-{uuid.uuid4()}",
             system_message=("Tu es un expert en extraction structurée de documents administratifs "
                             "de véhicules suisses (FR/DE/IT). Tu réponds uniquement en JSON strict."),
-        ).with_model("openai", self.model)
+        ).with_model(self.llm_provider, self.model)
         msg = UserMessage(
             text=build_prompt(document_type),
             file_contents=[ImageContent(image_base64=b) for b in images_b64],
@@ -265,12 +268,15 @@ def enhance_and_pdf(images_bytes: list):
     return out.getvalue(), jpegs
 
 
-def get_provider(api_key: str) -> DocumentExtractionProvider:
-    name = (os.environ.get("DOC_EXTRACTION_PROVIDER") or "gpt_vision").lower()
-    model = os.environ.get("DOC_EXTRACTION_MODEL") or "gpt-5.4"
-    if name == "gpt_vision":
-        return GptVisionProvider(api_key, model)
-    raise ValueError(f"Fournisseur d'extraction inconnu: {name}")
+def get_provider(emergent_key: str = None, anthropic_key: str = None) -> DocumentExtractionProvider:
+    """Sélection automatique : Claude si ANTHROPIC_API_KEY présente, sinon GPT via clé Emergent."""
+    override = (os.environ.get("DOC_EXTRACTION_PROVIDER") or "").lower()
+    if override == "gpt_vision":
+        return LlmVisionProvider(emergent_key, "openai", os.environ.get("DOC_EXTRACTION_MODEL") or "gpt-5.4")
+    if override == "claude" or anthropic_key:
+        return LlmVisionProvider(anthropic_key, "anthropic",
+                                 os.environ.get("DOC_EXTRACTION_MODEL") or "claude-sonnet-4-6")
+    return LlmVisionProvider(emergent_key, "openai", os.environ.get("DOC_EXTRACTION_MODEL") or "gpt-5.4")
 
 
 class VehicleTechnicalDataProvider:
