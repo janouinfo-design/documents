@@ -346,6 +346,7 @@ class CarteGrise(BaseModel):
     date_mise_circulation: Optional[str] = None
     poids_total: Optional[int] = 0
     nombre_places: Optional[int] = 0
+    couleur: Optional[str] = None
 
 
 class ControleTechnique(BaseModel):
@@ -374,6 +375,10 @@ class VehicleBase(BaseModel):
     conso_officielle_norme: Optional[str] = ""
     co2_norme: Optional[str] = ""
     capacite_reservoir_l: Optional[float] = 0
+    batterie_capacite_brute_kwh: Optional[float] = None
+    batterie_capacite_utile_kwh: Optional[float] = None
+    conso_officielle_kwh_100km: Optional[float] = None
+    autonomie_km: Optional[float] = None
     conso_reelle_l_100km: Optional[float] = 0
     conso_reelle_source: Optional[str] = "unavailable"
     carburant_niveau_pct: Optional[float] = None
@@ -416,6 +421,10 @@ class VehicleUpdate(BaseModel):
     conso_officielle_norme: Optional[str] = None
     co2_norme: Optional[str] = None
     capacite_reservoir_l: Optional[float] = None
+    batterie_capacite_brute_kwh: Optional[float] = None
+    batterie_capacite_utile_kwh: Optional[float] = None
+    conso_officielle_kwh_100km: Optional[float] = None
+    autonomie_km: Optional[float] = None
     conso_reelle_l_100km: Optional[float] = None
     conso_reelle_source: Optional[str] = None
     kilometrage: Optional[int] = None
@@ -580,8 +589,20 @@ async def list_vehicles():
     return vehicles
 
 
+NESTED_SUBDOCS = ("leasing", "assurance", "carte_grise", "controle_technique")
+
+
+def _check_ev_conso(fuel, conso_l):
+    """Un véhicule 100 % électrique ne peut pas recevoir de consommation en L/100 km."""
+    if conso_l and (fuel or "").strip().lower() == "électrique":
+        raise HTTPException(status_code=422, detail=(
+            "Véhicule électrique : la consommation officielle se saisit en kWh/100 km "
+            "(champ conso_officielle_kwh_100km), pas en L/100 km."))
+
+
 @api_router.post("/vehicles")
 async def create_vehicle(payload: VehicleCreate):
+    _check_ev_conso(payload.type_carburant, payload.conso_officielle_l_100km)
     doc = payload.model_dump()
     doc["id"] = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
@@ -591,6 +612,113 @@ async def create_vehicle(payload: VehicleCreate):
     doc = clean(doc)
     doc["metrics"] = compute_metrics(doc)
     return doc
+
+
+# ---------------------------------------------------------------------------
+# Vehicle Core — resolver inter-modules + fiche de référence (LECTURE SEULE)
+# Contrat : docs/inter-project-vehicle-contract.md. Aucune écriture Navixy ici.
+# ---------------------------------------------------------------------------
+_IDENTITY_PROJ = {"_id": 0, "id": 1, "vin": 1, "plaque": 1, "marque": 1, "modele": 1,
+                  "annee": 1, "navixy_tracker_id": 1, "navixy_vehicle_id": 1}
+
+
+def _norm_vin(v):
+    return re.sub(r"[^A-Z0-9]", "", (v or "").upper())
+
+
+def _norm_plate(p):
+    return re.sub(r"[^A-Z0-9]", "", (p or "").upper())
+
+
+def _identity(v: dict) -> dict:
+    return {"vehicle_id": v.get("id"), "vin": v.get("vin") or None,
+            "plate": v.get("plaque") or None, "make": v.get("marque") or None,
+            "model": v.get("modele") or None, "year": v.get("annee") or None,
+            "navixy_tracker_id": v.get("navixy_tracker_id"),
+            "navixy_vehicle_id": v.get("navixy_vehicle_id")}
+
+
+@api_router.get("/vehicles/resolve")
+async def resolve_vehicle(vehicle_id: Optional[str] = None,
+                          navixy_vehicle_id: Optional[int] = None,
+                          navixy_tracker_id: Optional[int] = None,
+                          vin: Optional[str] = None,
+                          plate: Optional[str] = None):
+    """Résolution inter-modules, LECTURE SEULE — ne modifie jamais aucune donnée.
+    Ordre de priorité : vehicle_id > navixy_vehicle_id > navixy_tracker_id > vin > plate.
+    Un critère fourni sans résultat passe au suivant ; plusieurs résultats = ambiguous
+    immédiat (jamais de rapprochement ambigu silencieux)."""
+    vin_n, plate_n = _norm_vin(vin), _norm_plate(plate)
+    criteria = []
+    if vehicle_id:
+        criteria.append(("vehicle_id", lambda v: v.get("id") == vehicle_id))
+    if navixy_vehicle_id is not None:
+        criteria.append(("navixy_vehicle_id", lambda v: v.get("navixy_vehicle_id") == navixy_vehicle_id))
+    if navixy_tracker_id is not None:
+        criteria.append(("navixy_tracker_id", lambda v: v.get("navixy_tracker_id") == navixy_tracker_id))
+    if vin_n:
+        criteria.append(("vin", lambda v: _norm_vin(v.get("vin")) == vin_n))
+    if plate_n:
+        criteria.append(("plate", lambda v: _norm_plate(v.get("plaque")) == plate_n))
+    if not criteria:
+        raise HTTPException(status_code=422, detail=(
+            "Fournissez au moins un critère : vehicle_id, navixy_vehicle_id, "
+            "navixy_tracker_id, vin ou plate."))
+    vehicles = await db.vehicles.find({}, _IDENTITY_PROJ).to_list(2000)
+    searched = [name for name, _ in criteria]
+    for name, pred in criteria:
+        matches = [v for v in vehicles if pred(v)]
+        if len(matches) == 1:
+            return {"status": "found", "matched_by": name, "vehicle": _identity(matches[0])}
+        if len(matches) > 1:
+            return {"status": "ambiguous", "matched_by": name, "count": len(matches),
+                    "matches": [_identity(m) for m in matches]}
+    return {"status": "not_found", "searched_by": searched}
+
+
+_CORE_REF_FIELDS = [
+    # (nom du contrat inter-projets, champ interne Documents, unité)
+    ("fuel_tank_capacity_l", "capacite_reservoir_l", "L"),
+    ("battery_capacity_gross_kwh", "batterie_capacite_brute_kwh", "kWh"),
+    ("battery_capacity_usable_kwh", "batterie_capacite_utile_kwh", "kWh"),
+    ("reference_consumption_l_100km", "conso_officielle_l_100km", "L/100km"),
+    ("reference_consumption_kwh_100km", "conso_officielle_kwh_100km", "kWh/100km"),
+    ("reference_range_km", "autonomie_km", "km"),
+]
+
+
+@api_router.get("/vehicles/{vehicle_id}/core")
+async def get_vehicle_core(vehicle_id: str):
+    """Fiche Vehicle LOGITRAK pour Journal de bord / Énergie. LECTURE SEULE.
+    N'expose ni fichiers, ni chemins de stockage, ni assurance/leasing/documents."""
+    v = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
+    if not v:
+        raise HTTPException(status_code=404, detail="Véhicule introuvable")
+    metas = {m["field"]: m for m in await db.vehicle_field_meta.find(
+        {"vehicle_id": vehicle_id}, {"_id": 0}).to_list(200)}
+
+    def ref(internal_key, unit):
+        raw = v.get(internal_key)
+        value = raw if isinstance(raw, (int, float)) and raw > 0 else None
+        m = metas.get(internal_key) or {}
+        mtype = m.get("measurement_type")
+        if not mtype and m.get("source") == "external_vehicle_database":
+            mtype = "reference"
+        return {"value": value, "unit": unit, "source": m.get("source"),
+                "provider": m.get("provider"), "measurement_type": mtype,
+                "confidence": m.get("confidence"), "retrieved_at": m.get("retrieved_at") or None,
+                "validated_by": m.get("validated_by"), "validated_at": m.get("validated_at")}
+
+    reference = {ck: ref(ik, u) for ck, ik, u in _CORE_REF_FIELDS}
+    norme = v.get("conso_officielle_norme") or None
+    for ck in ("reference_consumption_l_100km", "reference_consumption_kwh_100km"):
+        reference[ck]["norm"] = norme if reference[ck]["value"] else None
+    return {
+        "contract_version": "0.1-draft",
+        "identity": {**_identity(v), "category": v.get("categorie") or None,
+                     "energy": v.get("type_carburant") or None},
+        "reference": reference,
+    }
 
 
 @api_router.get("/vehicles/{vehicle_id}")
@@ -607,8 +735,22 @@ async def update_vehicle(vehicle_id: str, payload: VehicleUpdate):
     update = payload.model_dump(exclude_unset=True)
     if not update:
         raise HTTPException(status_code=400, detail="Aucune donnée à mettre à jour")
-    update["updated_at"] = datetime.now(timezone.utc).isoformat()
-    result = await db.vehicles.update_one({"id": vehicle_id}, {"$set": update})
+    existing = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0, "type_carburant": 1})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Véhicule introuvable")
+    fuel = update.get("type_carburant", existing.get("type_carburant"))
+    _check_ev_conso(fuel, update.get("conso_officielle_l_100km"))
+    # Sous-objets fusionnés champ par champ ($set pointé) — jamais remplacés en bloc,
+    # afin de ne pas effacer des champs validés par ailleurs (ex. carte_grise.couleur OCR).
+    flat = {}
+    for k, val in update.items():
+        if k in NESTED_SUBDOCS and isinstance(val, dict):
+            for sk, sv in val.items():
+                flat[f"{k}.{sk}"] = sv
+        else:
+            flat[k] = val
+    flat["updated_at"] = datetime.now(timezone.utc).isoformat()
+    result = await db.vehicles.update_one({"id": vehicle_id}, {"$set": flat})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Véhicule introuvable")
     v = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
@@ -909,6 +1051,7 @@ async def _record_fuel_snapshot(vehicle_id: str, litres: float, km: int):
         {"vehicle_id": vehicle_id, "field": "conso_reelle_l_100km"},
         {"$set": {"label": "Consommation réelle (L/100 km)", "source": "can",
                   "provider": "navixy_can", "confidence": None,
+                  "measurement_type": "measured",
                   "validated_by": "système", "validated_at": iso, "updated_at": iso}},
         upsert=True)
 
@@ -1464,6 +1607,7 @@ async def validate_scanned_document(doc_id: str, payload: DocumentValidate, requ
         await db.vehicle_field_meta.update_one(
             {"vehicle_id": vehicle["id"], "field": fpath},
             {"$set": {"label": fd["label"], "source": "document_scan",
+                      "measurement_type": "reference",
                       "source_document_id": doc_id, "confidence": conf_by_field.get(key),
                       "validated_by": "utilisateur", "validated_at": now, "updated_at": now}},
             upsert=True)
@@ -1684,6 +1828,7 @@ async def apply_technical_enrichment(vehicle_id: str, payload: TechnicalApply, r
         await db.vehicle_field_meta.update_one(
             {"vehicle_id": vehicle["id"], "field": fpath},
             {"$set": {"label": fd["label"], "source": "external_vehicle_database",
+                      "measurement_type": "reference",
                       "provider": payload.provider or "astra_tas", "source_ref": payload.matched_by or "",
                       "retrieved_at": payload.retrieved_at or "", "confidence": None,
                       "previous_value": old if not _is_empty(old) else None,

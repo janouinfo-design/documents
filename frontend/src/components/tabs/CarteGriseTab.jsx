@@ -14,11 +14,12 @@ import DocFolderSection from "@/components/DocFolderSection";
 import DocumentScanCard from "@/components/DocumentScanCard";
 import TechnicalEnrichDialog from "@/components/TechnicalEnrichDialog";
 
-const CG_FIELDS = ["date_mise_circulation", "poids_total", "nombre_places"];
+const CG_FIELDS = ["date_mise_circulation", "poids_total", "nombre_places", "couleur"];
 const TECH_FIELDS = [
   "type_carburant", "cylindree_cm3", "puissance_kw", "poids_vide", "categorie",
   "co2_g_km", "co2_norme", "conso_officielle_l_100km", "conso_officielle_norme",
   "capacite_reservoir_l", "conso_reelle_l_100km", "variante", "numero_homologation",
+  "conso_officielle_kwh_100km", "batterie_capacite_brute_kwh", "batterie_capacite_utile_kwh", "autonomie_km",
 ];
 
 const NORMES = ["WLTP", "NEDC"];
@@ -82,6 +83,15 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
   const litres = vehicle.cylindree_cm3 ? `${fmtNum(vehicle.cylindree_cm3)} cm³ — ${(vehicle.cylindree_cm3 / 1000).toFixed(1)} L` : "—";
   const reelleFromCan = vehicle.conso_reelle_source === "can";
   const off = Number(vehicle.conso_officielle_l_100km) || 0;
+  const offKwh = Number(vehicle.conso_officielle_kwh_100km) || 0;
+  const battBrute = Number(vehicle.batterie_capacite_brute_kwh) || 0;
+  const battUtile = Number(vehicle.batterie_capacite_utile_kwh) || 0;
+  const autonomie = Number(vehicle.autonomie_km) || 0;
+  const offTxt = [off > 0 ? `${off} L/100 km` : null, offKwh > 0 ? `${offKwh} kWh/100 km` : null]
+    .filter(Boolean).join(" · ");
+  const battTxt = battBrute > 0 || battUtile > 0
+    ? [battBrute > 0 ? `${battBrute} kWh brute` : null, battUtile > 0 ? `${battUtile} kWh utile` : null].filter(Boolean).join(" · ")
+    : "—";
   const reelle = Number(vehicle.conso_reelle_l_100km) || 0;
   const ecart = off > 0 && reelle > 0 ? ((reelle - off) / off) * 100 : null;
   const cap = Number(vehicle.capacite_reservoir_l) || 0;
@@ -105,6 +115,10 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
         conso_officielle_l_100km: Number(form.conso_officielle_l_100km) || 0,
         conso_officielle_norme: form.conso_officielle_norme || "",
         capacite_reservoir_l: Number(form.capacite_reservoir_l) || 0,
+        conso_officielle_kwh_100km: Number(form.conso_officielle_kwh_100km) || null,
+        batterie_capacite_brute_kwh: Number(form.batterie_capacite_brute_kwh) || null,
+        batterie_capacite_utile_kwh: Number(form.batterie_capacite_utile_kwh) || null,
+        autonomie_km: Number(form.autonomie_km) || null,
         ...(!reelleFromCan
           ? {
               conso_reelle_l_100km: reelleForm,
@@ -117,13 +131,14 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
           date_mise_circulation: form.date_mise_circulation || null,
           poids_total: Number(form.poids_total) || 0,
           nombre_places: Number(form.nombre_places) || 0,
+          couleur: form.couleur || null,
         },
       });
       toast.success("Données véhicule enregistrées");
       onSaved?.();
       setEdit(false);
-    } catch {
-      toast.error("Erreur lors de l'enregistrement");
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Erreur lors de l'enregistrement");
     } finally {
       setSaving(false);
     }
@@ -149,6 +164,7 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
               ["poids_vide", "Poids à vide (kg)", "number"],
               ["poids_total", "Poids total (kg)", "number"],
               ["nombre_places", "Nombre de places", "number"],
+              ["couleur", "Couleur"],
               ["categorie", "Catégorie"],
               ["variante", "Variante / type"],
               ["numero_homologation", "N° homologation"],
@@ -166,6 +182,10 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
               ["puissance_kw", "Puissance (kW)", "number"],
               ["co2_g_km", "CO₂ (g/km)", "number"],
               ["conso_officielle_l_100km", "Conso officielle (L/100 km)", "number"],
+              ["conso_officielle_kwh_100km", "Conso officielle (kWh/100 km)", "number"],
+              ["batterie_capacite_brute_kwh", "Batterie brute (kWh)", "number"],
+              ["batterie_capacite_utile_kwh", "Batterie utile (kWh)", "number"],
+              ["autonomie_km", "Autonomie de référence (km)", "number"],
               ["capacite_reservoir_l", "Capacité réservoir (L)", "number"],
             ].map(([k, label, type]) => (
               <FormRow key={k} label={label}>
@@ -221,6 +241,7 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
               <Stat label="Poids à vide" value={vehicle.poids_vide ? `${fmtNum(vehicle.poids_vide)} kg` : "—"} icon={Weight} />
               <Stat label="Poids total" value={c.poids_total ? `${fmtNum(c.poids_total)} kg` : "—"} icon={Weight} />
               <Stat label="Nombre de places" value={c.nombre_places || "—"} icon={Users} />
+              <Stat label="Couleur" value={c.couleur || "—"} />
               <Stat label="Catégorie" value={vehicle.categorie || "—"} />
               <Stat label="Variante / type" value={vehicle.variante || "—"} />
               <Stat label="N° homologation" value={vehicle.numero_homologation || "—"} icon={Hash} />
@@ -248,7 +269,7 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
               />
               <Stat
                 label="Conso officielle"
-                value={off > 0 ? `${off} L/100 km${vehicle.conso_officielle_norme ? ` · ${vehicle.conso_officielle_norme}` : ""}` : "—"}
+                value={offTxt ? `${offTxt}${vehicle.conso_officielle_norme ? ` · ${vehicle.conso_officielle_norme}` : ""}` : "—"}
                 icon={Fuel}
               />
               <div data-testid="conso-reelle-stat">
@@ -264,6 +285,8 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
                 icon={TrendingUp}
               />
               <Stat label="Capacité réservoir" value={cap > 0 ? `${cap} L` : "—"} />
+              <Stat label="Batterie" value={battTxt} icon={Zap} />
+              <Stat label="Autonomie (réf.)" value={autonomie > 0 ? `${fmtNum(autonomie)} km` : "—"} />
               <Stat label="Niveau carburant" value={niveauTxt} icon={Fuel} />
             </div>
             {swissMeta && (

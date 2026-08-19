@@ -507,9 +507,16 @@ def _tas_emission_fields(row, fuel_code):
         if val is not None and (val > 0 or fuel_code in ELECTRIC_FUELS):
             co2, co2n = val, n
             break
-    return {"conso_officielle_l_100km": conso,
-            "conso_officielle_norme": norme if conso else None,
-            "co2_g_km": co2, "co2_norme": co2n}
+    out = {"conso_officielle_l_100km": None, "conso_officielle_kwh_100km": None,
+           "co2_g_km": co2, "co2_norme": co2n}
+    if fuel_code == "E":
+        out["conso_officielle_kwh_100km"] = conso
+    elif fuel_code in ELECTRIC_FUELS:
+        conso = None  # hydrogène/autre : unité non garantie — aucune valeur supposée
+    else:
+        out["conso_officielle_l_100km"] = conso
+    out["conso_officielle_norme"] = norme if conso else None
+    return out
 
 
 def _row_has_data(r, fuel_code):
@@ -604,7 +611,8 @@ def _edb_fields(doc):
         "poids_vide": doc.get("curb_weight"),
         "poids_total": doc.get("gross_weight"),
         "nombre_places": doc.get("seats"),
-        "conso_officielle_l_100km": conso,
+        "conso_officielle_l_100km": None if doc.get("is_electric") else conso,
+        "conso_officielle_kwh_100km": conso if doc.get("is_electric") else None,
         "conso_officielle_norme": norme if conso else None,
         "co2_g_km": co2,
         "co2_norme": co2n,

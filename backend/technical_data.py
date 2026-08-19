@@ -15,6 +15,7 @@ TECH_FIELD_DEFS = [
     {"key": "cylindree_cm3", "label": "Cylindrée (cm³)", "target": "root", "kind": "int"},
     {"key": "puissance_kw", "label": "Puissance (kW)", "target": "root", "kind": "float"},
     {"key": "conso_officielle_l_100km", "label": "Consommation officielle (L/100 km)", "target": "root", "kind": "float"},
+    {"key": "conso_officielle_kwh_100km", "label": "Consommation officielle (kWh/100 km)", "target": "root", "kind": "float"},
     {"key": "conso_officielle_norme", "label": "Norme consommation", "target": "root", "kind": "str"},
     {"key": "co2_g_km", "label": "CO₂ officiel (g/km)", "target": "root", "kind": "float"},
     {"key": "co2_norme", "label": "Norme CO₂", "target": "root", "kind": "str"},

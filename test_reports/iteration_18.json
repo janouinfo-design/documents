@@ -1,0 +1,25 @@
+{
+  "summary": "Frontend-only test of P0 'Vehicle Core' (Carte grise tab) on the preview URL. Login OK (admin@logitrak.ch). Vehicles page lists 12 vehicles; drawer opens from the plate link; 'Carte grise' tab renders. All 5 new inputs exist (cg-couleur, cg-conso_officielle_kwh_100km, cg-batterie_capacite_brute_kwh, cg-batterie_capacite_utile_kwh, cg-autonomie_km) plus the new Stats 'Couleur' (carte-grise-view) and 'Batterie' / 'Autonomie (réf.)' (moteur-conso) which show '—' when empty. Edit → Couleur='Bleu', Batterie utile=58, Autonomie=380 → toast 'Données véhicule enregistrées' and all three values displayed (Couleur Bleu, '58 kWh utile', '380 km'). R8 colour-persistence verified: re-open edit (couleur prefilled 'Bleu'), change ONLY Poids total to 2100 → save OK and Couleur 'Bleu' still displayed, poids total shows '2 100 kg'. EV guard verified: Carburant='Électrique' + Conso officielle L/100=5.5 → save fails, error toast 'Véhicule électrique : la consommation officielle se saisit en kWh/100 km (champ conso_officielle_kwh_100km), pas en L/100 km.' (contains kWh), edit form stays open (backend 422 is the only console error, expected). Clearing the L/100 field with Carburant='Électrique' → save succeeds and Carburant shows Électrique. CLEANUP done: vehicle '1-Enyaq 01 Bern' restored to original state (Couleur —, Carburant Essence, Batterie —, Autonomie —, Poids total 3 500 kg, conso L/100 empty) — verified in the view cards. Regressions OK: Dashboard loads, Véhicules lists 12, Échéances (route /timeline, 7 month groups) and Alertes load, drawer tabs Général/Leasing/Assurance open with no console errors, 'Base technique' (tech-enrich-btn) opens its dialog. No document scan launched, no vehicle deleted, no Navixy write.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Carte grise — edit form", "issues": ["'Mise en circulation' uses the native browser <input type=date> picker (renders as MM/DD/YYYY on a French UI) instead of the shadcn calendar component used elsewhere — minor consistency/localisation issue, not blocking."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "CarteGriseTab.save() sends Number(form.x) || null for the new kWh/autonomie fields: a legitimate 0 entered by the user becomes null (same pattern as the existing || 0 fields). Acceptable today, but if 0 ever becomes a meaningful value (e.g. autonomie 0) it will be silently dropped.",
+    "form.couleur || null means an empty string clears the colour (verified working during cleanup) — intentional, but note that a whitespace-only input ('  ') would be stored as-is."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (not retested per request)", "frontend": "100% (all 20 frontend assertions passed)"},
+  "seed_data_creation": "None. Vehicle '1-Enyaq 01 Bern' was temporarily modified (couleur/batterie/autonomie/poids_total/carburant) and fully RESTORED to its original values, verified in the UI.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "admin@logitrak.ch / LT-OSTR72MutpBKWB! (from /app/memory/test_credentials.md, unchanged)",
+  "context_for_next_testing_agent": "Échéances page route is /timeline (nav label 'Échéances') — do not navigate to /echeances. Vehicle plate testids: vehicle-plate-link-<plaque sans espaces>, e.g. vehicle-plate-link-1-Enyaq01Bern. Carte grise testids: carte-grise-view, moteur-conso, cg-edit-btn, carte-grise-edit, cg-<field>, cg-save, tech-enrich-btn. Carburant is a free-text Input (not a Select). Toasts are sonner ([data-sonner-toast]) and carry the backend 422 detail. Original values of 1-Enyaq 01 Bern: couleur '', poids_total 3500, carburant Essence, kwh/autonomie fields empty, date_mise_circulation 2021-03-15, places 3, cylindree 1395, puissance 110.",
+  "rca_of_the_issue": "No defect found in the P0 scope; the only console error observed is the deliberate 422 from the EV guard test, which is surfaced correctly as an error toast."
+}
