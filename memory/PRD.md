@@ -242,6 +242,10 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - [x] **Tests** : `tests/test_p0_core.py` 24/24 (resolver id/tracker/vin/plaque/ambigu/priorité/sans-VIN, garde EV create+update, hybride/thermique OK, couleur persistante, DTO shape+privacy+404+0→null, unités ASTRA E/B/W/eDatenblatt, zéro écriture Navixy, flotte 12 intacte) ; régression backend 99/99 + OCR Claude réel 30 passed/1 skipped (=153 verts) ; testing agent it.18 frontend **100 %** (20/20 : couleur persistée après édition poids, garde EV toast 422, batterie/autonomie affichées, régressions pages/drawer, état restauré) — iteration_18.json.
 - Décisions différées (documentées au contrat) : Tenant Contract (source de vérité, format id, auth de service inter-projets) ; Whitelist Navixy Sync (après audit New Navixy — read-merge-write obligatoire, enum fuel_type sans électrique, conflits datés VIN/plaque/tracker).
 
+## Implemented — Itération 20 · Bouton compte démo Admin sur le login (2026-08-19)
+- [x] Bloc « COMPTES DÉMO » sous le formulaire de connexion (Login.jsx, `demo-accounts`) avec un seul bouton « Admin » (`demo-admin-btn`) qui pré-remplit email + mot de passe superadmin (valeurs codées côté frontend, demande explicite utilisateur). Self-testé : clic → champs remplis → connexion OK.
+- ⚠️ Si le mot de passe est changé dans l'app, le bouton démo ne remplira plus la bonne valeur (mettre à jour Login.jsx en conséquence).
+
 ## Backlog (prioritized)
 - Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.
 - Phase 3+ (gros chantiers, à cadrer 1 par 1): modules Contrats & renouvellements, Conducteurs, Clients, Modèles, Corbeille/Favoris/Partagés ; permissions/rôles + auth ; multi-tenant.

@@ -105,6 +105,24 @@ export default function Login() {
           </form>
         </div>
 
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5" data-testid="demo-accounts">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">Comptes démo</p>
+          <div className="mt-3">
+            <button
+              type="button"
+              data-testid="demo-admin-btn"
+              onClick={() => {
+                setEmail("admin@logitrak.ch");
+                setPassword("LT-OSTR72MutpBKWB!");
+                setError("");
+              }}
+              className="rounded-lg border border-slate-300 px-6 py-2 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-50"
+            >
+              Admin
+            </button>
+          </div>
+        </div>
+
         <p className="mt-6 text-center text-xs text-slate-400">
           Gestion administrative de flotte · session de 24 heures
         </p>
