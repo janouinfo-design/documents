@@ -2,8 +2,8 @@ import { useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Loader2, Plus, Building2, ChevronDown, ChevronRight, Truck, FileText, Users, Wifi, WifiOff } from "lucide-react";
-import { adminOverview, adminUpdateTenant } from "@/lib/api";
+import { Loader2, Plus, Building2, ChevronDown, ChevronRight, Truck, FileText, Users, Wifi, WifiOff, Eye } from "lucide-react";
+import { adminOverview, adminUpdateTenant, setActingTenant } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -29,30 +29,37 @@ function ClientCard({ tenant, expanded, onToggle }) {
     <div className={cn("rounded-2xl border bg-white transition-colors",
       tenant.disabled ? "border-red-200 opacity-70" : "border-slate-200")}
       data-testid={`admin-client-${tenant.id}`}>
-      <button onClick={onToggle} data-testid={`admin-client-toggle-${tenant.id}`}
-        className="flex w-full items-center gap-4 px-5 py-4 text-left">
-        {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" /> : <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />}
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-display font-bold text-slate-900">{tenant.name}</p>
-          <p className="text-xs text-slate-400">{tenant.id}</p>
-        </div>
-        <div className="hidden items-center gap-4 text-sm text-slate-500 sm:flex">
-          <span className="flex items-center gap-1.5" title="Véhicules"><Truck className="h-4 w-4 text-slate-400" />{tenant.vehicles}</span>
-          <span className="flex items-center gap-1.5" title="Documents"><FileText className="h-4 w-4 text-slate-400" />{tenant.documents}</span>
-          <span className="flex items-center gap-1.5" title="Utilisateurs"><Users className="h-4 w-4 text-slate-400" />{tenant.users}</span>
-        </div>
-        {tenant.integration?.configured ? (
-          <Badge variant="outline" className={cn("gap-1", tenant.integration.enabled ? "border-emerald-300 text-emerald-700" : "border-slate-300 text-slate-500")}
-            data-testid={`admin-client-integration-badge-${tenant.id}`}>
-            <Wifi className="h-3 w-3" /> Télématique {tenant.integration.enabled ? "active" : "inactive"}
-          </Badge>
-        ) : (
-          <Badge variant="outline" className="gap-1 border-slate-200 text-slate-400">
-            <WifiOff className="h-3 w-3" /> Sans télématique
-          </Badge>
-        )}
-        {tenant.disabled && <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Désactivé</Badge>}
-      </button>
+      <div className="flex w-full items-center gap-4 px-5 py-4">
+        <button onClick={onToggle} data-testid={`admin-client-toggle-${tenant.id}`}
+          className="flex min-w-0 flex-1 items-center gap-4 text-left">
+          {expanded ? <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" /> : <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />}
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-display font-bold text-slate-900">{tenant.name}</p>
+            <p className="text-xs text-slate-400">{tenant.id}</p>
+          </div>
+          <div className="hidden items-center gap-4 text-sm text-slate-500 sm:flex">
+            <span className="flex items-center gap-1.5" title="Véhicules"><Truck className="h-4 w-4 text-slate-400" />{tenant.vehicles}</span>
+            <span className="flex items-center gap-1.5" title="Documents"><FileText className="h-4 w-4 text-slate-400" />{tenant.documents}</span>
+            <span className="flex items-center gap-1.5" title="Utilisateurs"><Users className="h-4 w-4 text-slate-400" />{tenant.users}</span>
+          </div>
+          {tenant.integration?.configured ? (
+            <Badge variant="outline" className={cn("gap-1", tenant.integration.enabled ? "border-emerald-300 text-emerald-700" : "border-slate-300 text-slate-500")}
+              data-testid={`admin-client-integration-badge-${tenant.id}`}>
+              <Wifi className="h-3 w-3" /> Télématique {tenant.integration.enabled ? "active" : "inactive"}
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="gap-1 border-slate-200 text-slate-400">
+              <WifiOff className="h-3 w-3" /> Sans télématique
+            </Badge>
+          )}
+          {tenant.disabled && <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Désactivé</Badge>}
+        </button>
+        <Button size="sm" variant="outline" data-testid={`admin-view-client-btn-${tenant.id}`}
+          className="shrink-0 gap-1.5"
+          onClick={() => { setActingTenant({ id: tenant.id, name: tenant.name }); window.location.assign("/"); }}>
+          <Eye className="h-3.5 w-3.5" /> Voir ce client
+        </Button>
+      </div>
       {expanded && (
         <div className="space-y-6 border-t border-slate-100 px-5 py-5">
           <div className="flex flex-wrap items-center gap-8">

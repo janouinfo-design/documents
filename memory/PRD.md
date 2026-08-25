@@ -342,6 +342,12 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - Identifiants superadmin preview : memory/test_credentials.md (gitignoré). PROD : l'utilisateur devra ajouter SUPERADMIN_EMAIL/SUPERADMIN_PASSWORD dans deploy/.env au prochain déploiement (sinon la console n'existe pas en prod et admin@logitrak.ch reste superadmin — comportement rétrocompatible voulu).
 - ⚠ NON DÉPLOYÉ EN PRODUCTION — en attente de validation utilisateur, comme exigé.
 
+## Lot 4b — Vue client superadmin + rôle read_only (2026-08-25) — TESTÉ PREVIEW, NON DÉPLOYÉ
+- [x] **Matrice d'accès utilisateur DÉSORMAIS 100 % CONFORME** : superadmin accès tous tenants = OUI ; admin cross-tenant = 404 ; read_only écritures = 403 ; superadmin console = OK.
+- [x] Backend : header `X-Acting-Tenant` honoré UNIQUEMENT pour role superadmin (validé serveur, 404 si client inconnu, ignoré pour les autres rôles — testé) ; file-token param `acting_tenant` (403 non-superadmin) ; claim tenant du file token appliqué au state (fichiers du client visibles en vue client) ; rôle `read_only` : méthodes non-GET → 403 sauf /api/auth (change-password + logout autorisés — testé) ; rôles création utilisateur = admin|read_only (« user » supprimé, 422).
+- [x] Frontend : bouton « Voir ce client » sur chaque carte console → localStorage lt_acting_tenant + header auto (api.js) → bandeau indigo « Vue client : X — lecture + écriture » (Layout, data-testid acting-tenant-banner) + bouton retour console ; sélecteur de rôle dans le dialog utilisateur ; badge « lecture seule » dans le menu utilisateur.
+- [x] Tests : test_lot4b.py **10/10 PASS** (écriture superadmin en tenant client + isolation + suppression, read_only 4 écritures 403 / lectures 200 / change-password OK) ; régression totale **203 = 201 PASS / 2 SKIP / 0 FAIL** ; e2e navigateur vérifié (login superadmin → Voir ce client → 12 véhicules du client + KPIs → retour console).
+
 ## Backlog (prioritized)
 - Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.
 - Phase 3+ (gros chantiers, à cadrer 1 par 1): modules Contrats & renouvellements, Conducteurs, Clients, Modèles, Corbeille/Favoris/Partagés ; permissions/rôles + auth ; multi-tenant.

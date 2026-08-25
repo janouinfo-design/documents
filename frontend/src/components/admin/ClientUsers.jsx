@@ -16,13 +16,14 @@ function UserDialog({ open, onOpenChange, title, description, onSubmit, withEmai
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
+  const [role, setRole] = useState("admin");
   const [saving, setSaving] = useState(false);
   const submit = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
-      await onSubmit({ email: email.trim().toLowerCase(), name: name.trim(), password });
-      setEmail(""); setName(""); setPassword("");
+      await onSubmit({ email: email.trim().toLowerCase(), name: name.trim(), password, role });
+      setEmail(""); setName(""); setPassword(""); setRole("admin");
       onOpenChange(false);
     } catch (err) {
       toast.error(String(err?.response?.data?.detail || "Opération impossible"));
@@ -49,6 +50,15 @@ function UserDialog({ open, onOpenChange, title, description, onSubmit, withEmai
                 <Label>Nom (optionnel)</Label>
                 <Input data-testid="admin-user-name-input" value={name}
                   onChange={(e) => setName(e.target.value)} placeholder="Prénom Nom" className="mt-1.5" />
+              </div>
+              <div>
+                <Label>Rôle</Label>
+                <select data-testid="admin-user-role-select" value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  className="mt-1.5 h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm">
+                  <option value="admin">Admin (lecture + écriture)</option>
+                  <option value="read_only">Lecture seule</option>
+                </select>
               </div>
             </>
           )}
@@ -127,8 +137,8 @@ export default function ClientUsers({ tenantId }) {
       <UserDialog open={createOpen} onOpenChange={setCreateOpen} withEmail
         title="Nouvel utilisateur"
         description={`Compte de connexion pour le client ${tenantId}. Le mot de passe est défini ici, jamais envoyé par email.`}
-        onSubmit={async ({ email, name, password }) => {
-          await adminCreateUser(tenantId, { email, name, password, role: "admin" });
+        onSubmit={async ({ email, name, password, role }) => {
+          await adminCreateUser(tenantId, { email, name, password, role });
           toast.success("Utilisateur créé");
           refresh();
         }} />

@@ -7,10 +7,24 @@ const TOKEN_KEY = "lt_token";
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = (t) => (t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY));
 
+// Vue client (superadmin uniquement — le backend vérifie le rôle côté serveur)
+const ACTING_KEY = "lt_acting_tenant";
+export const getActingTenant = () => {
+  try {
+    return JSON.parse(localStorage.getItem(ACTING_KEY)) || null;
+  } catch {
+    return null;
+  }
+};
+export const setActingTenant = (t) =>
+  t ? localStorage.setItem(ACTING_KEY, JSON.stringify(t)) : localStorage.removeItem(ACTING_KEY);
+
 const http = axios.create({ baseURL: API });
 http.interceptors.request.use((config) => {
   const t = getToken();
   if (t) config.headers.Authorization = `Bearer ${t}`;
+  const acting = getActingTenant();
+  if (acting?.id) config.headers["X-Acting-Tenant"] = acting.id;
   return config;
 });
 http.interceptors.response.use(
@@ -27,11 +41,15 @@ http.interceptors.response.use(
 
 // Jeton fichier court (scope=file, 10 min) — le JWT de session n'est JAMAIS mis en URL
 let fileToken = null;
-export const refreshFileToken = () =>
-  http.get("/auth/file-token").then((r) => {
-    fileToken = r.data.token;
-    return fileToken;
-  });
+export const refreshFileToken = () => {
+  const acting = getActingTenant();
+  return http
+    .get("/auth/file-token", { params: acting?.id ? { acting_tenant: acting.id } : {} })
+    .then((r) => {
+      fileToken = r.data.token;
+      return fileToken;
+    });
+};
 export const clearFileToken = () => {
   fileToken = null;
 };

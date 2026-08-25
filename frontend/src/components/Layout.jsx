@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Truck, CalendarClock, Bell, Layers3, UserCircle2, KeyRound, LogOut, ShieldCheck, Building2 } from "lucide-react";
+import { LayoutDashboard, Truck, CalendarClock, Bell, Layers3, UserCircle2, KeyRound, LogOut, ShieldCheck, Building2, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getActingTenant, setActingTenant } from "@/lib/api";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -85,6 +86,7 @@ function UserMenu() {
         <DropdownMenuContent align="end" className="w-60">
           <DropdownMenuLabel data-testid="user-menu-email" className="truncate text-xs font-normal text-slate-500">
             {user?.email}
+            {user?.role === "read_only" && <span className="ml-1 font-semibold text-amber-600">· lecture seule</span>}
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem data-testid="user-menu-change-password" onSelect={() => setPwdOpen(true)}>
@@ -100,10 +102,30 @@ function UserMenu() {
   );
 }
 
+function ActingTenantBanner() {
+  const { user } = useAuth();
+  const acting = getActingTenant();
+  if (user?.role !== "superadmin" || !acting?.id) return null;
+  return (
+    <div data-testid="acting-tenant-banner"
+      className="flex flex-wrap items-center justify-between gap-2 bg-indigo-700 px-4 py-2 text-sm text-white sm:px-6 lg:px-8">
+      <span className="flex items-center gap-2 font-medium">
+        <Eye className="h-4 w-4" /> Vue client : {acting.name || acting.id} — lecture + écriture
+      </span>
+      <button data-testid="acting-tenant-exit-btn"
+        onClick={() => { setActingTenant(null); window.location.assign("/admin"); }}
+        className="rounded-md bg-white/15 px-3 py-1 text-xs font-semibold transition-colors hover:bg-white/25">
+        Revenir à la console
+      </button>
+    </div>
+  );
+}
+
 export default function Layout({ children }) {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/85 backdrop-blur-md">
+        <ActingTenantBanner />
         <div className="mx-auto flex h-16 max-w-[1400px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
           <Brand />
           <div className="flex items-center gap-4">

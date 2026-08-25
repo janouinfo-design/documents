@@ -51,9 +51,14 @@ auth_router = APIRouter(prefix="/api/auth")
 async def require_auth(request: Request) -> dict:
     user = await authenticate_request(request, db)
     request.state.user = user
-    tenant_id = user.get("tenant_id") or "default"
-    request.state.tenant_id = tenant_id
-    if user.get("role") != "superadmin":
+    tenant_id = user.pop("_token_tenant", None) or user.get("tenant_id") or "default"
+    if user.get("role") == "superadmin":
+        acting = request.headers.get("X-Acting-Tenant")
+        if acting and not request.url.path.startswith(("/api/auth", "/api/admin")):
+            if not await db.tenants.find_one({"id": acting}):
+                raise HTTPException(status_code=404, detail="Client introuvable")
+            tenant_id = acting
+    else:
         t = await db.tenants.find_one({"id": tenant_id}, {"_id": 0, "disabled": 1, "modules": 1})
         if t and t.get("disabled"):
             raise HTTPException(status_code=401, detail="Compte client désactivé")
@@ -61,6 +66,11 @@ async def require_auth(request: Request) -> dict:
                 and t and isinstance(t.get("modules"), dict)
                 and t["modules"].get("documents") is False):
             raise HTTPException(status_code=403, detail="Module Documents non activé pour ce compte")
+        if (user.get("role") == "read_only"
+                and request.method not in ("GET", "HEAD", "OPTIONS")
+                and not request.url.path.startswith("/api/auth")):
+            raise HTTPException(status_code=403, detail="Compte en lecture seule — modification non autorisée")
+    request.state.tenant_id = tenant_id
     return user
 
 
@@ -97,9 +107,18 @@ async def auth_login(payload: LoginPayload, request: Request):
 
 
 @auth_router.get("/file-token")
-async def auth_file_token(user: dict = Depends(require_auth)):
-    """Jeton court (10 min) dédié aux URLs de fichiers/rapports — refusé sur l'API métier."""
-    return {"token": create_file_token(user), "expires_in": 600}
+async def auth_file_token(request: Request, acting_tenant: Optional[str] = None,
+                          user: dict = Depends(require_auth)):
+    """Jeton court (10 min) dédié aux URLs de fichiers/rapports — refusé sur l'API métier.
+    acting_tenant : réservé au superadmin (vue client)."""
+    tenant_override = None
+    if acting_tenant:
+        if user.get("role") != "superadmin":
+            raise HTTPException(status_code=403, detail="Réservé au Super Admin")
+        if not await db.tenants.find_one({"id": acting_tenant}):
+            raise HTTPException(status_code=404, detail="Client introuvable")
+        tenant_override = acting_tenant
+    return {"token": create_file_token(user, tenant_override), "expires_in": 600}
 
 
 @auth_router.get("/me")
@@ -2850,8 +2869,8 @@ async def admin_create_user(tid: str, payload: TenantUserCreate, request: Reques
     if len(payload.password or "") < 8:
         raise HTTPException(status_code=422, detail="Mot de passe : 8 caractères minimum")
     role = payload.role or "admin"
-    if role not in ("admin", "user"):
-        raise HTTPException(status_code=422, detail="Rôle invalide (admin ou user)")
+    if role not in ("admin", "read_only"):
+        raise HTTPException(status_code=422, detail="Rôle invalide (admin ou read_only)")
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=409, detail="Un utilisateur avec cet email existe déjà")
     now = datetime.now(timezone.utc).isoformat()

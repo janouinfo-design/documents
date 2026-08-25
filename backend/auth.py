@@ -41,9 +41,10 @@ def create_access_token(user_id: str, email: str, token_version: int = 0) -> str
     return jwt.encode(payload, _secret(), algorithm=JWT_ALGORITHM)
 
 
-def create_file_token(user: dict) -> str:
-    """Jeton court (10 min) scope=file : uniquement /api/files et /api/reports, jamais l'API métier."""
-    payload = {"sub": user["id"], "tenant_id": user.get("tenant_id") or "default",
+def create_file_token(user: dict, tenant_id: str = None) -> str:
+    """Jeton court (10 min) scope=file : uniquement /api/files et /api/reports, jamais l'API métier.
+    tenant_id : override réservé au superadmin (vue client)."""
+    payload = {"sub": user["id"], "tenant_id": tenant_id or user.get("tenant_id") or "default",
                "type": "file", "tv": int(user.get("token_version", 0) or 0),
                "exp": datetime.now(timezone.utc) + timedelta(minutes=FILE_TOKEN_TTL_MINUTES)}
     return jwt.encode(payload, _secret(), algorithm=JWT_ALGORITHM)
@@ -84,8 +85,11 @@ async def authenticate_request(request: Request, db) -> dict:
         raise HTTPException(status_code=401, detail="Compte désactivé — contactez votre administrateur")
     if int(payload.get("tv", 0) or 0) != int(user.get("token_version", 0) or 0):
         raise HTTPException(status_code=401, detail="Session révoquée — reconnectez-vous")
-    if token_type == "file" and (payload.get("tenant_id") or "default") != (user.get("tenant_id") or "default"):
-        raise HTTPException(status_code=401, detail="Jeton invalide")
+    if token_type == "file":
+        claim_tenant = payload.get("tenant_id") or "default"
+        if claim_tenant != (user.get("tenant_id") or "default") and user.get("role") != "superadmin":
+            raise HTTPException(status_code=401, detail="Jeton invalide")
+        user["_token_tenant"] = claim_tenant
     return user
 
 
