@@ -300,6 +300,10 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - [ ] Audit Mongo prod : en attente sortie de deploy/audit-mongo-prod-readonly.js.
 - Verdict : **READY WITH CONDITIONS** — STATUT : EN ATTENTE DU GO UTILISATEUR POUR DOCUMENTS V2 PHASE 1.
 
+## Phase 1 : périmètre VALIDÉ par l'utilisateur, démarrage GELÉ jusqu'au déploiement sécurité (2026-08-25)
+- Commit sécurité figé : **5d65b83** (diff 2f8c434→HEAD = Login.jsx + script audit + docs uniquement, zéro code V2). Worktree isolé impossible sur la plateforme → décision utilisateur appliquée : ATTENDRE (séquence : Save to GitHub + déploiement VPS par l'utilisateur → matrice 401/200 prod par l'agent → script Mongo prod par l'utilisateur → GO définitif).
+- Choix Phase 1 validés : UI légère dans l'onglet Documents existant (catégorie à l'upload + affichage + badge statut du moteur backend, PAS de page transverse) ; 9 catégories système codes stables REGISTRATION/INSURANCE/LEASING/TECHNICAL_INSPECTION/VIGNETTE/INVOICE/CONDITION_REPORT/CONTRACT/OTHER, is_system=true, ordre stable, mapping legacy centralisé déterministe testé ; JAMAIS de fallback silencieux OTHER (category_id=null + TO_VERIFY si indéterminable) ; statut ≠ alertes : expiry_warning_days=30 défaut configurable/catégorie + alert_thresholds historiques CONFIRMÉS server.py l.347 (leasing [180,90,30], assurance [90,60,30], controle [90,60,30,7]) ; bug Vignette corrigé dans le mapping (cause : FOLDERS l.964 sans « Vignette » → fallback Divers l.997) ; document sans expiry_date jamais EXPIRING/EXPIRED ; tests seed idempotent + 9 mappings + multi-tenant + frontières J-181…J+1. Interdits Phase 1 : page transverse, documents requis/conformité, migrations Assurance/Leasing, coûts, timeline, nettoyage démo, catégories métier futures (Entretien, Pneus…).
+
 ## Backlog (prioritized)
 - Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.
 - Phase 3+ (gros chantiers, à cadrer 1 par 1): modules Contrats & renouvellements, Conducteurs, Clients, Modèles, Corbeille/Favoris/Partagés ; permissions/rôles + auth ; multi-tenant.
