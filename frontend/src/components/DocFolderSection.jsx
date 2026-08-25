@@ -45,9 +45,13 @@ export default function DocFolderSection({ vehicleId, folder, docs = [], onChang
   };
 
   const handleDelete = async (id) => {
-    await deleteDocument(id);
-    toast.success("Document supprimé");
-    onChange?.();
+    try {
+      await deleteDocument(id);
+      toast.success("Document supprimé");
+      onChange?.();
+    } catch (e) {
+      toast.error("Échec de la suppression");
+    }
   };
 
   return (
@@ -57,7 +61,7 @@ export default function DocFolderSection({ vehicleId, folder, docs = [], onChang
         busy={busy}
         compact={compact}
         testId={`dropzone-${folder.replace(/\s/g, "-").toLowerCase()}`}
-        accept=".pdf,.jpg,.jpeg,.png,.webp,.docx,.doc,.xlsx,.xls,.zip,.csv,.mp4,.mov"
+        accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.docx,.doc,.xlsx,.xls,.zip,.csv,.mp4,.mov,.webm"
       />
       {items.length === 0 ? (
         <p className="px-1 text-xs text-slate-400">Aucun document dans ce dossier.</p>

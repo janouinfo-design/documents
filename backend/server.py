@@ -24,6 +24,7 @@ from technical_data import TECH_FIELD_DEFS
 import astra_data
 from astra_data import AstraLookupError
 from auth import (authenticate_request, check_lockout, clear_failures, create_access_token,
+                  create_file_token,
                   hash_password, record_failure, seed_admin, verify_password)
 
 ROOT_DIR = Path(__file__).parent
@@ -76,7 +77,14 @@ async def auth_login(payload: LoginPayload, request: Request):
         raise HTTPException(status_code=401, detail="Email ou mot de passe incorrect")
     await clear_failures(db, identifier)
     safe = {k: v for k, v in user.items() if k not in ("_id", "password_hash")}
-    return {"token": create_access_token(user["id"], user["email"]), "user": safe}
+    return {"token": create_access_token(user["id"], user["email"], user.get("token_version", 0)),
+            "user": safe}
+
+
+@auth_router.get("/file-token")
+async def auth_file_token(user: dict = Depends(require_auth)):
+    """Jeton court (10 min) dédié aux URLs de fichiers/rapports — refusé sur l'API métier."""
+    return {"token": create_file_token(user), "expires_in": 600}
 
 
 @auth_router.get("/me")
@@ -100,6 +108,9 @@ async def auth_change_password(payload: ChangePasswordPayload, user: dict = Depe
 
 @auth_router.post("/logout")
 async def auth_logout(user: dict = Depends(require_auth)):
+    # Révocation réelle : incrémente token_version → tous les jetons émis (session + fichiers)
+    # de CET utilisateur deviennent invalides. N'affecte aucun autre utilisateur.
+    await db.users.update_one({"id": user["id"]}, {"$inc": {"token_version": 1}})
     return {"status": "ok"}
 
 # ---------------------------------------------------------------------------
@@ -909,12 +920,13 @@ async def delete_vehicle(vehicle_id: str, request: Request):
 # ---------------------------------------------------------------------------
 @api_router.post("/upload")
 async def upload_file(request: Request, file: UploadFile = File(...), vehicle_id: str = Form("misc")):
-    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "bin"
-    path = f"{APP_NAME}/uploads/{vehicle_id}/{uuid.uuid4()}.{ext}"
+    if vehicle_id != "misc":
+        await find_tenant_vehicle(request, vehicle_id, {"_id": 1})
     data = await file.read()
-    content_type = file.content_type or guess_mime(file.filename)
-    if content_type in ("application/octet-stream", "", None):
-        content_type = guess_mime(file.filename)
+    validate_upload(file.filename, len(data), ALLOWED_MEDIA_EXTS)
+    ext = _ext_of(file.filename)
+    path = f"{APP_NAME}/uploads/{vehicle_id}/{uuid.uuid4()}.{ext}"
+    content_type = guess_mime(file.filename)
     try:
         result = put_object(path, data, content_type)
     except Exception as e:
@@ -941,18 +953,29 @@ async def upload_file(request: Request, file: UploadFile = File(...), vehicle_id
     }
 
 
+# Types réellement sûrs à afficher dans le navigateur ; tout le reste = téléchargement forcé
+SAFE_INLINE_MIME = {"image/jpeg", "image/png", "image/webp", "image/gif",
+                    "application/pdf", "video/mp4", "video/quicktime", "video/webm"}
+
+
+def _safe_filename(name: str) -> str:
+    return re.sub(r'[\r\n\t";\\]', "_", name or "").strip()[:150] or "fichier"
+
+
 @api_router.get("/files/{path:path}")
 async def serve_file(path: str, request: Request, download: bool = False, filename: Optional[str] = None):
     if not await _path_belongs_to_tenant(path, tid(request)):
         raise HTTPException(status_code=404, detail="Fichier introuvable")
     try:
-        data, content_type = get_object(path)
+        data, _stored_type = get_object(path)
     except Exception:
         raise HTTPException(status_code=404, detail="Fichier introuvable")
-    disposition = "attachment" if download else "inline"
-    headers = {}
+    # Content-Type dérivé de l'extension côté serveur — jamais de la valeur fournie au téléversement
+    content_type = guess_mime(path)
+    disposition = "inline" if (content_type in SAFE_INLINE_MIME and not download) else "attachment"
+    headers = {"X-Content-Type-Options": "nosniff"}
     if filename:
-        headers["Content-Disposition"] = f'{disposition}; filename="{filename}"'
+        headers["Content-Disposition"] = f'{disposition}; filename="{_safe_filename(filename)}"'
     else:
         headers["Content-Disposition"] = disposition
     return Response(content=data, media_type=content_type, headers=headers)
@@ -979,12 +1002,11 @@ async def list_documents(vehicle_id: str, request: Request):
 @api_router.post("/vehicles/{vehicle_id}/documents")
 async def add_document(vehicle_id: str, request: Request, file: UploadFile = File(...), folder: str = Form("Divers")):
     await find_tenant_vehicle(request, vehicle_id, {"_id": 1})
-    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "bin"
-    path = f"{APP_NAME}/uploads/{vehicle_id}/{uuid.uuid4()}.{ext}"
     data = await file.read()
-    content_type = file.content_type or guess_mime(file.filename)
-    if content_type in ("application/octet-stream", "", None):
-        content_type = guess_mime(file.filename)
+    validate_upload(file.filename, len(data), ALLOWED_MEDIA_EXTS)
+    ext = _ext_of(file.filename)
+    path = f"{APP_NAME}/uploads/{vehicle_id}/{uuid.uuid4()}.{ext}"
+    content_type = guess_mime(file.filename)
     try:
         result = put_object(path, data, content_type)
     except Exception as e:

@@ -117,7 +117,7 @@ def test_documents_add_and_list(session):
     import io
     rv = session.get(f"{API}/vehicles", timeout=30)
     vid = rv.json()[0]["id"]
-    files = {"file": ("nav_test.txt", io.BytesIO(b"navixy doc"), "text/plain")}
+    files = {"file": ("nav_test.csv", io.BytesIO(b"navixy;doc\n"), "text/csv")}
     data = {"folder": "Assurance"}
     r = session.post(f"{API}/vehicles/{vid}/documents", files=files, data=data, timeout=60)
     assert r.status_code == 200, r.text

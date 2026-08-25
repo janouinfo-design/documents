@@ -292,7 +292,13 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - [x] Sécurité login : SECRET EXPOSÉ : OUI (corrigé source/bundle ; reste historique Git + chat) · ROTATION RECOMMANDÉE : OUI (aucune rotation effectuée).
 - Verdict étape : **READY FOR SECURITY FIXES**. STATUT : EN ATTENTE DE VALIDATION UTILISATEUR — AUCUNE MIGRATION DOCUMENTS V2 EXÉCUTÉE.
 
-## Lot sécurité : rotation du secret + vérification auth API (2026-08-25)
+## Lot Sécurité 2 livré et testé (2026-08-25) — SEC-001 + SEC-002 RÉALISÉS
+- [x] SEC-001 : file-token type=file TTL 10 min (GET /api/auth/file-token), query token accepté UNIQUEMENT sur /api/files|/api/reports et UNIQUEMENT type=file ; JWT session en query → 401 partout ; file-token sur API métier → 401 ; révocation logout réelle via token_version ($inc, par utilisateur) ; frontend refreshFileToken (login + 8 min + focus), logout appelle POST /auth/logout.
+- [x] SEC-002 : validate_upload branché sur /upload et /documents (allowlist = besoins UI, 25 Mo), vehicle_id de /upload vérifié tenant, serve_file : content-type dérivé extension serveur, inline limité SAFE_INLINE_MIME, nosniff, filename assaini.
+- [x] Tests : test_security_lot2.py 19/19 · régression 147 PASS/2 SKIP/0 FAIL (fixtures .txt→.csv TEST_ONLY) · frontend testing agent 12/13 (iteration_21.json, révocation logout prouvée) · 3 remarques mineures corrigées (Escape aperçu, accept list, toast erreur suppression).
+- Risques documentés : file-token bootstrap fail = images 401 silencieuses (mitigé) ; change-password ne révoque pas les autres sessions (choix conservé) ; CORS/headers prod à confirmer au déploiement.
+- ⚠ Le HEAD à déployer inclut désormais ce lot. AUCUN code Documents V2. Verdict : SECURITY LOT 2 READY.
+- Toujours en attente : preuves runbook VPS (SHA, compose ps, login, matrices, sortie Mongo) → puis GO PHASE 1 explicite.
 - [x] **Rotation superadmin preview EFFECTUÉE** : nouveau secret 32 hex dans backend/.env (ADMIN_FORCE_RESET=true temporaire car password_changed_in_app=True, puis false) ; test_credentials.md à jour (fichier gitignoré). Tests : ancien mdp → 401, nouveau → 200, /auth/me 200, stable après restart. PROD : aucun credential en service (login 404) → rotation N/A, interdiction de réutiliser l'ancien secret dans deploy/.env.
 - [x] **Historique Git** : ancien secret présent dans 4 commits (7e0a008→2f8c434, Login.jsx). RÉÉCRITURE HISTORIQUE : NON recommandée (rotation neutralise ; réécriture casserait clones/VPS).
 - [x] **Auth API auditée + matrice réelle** : require_auth global (server.py l.2791) ; seule route publique = POST /api/auth/login. Preview : 16/16 GET sans token → 401 ; 9/9 écritures sans token → 401 (aucune écriture réelle) ; 7/7 avec JWT → 200 tenant-scopé ; test_multitenant+logitrak_api → 19 passed post-rotation. Total 51 PASS / 0 FAIL.

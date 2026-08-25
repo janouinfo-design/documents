@@ -896,3 +896,37 @@ READY WITH CONDITIONS
 Conditions restantes : (1) déploiement prod par l'utilisateur + validation post-déploiement, (2) sortie du script Mongo VPS, (3) GO explicite Phase 1. Côté preview : secret roté et testé, bundle propre, API 100 % protégée, isolation tenant PASS.
 
 **STATUT : EN ATTENTE DU GO UTILISATEUR POUR DOCUMENTS V2 PHASE 1**
+
+---
+
+# ADDENDUM 4 — Lot Sécurité 2 : SEC-001 + SEC-002 implémentés et testés (2026-08-25)
+
+## SEC-001 — RÉALISÉ
+- File-token dédié : `create_file_token` (auth.py) — type=file, tenant_id, tv, **TTL 10 min** ; émis par `GET /api/auth/file-token` (session Bearer obligatoire).
+- Query string : seuls les jetons type=file sont acceptés, et uniquement sur `/api/files/` et `/api/reports/` (`FILE_TOKEN_PATH_PREFIXES`, auth.py). Un JWT de session en query → 401 partout (ancien mécanisme désactivé). Un file-token sur l'API métier (header ou query) → 401.
+- Révocation : champ `token_version` par utilisateur, embarqué (`tv`) dans tous les jetons, comparé en DB à chaque requête ; `POST /api/auth/logout` fait `$inc token_version` → tous les jetons (session + fichiers) de CET utilisateur meurent ; les autres utilisateurs ne sont pas affectés ; re-login immédiat OK.
+- Frontend : `api.js` — le JWT de session n'est plus jamais mis en URL ; `refreshFileToken()` au login/bootstrap + toutes les 8 min + au focus fenêtre (AuthContext) ; logout appelle désormais réellement `POST /auth/logout` puis purge.
+
+## SEC-002 — RÉALISÉ
+- `validate_upload` (existant, était du code mort) branché sur `POST /api/upload` et `POST /api/vehicles/{id}/documents` : allowlist `ALLOWED_MEDIA_EXTS` (pdf,jpg,jpeg,png,webp,gif,docx,doc,xls,xlsx,zip,csv,mp4,mov,webm = exactement les besoins UI), taille max 25 Mo. Le scan avait déjà ses contrôles (SCAN_EXTS + taille).
+- `/api/upload` vérifie désormais que `vehicle_id` appartient au tenant (404 sinon).
+- `serve_file` : Content-Type **dérivé de l'extension côté serveur** (jamais la valeur client), `inline` uniquement pour SAFE_INLINE_MIME (images/PDF/vidéos), `attachment` forcé sinon, `X-Content-Type-Options: nosniff` systématique, `filename` de Content-Disposition assaini (CR/LF/guillemets).
+
+## Fichiers modifiés
+`backend/auth.py`, `backend/server.py` (login/logout/file-token/serve_file/upload/documents), `frontend/src/lib/api.js`, `frontend/src/context/AuthContext.jsx`, `frontend/src/components/FilePreview.jsx` (Escape ferme l'aperçu), `frontend/src/components/DocFolderSection.jsx` (accept aligné backend + erreur suppression), TEST_ONLY : `tests/test_logitrak_api.py`, `tests/test_navixy.py` (fixtures .txt→.csv), NOUVEAU : `tests/test_security_lot2.py` (19 tests).
+
+## Tests (chiffres exacts, suites disjointes)
+- `test_security_lot2.py` : **19 PASS / 0 FAIL / 0 SKIP** (14.82 s).
+- Régression suite existante (149) : **147 PASS / 2 SKIP / 0 FAIL** (3 fixtures .txt corrigées TEST_ONLY puis re-run 17/17).
+- Frontend E2E (testing agent, iteration_21.json) : **12/13** — révocation logout prouvée (ancien token → 401), rapports 200 avec file-token et 401 avec JWT session en query. Le point LOW (Escape aperçu PDF) corrigé ensuite.
+
+## Risques restants (acceptés/documentés)
+- file-token absent au bootstrap → images 401 silencieuses (mitigé par refresh login/8 min/focus).
+- `change-password` ne bump pas token_version (session courante préservée volontairement).
+- CORS origins prod + headers nginx (HSTS) à confirmer au déploiement.
+
+## MODIFICATIONS DOCUMENTS V2 : AUCUNE
+## VERDICT : SECURITY LOT 2 READY
+⚠ Le HEAD au moment du « Save to GitHub » inclut désormais ce lot (testé). Déployer ce HEAD.
+
+**STATUT : EN ATTENTE DES PREUVES VPS — PHASE 1 GELÉE**

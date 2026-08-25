@@ -25,16 +25,27 @@ http.interceptors.response.use(
   }
 );
 
+// Jeton fichier court (scope=file, 10 min) — le JWT de session n'est JAMAIS mis en URL
+let fileToken = null;
+export const refreshFileToken = () =>
+  http.get("/auth/file-token").then((r) => {
+    fileToken = r.data.token;
+    return fileToken;
+  });
+export const clearFileToken = () => {
+  fileToken = null;
+};
+
 const withToken = (url) => {
-  const t = getToken();
-  if (!t) return url;
-  return `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(t)}`;
+  if (!fileToken) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(fileToken)}`;
 };
 
 // Authentification
 export const authLogin = (email, password) =>
   http.post("/auth/login", { email, password }).then((r) => r.data);
 export const authMe = () => http.get("/auth/me").then((r) => r.data);
+export const authLogout = () => http.post("/auth/logout").then((r) => r.data);
 export const authChangePassword = (current_password, new_password) =>
   http.post("/auth/change-password", { current_password, new_password }).then((r) => r.data);
 

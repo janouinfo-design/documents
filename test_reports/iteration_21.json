@@ -1,0 +1,28 @@
+{
+  "summary": "Frontend-only E2E validation of Lot Sécurité 2 (SEC-001 file-token + logout revocation, SEC-002 upload validation) on the preview URL. 12/13 checks passed. Verified: login → dashboard (no blocking console errors); /vehicules list (12 rows); vehicle drawer → Documents tab (9 folders); PDF upload in 'Divers' → success toast + doc listed; preview opens with 200 on /api/files (iframe src contains ?token= that is NOT the session JWT); download link returns 200 application/pdf with 'attachment' Content-Disposition and X-Content-Type-Options: nosniff; document deletion OK (no TEST_ leftovers, verified across all vehicles via API); forbidden .txt upload → backend 400 + French error toast, no crash, no doc added; reports (conformite.pdf, couts.csv, vehicule/{id}.pdf) all open with the short-lived file token → 200 with correct content-types, while the SAME endpoint with the session JWT in ?token= returns 401 (query-token scope enforced); navigation /vehicules → /timeline → /alertes → / with no spurious redirect to /login; logout → /login, localStorage.lt_token cleared, and the OLD captured session token returns 401 on /api/auth/me (real server-side revocation via token_version); re-login works immediately after.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "FilePreview", "issue": "Escape key does not close the preview dialog when a PDF is displayed (focus is captured by the <iframe>, so the Radix Dialog never receives the keydown). The X button and overlay work. Minor UX: user must click X.", "selector": "[data-testid=\"file-preview-dialog\"]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Optional (LOW): make FilePreview closable with Escape while a PDF iframe is focused (e.g. keydown listener on window while dialog is open)."
+  ],
+  "critical_code_review_comments": [
+    "api.js withToken() silently returns the URL WITHOUT a token if fileToken is still null (e.g. if /auth/file-token failed at bootstrap). The resulting <img>/<iframe>/report link then 401s with no user feedback. Consider awaiting/retrying refreshFileToken() on demand before building file URLs, or surfacing an error state.",
+    "DropZone accept list in DocFolderSection.jsx (line 60) omits 'gif' and 'webm' which the backend allowlist accepts — harmless but inconsistent with the server allowlist.",
+    "DocFolderSection.handleDelete has no try/catch: a failing DELETE would throw an unhandled promise rejection and show a false 'Document supprimé' toast path only on success, but no error toast on failure."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (per request)", "frontend": "92% (12/13 checks; 1 LOW UX finding)"},
+  "seed_data_creation": "Uploaded then deleted a single test PDF (TEST_qa_doc.pdf) in folder 'Divers' of vehicle '1-Enyaq 01 Bern'; a rejected TEST_bad.txt was never stored. Verified zero TEST_* documents remain across all 12 vehicles. No business data modified.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "/app/memory/test_credentials.md (superadmin) — used as-is, not printed",
+  "context_for_next_testing_agent": "No vehicle in the fleet currently has a photo hosted on /api/files (all thumbnails are external Unsplash URLs), so the ?token= assertion on <img src> could not be exercised on /vehicules; it was validated instead on the document preview iframe and on report links. PDF previews render blank in headless Chromium (no PDF plugin) — verify via network status (200) and iframe src, not visually. Reminder: logout revokes all superadmin tokens, so run revocation tests last and re-login after; login lockout is 5 fails/15 min.",
+  "rca_of_the_issue": "Escape-not-closing: the PDF <iframe> inside the Radix DialogContent takes keyboard focus, so the dialog's onEscapeKeyDown handler never fires. Not a security or data issue."
+}

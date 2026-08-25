@@ -112,8 +112,8 @@ def test_create_update_delete_vehicle(session):
 
 # ----- Upload / serve round-trip -----
 def test_upload_and_serve_roundtrip(session):
-    content = b"hello logitrak file storage test"
-    files = {"file": ("test.txt", io.BytesIO(content), "text/plain")}
+    content = b"hello;logitrak;file;storage;test\n"
+    files = {"file": ("test.csv", io.BytesIO(content), "text/csv")}
     data = {"vehicle_id": "misc"}
     r = session.post(f"{API}/upload", files=files, data=data, timeout=60)
     assert r.status_code == 200, r.text
@@ -130,7 +130,7 @@ def test_upload_and_serve_roundtrip(session):
 def test_add_list_delete_document(session):
     vehicles = session.get(f"{API}/vehicles", timeout=30).json()
     vid = vehicles[0]["id"]
-    files = {"file": ("contract.txt", io.BytesIO(b"contract data"), "text/plain")}
+    files = {"file": ("contract.csv", io.BytesIO(b"contrat;data\n"), "text/csv")}
     data = {"folder": "Leasing"}
     r = session.post(f"{API}/vehicles/{vid}/documents", files=files, data=data, timeout=60)
     assert r.status_code == 200, r.text

@@ -12,8 +12,12 @@ logger = logging.getLogger(__name__)
 
 JWT_ALGORITHM = "HS256"
 TOKEN_TTL_HOURS = 24
+FILE_TOKEN_TTL_MINUTES = 10
 MAX_ATTEMPTS = 5
 LOCKOUT_MINUTES = 15
+
+# Seuls chemins où un jeton "file" passé en query string est accepté
+FILE_TOKEN_PATH_PREFIXES = ("/api/files/", "/api/reports/")
 
 
 def _secret() -> str:
@@ -31,24 +35,32 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
-def create_access_token(user_id: str, email: str) -> str:
-    payload = {"sub": user_id, "email": email, "type": "access",
+def create_access_token(user_id: str, email: str, token_version: int = 0) -> str:
+    payload = {"sub": user_id, "email": email, "type": "access", "tv": int(token_version or 0),
                "exp": datetime.now(timezone.utc) + timedelta(hours=TOKEN_TTL_HOURS)}
+    return jwt.encode(payload, _secret(), algorithm=JWT_ALGORITHM)
+
+
+def create_file_token(user: dict) -> str:
+    """Jeton court (10 min) scope=file : uniquement /api/files et /api/reports, jamais l'API métier."""
+    payload = {"sub": user["id"], "tenant_id": user.get("tenant_id") or "default",
+               "type": "file", "tv": int(user.get("token_version", 0) or 0),
+               "exp": datetime.now(timezone.utc) + timedelta(minutes=FILE_TOKEN_TTL_MINUTES)}
     return jwt.encode(payload, _secret(), algorithm=JWT_ALGORITHM)
 
 
 def _extract_token(request: Request):
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
-        return auth_header[7:]
+        return auth_header[7:], False
     token = request.cookies.get("access_token")
     if token:
-        return token
-    return request.query_params.get("token")
+        return token, False
+    return request.query_params.get("token"), True
 
 
 async def authenticate_request(request: Request, db) -> dict:
-    token = _extract_token(request)
+    token, from_query = _extract_token(request)
     if not token:
         raise HTTPException(status_code=401, detail="Non authentifié")
     try:
@@ -57,11 +69,21 @@ async def authenticate_request(request: Request, db) -> dict:
         raise HTTPException(status_code=401, detail="Session expirée — reconnectez-vous")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Jeton invalide")
-    if payload.get("type") != "access":
+    token_type = payload.get("type")
+    if from_query:
+        # En query string : uniquement un jeton "file" et uniquement sur fichiers/rapports.
+        if token_type != "file" or not request.url.path.startswith(FILE_TOKEN_PATH_PREFIXES):
+            raise HTTPException(status_code=401, detail="Jeton invalide pour cette ressource")
+    elif token_type != "access":
+        # Un jeton "file" ne donne jamais accès à l'API métier, même en header.
         raise HTTPException(status_code=401, detail="Jeton invalide")
     user = await db.users.find_one({"id": payload.get("sub")}, {"_id": 0, "password_hash": 0})
     if not user:
         raise HTTPException(status_code=401, detail="Utilisateur introuvable")
+    if int(payload.get("tv", 0) or 0) != int(user.get("token_version", 0) or 0):
+        raise HTTPException(status_code=401, detail="Session révoquée — reconnectez-vous")
+    if token_type == "file" and (payload.get("tenant_id") or "default") != (user.get("tenant_id") or "default"):
+        raise HTTPException(status_code=401, detail="Jeton invalide")
     return user
 
 

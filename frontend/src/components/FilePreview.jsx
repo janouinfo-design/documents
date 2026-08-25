@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Download } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { fileUrl, mediaSrc } from "@/lib/api";
@@ -7,6 +8,15 @@ const isPdf = (ct) => ct === "application/pdf";
 const isVideo = (ct) => (ct || "").startsWith("video/");
 
 export default function FilePreview({ open, onOpenChange, file }) {
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape") onOpenChange?.(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onOpenChange]);
+
   if (!file) return null;
   const src = mediaSrc(file);
   const ct = file.content_type || "";
