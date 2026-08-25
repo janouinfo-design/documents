@@ -1,0 +1,31 @@
+{
+  "summary": "Frontend-only test (iteration 19) of the new multi-tenant Integrity page (/integrite) plus regression pass on Dashboard, Vehicles, vehicle drawer, Timeline and Alerts. All requested flows PASS. Login via demo-admin-btn works; nav-integrity tab present and routes to /integrite; summary reads '12 vehicule(s) . 3 lie(s) . 0 divergence(s) . 9 non lie(s)'; integrity-table headers Vehicule/Champ/LOGITRAK/Navixy/Statut with status badges (NON LIE / NON DISPONIBLE / IDENTIQUE / NON SUPPORTE). Filters: Tous=26 rows, Differences=0 -> integrity-empty, Non lies=9 rows all NON LIE, Indisponibles=11 rows all NON DISPONIBLE, Erreurs=0 -> integrity-empty. integrity-refresh-btn re-runs the check and repopulates 26 rows. link-assistant shows 9 link-row-* entries, each 'Aucun candidat prouvable cote fournisseur' + simulate-create-btn-*; NO 'Lier a ...' button rendered (0). One simulation opened (create-simulation-dialog) showing payload (label/model/reg_number/vin/type/subtype/tracker_id) + note on default car/universal, closed with create-cancel-btn only. create-confirm-btn was NEVER clicked. fill-demo-btn is fully removed from Vehicles; Vehicule/Consommation/Base technique/Exporter/Synchroniser remain and open working menus/dialogs. No console errors and zero HTTP >= 400 responses across the whole navigation.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard", "issues": ["Recharts console warning: 'The width(-1) and height(-1) of chart should be greater than 0' - ResponsiveContainer has no minWidth/minHeight, chart briefly renders in a 0-size container on mount (warning only, chart displays)"]},
+      {"screen": "Integrity - create-simulation-dialog / other dialogs", "issues": ["Radix a11y warning: 'Missing Description or aria-describedby for DialogContent' - add DialogDescription to the simulation dialog"]}
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_19.json"],
+  "action_items": [
+    "Optional (non-blocking): add minHeight/minWidth or aspect to the dashboard ResponsiveContainer to silence the recharts width(-1)/height(-1) warning",
+    "Optional (a11y): add DialogDescription / aria-describedby to create-simulation-dialog and the other dialogs",
+    "Informational: the simulation payload for unlinked vehicles sends reg_number = vehicle label (e.g. 'reg_number: 1-Enyaq 01 Bern') and an empty vin. Verify this is intended before any real creation, since the provider would receive a non-plate value as registration number."
+  ],
+  "critical_code_review_comments": [
+    "IntegrityPage.jsx: LinkSection returns null when the link-suggestions query errors (if (error) return null) - a failing suggestions endpoint is silently hidden from the user; consider an inline error state.",
+    "IntegrityPage.jsx: the filter 'keep' ternary chain in the row builder is dense; extracting a predicate map would improve readability (no functional issue observed).",
+    "Integrity rows use data-testid=\"integrity-row\" (non-unique). Adding a row-scoped id (e.g. integrity-row-{vehicle}-{field}) would make future assertions more precise."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (per request)", "frontend": "100% of requested scenarios passed"},
+  "seed_data_creation": "None. No data was created or modified. create-confirm-btn and 'Lier a' were never clicked; no document scan was triggered.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "admin@logitrak.ch / LT-OSTR72MutpBKWB! (pre-filled by demo-admin-btn)",
+  "context_for_next_testing_agent": "Useful selectors: vehicles list rows open via [data-testid=open-vehicle-<PLATE_NO_SPACES>]; drawer = [data-testid=vehicle-drawer] with tabs tab-general/tab-leasing/tab-assurance/tab-carte-grise/tab-etat-des-lieux/tab-controle/tab-documents (drawer is not a role=dialog, query by data-testid). Vehicles toolbar testids: add-vehicle-btn, conso-open-btn, astra-menu-btn (Base technique), export-menu-btn, sync-btn. Integrity page: divergences currently 0 for this tenant, so filter-DIFFERENT legitimately shows integrity-empty. NEVER click create-confirm-btn or link-btn-* (real writes to production Navixy) and do not trigger document scans (LLM cost).",
+  "rca_of_the_issue": "No defects found; only two cosmetic console warnings (recharts container sizing, Radix dialog aria-describedby)."
+}

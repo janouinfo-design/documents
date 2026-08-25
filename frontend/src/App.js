@@ -10,6 +10,7 @@ import Vehicles from "@/pages/Vehicles";
 import TimelinePage from "@/pages/TimelinePage";
 import AlertsPage from "@/pages/AlertsPage";
 import Login from "@/pages/Login";
+import IntegrityPage from "@/pages/IntegrityPage";
 
 function Protected({ children }) {
   const { user } = useAuth();
@@ -41,6 +42,7 @@ function App() {
                         <Route path="/vehicules" element={<Vehicles />} />
                         <Route path="/timeline" element={<TimelinePage />} />
                         <Route path="/alertes" element={<AlertsPage />} />
+                        <Route path="/integrite" element={<IntegrityPage />} />
                       </Routes>
                     </Layout>
                   </VehicleDrawerProvider>

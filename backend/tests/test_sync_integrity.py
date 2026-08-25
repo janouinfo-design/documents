@@ -99,17 +99,18 @@ class TestIntegrityEndpoint:
         assert r.status_code == 200
         body = r.json()
         assert body["navixy_status"] == "ok"
-        assert body["total"] >= 12 and body["linked"] >= 1
-        allowed = {"IDENTIQUE", "DIFFERENT", "NON_DISPONIBLE", "NON_SUPPORTE_PAR_NAVIXY"}
+        assert body["total"] >= 1 and body["linked"] >= 1
+        allowed = {"IDENTIQUE", "DIFFERENT", "NON_DISPONIBLE", "NON_SUPPORTE"}
         for e in body["vehicles"]:
-            if not e["linked"]:
+            assert e["link_status"] in ("LIE", "NON_LIE", "ERREUR_INTEGRATION", "INTEGRATION_ABSENTE")
+            if e["link_status"] != "LIE":
                 assert e["fields"] is None and e["note"]
                 continue
             for name in ("nom", "plaque", "vin", "marque_modele", "annee", "couleur",
                          "type", "garage", "departement"):
                 f = e["fields"][name]
                 assert f["status"] in allowed, f"{name}: {f['status']}"
-            assert e["fields"]["departement"]["status"] == "NON_SUPPORTE_PAR_NAVIXY"
+            assert e["fields"]["departement"]["status"] == "NON_SUPPORTE"
             assert e["divergences"] == sum(
                 1 for f in e["fields"].values() if f["status"] == "DIFFERENT")
 

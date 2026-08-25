@@ -95,15 +95,24 @@ L'IA générative n'invente JAMAIS : batterie, réservoir, consommation, autonom
 ASTRA ne fournit PAS : capacité batterie, autonomie, réservoir → ces champs restent null
 jusqu'au branchement d'un provider licencié via l'interface `VehicleTechnicalDataProvider`.
 
-## 6. TENANT — emplacement futur (décision différée)
+## 6. TENANT — RÉALISÉ (socle multi-client)
 
-`tenant_id` n'est PAS ajouté : les représentations tenant/client des projets New Navixy,
-Journal de bord et Énergie doivent d'abord être auditées. Quand le contrat sera figé :
-- place prévue : bloc `identity.tenant_id` du DTO + champ indexé sur `vehicles` ;
-- le resolver devra alors filtrer par tenant AVANT tout matching ;
-- migration : backfill d'un tenant unique par défaut, puis contrainte.
-Décisions restant à prendre : source de vérité du tenant (hub ?), format d'id, mécanisme
-d'authentification de service inter-projets (actuellement : JWT superadmin Documents).
+- `tenant_id` présent sur : users, vehicles, documents, alerts, inspections, fuel_snapshots,
+  vehicle_field_meta, audit_logs, files. Migration idempotente au démarrage (existant → « default »).
+- Le tenant est TOUJOURS résolu depuis l'utilisateur authentifié (`request.state.tenant_id`),
+  JAMAIS depuis une valeur fournie par le frontend.
+- Toute opération sensible = tenant_id + canonical_vehicle_id (pivot `find_tenant_vehicle` → 404
+  cross-tenant). Le resolver, l'intégrité, les rapports, le dashboard, les alertes et les fichiers
+  sont filtrés par tenant. Isolation prouvée par tests (`tests/test_multitenant.py`).
+- Intégrations télématiques PAR TENANT : collection `tenant_integrations`
+  (provider, enabled, base_url, api_hash, write_enabled, last_sync_at). Fallback env uniquement
+  pour le tenant « default » (compte pilote). Un tenant sans intégration : Documents/Dashboard/
+  véhicule canonique fonctionnent, sync = NON_DISPONIBLE, aucun écran ne plante.
+- Bloc canonique `integrations.navixy` {external_vehicle_id, tracker_id, sync_status, last_sync_at}
+  maintenu par la sync/liaison ; `navixy_vehicle_id`/`navixy_tracker_id` racine conservés comme
+  alias legacy écrits ensemble (un seul écrivain — pas de divergence possible).
+- Décisions restantes : gestion UI des tenants/intégrations, rôles RBAC au-delà du superadmin,
+  clé de service inter-projets.
 
 ## 7. Navixy — écriture whitelist (mise à jour : exigence « mêmes données partout »)
 

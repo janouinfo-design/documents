@@ -103,9 +103,6 @@ export const getTimeline = () => http.get("/timeline").then((r) => r.data);
 export const getNavixyStatus = () => http.get("/navixy/status").then((r) => r.data);
 export const navixySync = () => http.post("/navixy/sync").then((r) => r.data);
 
-// Demo data
-export const fillDemoAdmin = () => http.post("/demo/fill-admin").then((r) => r.data);
-
 // Alerts
 export const getAlerts = () => http.get("/alerts").then((r) => r.data);
 export const getAlertsLog = () => http.get("/alerts/log").then((r) => r.data);
@@ -142,6 +139,14 @@ export const revertTechnicalField = (id, field) =>
   http.post(`/vehicles/${id}/enrich-technical/revert`, { field }).then((r) => r.data);
 export const getConsumptionRanking = () =>
   http.get("/fleet/consumption-ranking").then((r) => r.data);
+export const getIntegrity = (params = {}) =>
+  http.get("/fleet/integrity", { params }).then((r) => r.data);
+export const getLinkSuggestions = () =>
+  http.get("/integrations/navixy/link-suggestions").then((r) => r.data);
+export const linkNavixyVehicle = (vehicleId, externalVehicleId) =>
+  http.post("/integrations/navixy/link", { vehicle_id: vehicleId, external_vehicle_id: externalVehicleId }).then((r) => r.data);
+export const createNavixyVehicle = (vehicleId, confirm = false) =>
+  http.post("/integrations/navixy/create-vehicle", { vehicle_id: vehicleId, confirm }).then((r) => r.data);
 export const conformityReportUrl = () => withToken(`${API}/reports/conformite.pdf`);
 export const costsCsvUrl = () => withToken(`${API}/reports/couts.csv`);
 export const vehicleReportUrl = (id) => withToken(`${API}/reports/vehicule/${id}.pdf`);

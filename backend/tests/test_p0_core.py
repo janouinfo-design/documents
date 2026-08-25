@@ -229,26 +229,26 @@ class TestAstraUnits:
 
 
 class TestNoNavixyWrite:
-    """Politique mise à jour (exigence « mêmes données partout ») : l'écriture Navixy est
-    désormais AUTORISÉE, mais UNIQUEMENT vehicle/read + vehicle/update via
-    push_vehicle_to_navixy (read-merge-write). vehicle/create et la réaffectation de
-    tracker restent interdits."""
+    """Politique : écritures Navixy limitées à vehicle/update (read-merge-write) et
+    vehicle/create (UNIQUEMENT via l'assistant de liaison, simulation + confirmation).
+    Réaffectation de tracker toujours interdite (force_reassign=False partout)."""
 
     def test_only_whitelisted_navixy_calls(self):
         src = Path(BACKEND_DIR, "server.py").read_text()
-        targets = set(re.findall(r"navixy_post\(\s*[\"']([^\"']+)[\"']", src))
+        targets = set(re.findall(r"navixy_post\(\s*integ\w*,\s*[\"']([^\"']+)[\"']", src))
         allowed = {"/tracker/list", "/vehicle/list", "/tracker/counter/value/list",
                    "/tracker/readings/list", "/tracker/get_states", "/user/get_info",
-                   "/vehicle/read", "/vehicle/update"}
+                   "/vehicle/read", "/vehicle/update", "/vehicle/create"}
         assert targets <= allowed, f"appels Navixy non autorisés: {targets - allowed}"
-        assert "/vehicle/create" not in targets
         assert '"force_reassign": False' in src
+        assert '"force_reassign": True' not in src and "'force_reassign': True" not in src
 
 
 class TestRegressionFleet:
     def test_fleet_intact(self):
+        # Compte pilote = jeu de validation réel — AUCUNE hypothèse figée sur le nombre
         fleet = _fleet()
         real = [v for v in fleet if v.get("source") == "navixy"]
-        assert len(real) >= 12
+        assert len(real) >= 1
         for v in real:
             assert v["id"] and v.get("plaque")

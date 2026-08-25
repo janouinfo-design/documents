@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Truck, CalendarClock, Bell, Layers3, UserCircle2, KeyRound, LogOut } from "lucide-react";
+import { LayoutDashboard, Truck, CalendarClock, Bell, Layers3, UserCircle2, KeyRound, LogOut, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -14,6 +14,7 @@ const NAV = [
   { to: "/vehicules", label: "Véhicules", icon: Truck, testId: "nav-vehicles" },
   { to: "/timeline", label: "Échéances", icon: CalendarClock, testId: "nav-timeline" },
   { to: "/alertes", label: "Alertes", icon: Bell, testId: "nav-alerts" },
+  { to: "/integrite", label: "Intégrité", icon: ShieldCheck, testId: "nav-integrity" },
 ];
 
 function Brand() {

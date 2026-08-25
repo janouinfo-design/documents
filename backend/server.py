@@ -48,7 +48,10 @@ auth_router = APIRouter(prefix="/api/auth")
 
 
 async def require_auth(request: Request) -> dict:
-    return await authenticate_request(request, db)
+    user = await authenticate_request(request, db)
+    request.state.user = user
+    request.state.tenant_id = user.get("tenant_id") or "default"
+    return user
 
 
 class LoginPayload(BaseModel):
@@ -219,14 +222,14 @@ class NavixyError(Exception):
     pass
 
 
-def navixy_post(path: str, payload: dict = None) -> dict:
-    if not NAVIXY_HASH:
-        raise NavixyError("Clé API de synchronisation non configurée")
-    body = {"hash": NAVIXY_HASH}
-    if payload:
-        body.update(payload)
+def navixy_post(integ: dict, path: str, payload: dict = None) -> dict:
+    """Appel API Navixy avec les credentials de l'intégration du TENANT concerné."""
+    if not integ or not integ.get("api_hash"):
+        raise NavixyError("Intégration Navixy non configurée pour ce compte")
+    body = dict(payload or {})
+    body["hash"] = integ["api_hash"]
     try:
-        resp = requests.post(f"{NAVIXY_BASE_URL}{path}", json=body, timeout=30)
+        resp = requests.post(f"{integ.get('base_url') or NAVIXY_BASE_URL}{path}", json=body, timeout=30)
     except requests.RequestException as exc:
         raise NavixyError(f"Erreur réseau du service de synchronisation: {exc}")
     try:
@@ -237,6 +240,22 @@ def navixy_post(path: str, payload: dict = None) -> dict:
         status = data.get("status", {}) or {}
         raise NavixyError(status.get("description") or "Erreur Navixy")
     return data
+
+
+async def get_navixy_integration(tenant_id: str):
+    """Credentials Navixy du tenant. Fallback env UNIQUEMENT pour le tenant « default »
+    (compte pilote historique). Retourne None si aucune intégration active."""
+    integ = await db.tenant_integrations.find_one(
+        {"tenant_id": tenant_id, "provider": "navixy"}, {"_id": 0})
+    if integ and integ.get("enabled") and integ.get("api_hash"):
+        return integ
+    if integ and not integ.get("enabled", True):
+        return None
+    if tenant_id == "default" and NAVIXY_HASH:
+        return {"tenant_id": "default", "provider": "navixy", "enabled": True,
+                "base_url": NAVIXY_BASE_URL, "api_hash": NAVIXY_HASH,
+                "write_enabled": NAVIXY_WRITE_ENABLED}
+    return None
 
 
 _PLATE_RE = re.compile(r"\b([A-Z]{2})\s?(\d{1,3}(?:\s?\d{2,3}){1,2})\b")
@@ -288,22 +307,29 @@ def _navixy_merge_payload(remote: dict, vehicle: dict):
 
 
 async def push_vehicle_to_navixy(vehicle: dict, request=None) -> dict:
-    """Propage les champs communs vers Navixy (best effort — n'empêche jamais la sauvegarde
-    locale). Toute écriture est auditée. Jamais de vehicle/create ni de réaffectation tracker."""
-    if not NAVIXY_WRITE_ENABLED:
+    """Propage les champs communs vers Navixy avec les credentials du TENANT du véhicule
+    (best effort — n'empêche jamais la sauvegarde locale). Toute écriture est auditée."""
+    tenant_id = vehicle.get("tenant_id") or "default"
+    integ = await get_navixy_integration(tenant_id)
+    if not integ:
+        return {"status": "integration_absente"}
+    if not integ.get("write_enabled", NAVIXY_WRITE_ENABLED):
         return {"status": "disabled"}
     nvid = vehicle.get("navixy_vehicle_id")
     if not nvid:
         return {"status": "not_linked"}
     try:
-        remote = navixy_post("/vehicle/read", {"vehicle_id": nvid}).get("value") or {}
+        remote = navixy_post(integ, "/vehicle/read", {"vehicle_id": nvid}).get("value") or {}
         payload, changes = _navixy_merge_payload(remote, vehicle)
         if not changes:
             return {"status": "in_sync"}
-        navixy_post("/vehicle/update", {"vehicle": payload, "force_reassign": False})
+        navixy_post(integ, "/vehicle/update", {"vehicle": payload, "force_reassign": False})
+        await db.vehicles.update_one({"id": vehicle["id"], "tenant_id": tenant_id}, {"$set": {
+            "integrations.navixy.sync_status": "ok",
+            "integrations.navixy.last_sync_at": datetime.now(timezone.utc).isoformat()}})
         detail = ", ".join(f"{k}: {o or '—'} → {n}" for k, o, n in changes)
         await audit("navixy_push", "vehicle", request, vehicle["id"], vehicle["id"],
-                    f"Synchronisation Navixy (écriture) — {detail}")
+                    f"Synchronisation Navixy (écriture) — {detail}", tenant_id=tenant_id)
         return {"status": "pushed", "fields": [k for k, _, _ in changes]}
     except NavixyError as e:
         logger.error("Push Navixy échoué (%s): %s", vehicle.get("plaque"), e)
@@ -447,8 +473,8 @@ class VehicleBase(BaseModel):
     prochaine_maintenance: Optional[str] = None
     prochaine_expertise: Optional[str] = None
     source: Optional[str] = "manual"
-    navixy_tracker_id: Optional[int] = None
-    navixy_vehicle_id: Optional[int] = None
+    # navixy_tracker_id / navixy_vehicle_id : gérés par le serveur (sync/liaison),
+    # jamais acceptés du client (anti-IDOR inter-tenant)
 
 
 class VehicleCreate(VehicleBase):
@@ -609,8 +635,9 @@ def clean(doc: dict) -> dict:
 
 
 async def audit(action: str, entity: str, request: Request = None, entity_id: str = None,
-                vehicle_id: str = None, detail: str = ""):
+                vehicle_id: str = None, detail: str = "", tenant_id: str = None):
     """Append an audit-trail entry (create/modify/delete/download)."""
+    state_user = getattr(request.state, "user", None) if request else None
     rec = {
         "id": str(uuid.uuid4()),
         "action": action,
@@ -618,7 +645,8 @@ async def audit(action: str, entity: str, request: Request = None, entity_id: st
         "entity_id": entity_id,
         "vehicle_id": vehicle_id,
         "detail": detail,
-        "user": "anonymous",  # no authentication in current version
+        "user": (state_user or {}).get("email") or "système",
+        "tenant_id": tenant_id or (getattr(request.state, "tenant_id", None) if request else None),
         "ip": (request.client.host if request and request.client else None),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -626,6 +654,53 @@ async def audit(action: str, entity: str, request: Request = None, entity_id: st
         await db.audit_logs.insert_one(dict(rec))
     except Exception as e:
         logger.error("Audit log failed: %s", e)
+
+
+# ---------------------------------------------------------------------------
+# Multi-tenant : le tenant est TOUJOURS résolu depuis l'utilisateur authentifié
+# (request.state), jamais depuis une valeur fournie par le frontend.
+# ---------------------------------------------------------------------------
+def tid(request: Request) -> str:
+    return getattr(request.state, "tenant_id", None) or "default"
+
+
+async def find_tenant_vehicle(request: Request, vehicle_id: str, projection: dict = None) -> dict:
+    """Pivot d'isolation : tout accès véhicule passe par (tenant_id + vehicle_id)."""
+    v = await db.vehicles.find_one({"id": vehicle_id, "tenant_id": tid(request)},
+                                   projection or {"_id": 0})
+    if not v:
+        raise HTTPException(status_code=404, detail="Véhicule introuvable")
+    return v
+
+
+def vin_check(vin) -> Optional[dict]:
+    """Validation générique du VIN. Jamais de correction automatique — signalement avec motifs."""
+    n = _norm_vin(vin)
+    if not n:
+        return None
+    motifs = []
+    if len(n) != 17:
+        motifs.append(f"longueur {len(n)} au lieu de 17 caractères")
+    bad = sorted(set(c for c in n if c in "IOQ"))
+    if bad:
+        motifs.append("caractères interdits dans un VIN : " + ", ".join(bad))
+    if motifs:
+        return {"status": "a_verifier", "motifs": motifs}
+    return {"status": "ok", "motifs": []}
+
+
+async def _path_belongs_to_tenant(path: str, tenant_id: str) -> bool:
+    if await db.documents.find_one({"tenant_id": tenant_id,
+                                    "$or": [{"storage_path": path}, {"pages.path": path}]}, {"_id": 1}):
+        return True
+    if await db.files.find_one({"tenant_id": tenant_id, "storage_path": path}, {"_id": 1}):
+        return True
+    if await db.inspections.find_one({"tenant_id": tenant_id, "photos.path": path}, {"_id": 1}):
+        return True
+    if await db.vehicles.find_one({"tenant_id": tenant_id,
+                                   "photo_url": {"$regex": re.escape(path)}}, {"_id": 1}):
+        return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -637,8 +712,8 @@ async def root():
 
 
 @api_router.get("/vehicles")
-async def list_vehicles():
-    vehicles = await db.vehicles.find({}, {"_id": 0}).to_list(1000)
+async def list_vehicles(request: Request):
+    vehicles = await db.vehicles.find({"tenant_id": tid(request)}, {"_id": 0}).to_list(None)
     for v in vehicles:
         v["metrics"] = compute_metrics(v)
     vehicles.sort(key=lambda x: x.get("plaque", ""))
@@ -657,10 +732,12 @@ def _check_ev_conso(fuel, conso_l):
 
 
 @api_router.post("/vehicles")
-async def create_vehicle(payload: VehicleCreate):
+async def create_vehicle(payload: VehicleCreate, request: Request):
     _check_ev_conso(payload.type_carburant, payload.conso_officielle_l_100km)
     doc = payload.model_dump()
     doc["id"] = str(uuid.uuid4())
+    doc["tenant_id"] = tid(request)
+    doc["integrations"] = {}
     now = datetime.now(timezone.utc).isoformat()
     doc["created_at"] = now
     doc["updated_at"] = now
@@ -695,7 +772,8 @@ def _identity(v: dict) -> dict:
 
 
 @api_router.get("/vehicles/resolve")
-async def resolve_vehicle(vehicle_id: Optional[str] = None,
+async def resolve_vehicle(request: Request,
+                          vehicle_id: Optional[str] = None,
                           navixy_vehicle_id: Optional[int] = None,
                           navixy_tracker_id: Optional[int] = None,
                           vin: Optional[str] = None,
@@ -720,7 +798,7 @@ async def resolve_vehicle(vehicle_id: Optional[str] = None,
         raise HTTPException(status_code=422, detail=(
             "Fournissez au moins un critère : vehicle_id, navixy_vehicle_id, "
             "navixy_tracker_id, vin ou plate."))
-    vehicles = await db.vehicles.find({}, _IDENTITY_PROJ).to_list(2000)
+    vehicles = await db.vehicles.find({"tenant_id": tid(request)}, _IDENTITY_PROJ).to_list(None)
     searched = [name for name, _ in criteria]
     for name, pred in criteria:
         matches = [v for v in vehicles if pred(v)]
@@ -744,12 +822,10 @@ _CORE_REF_FIELDS = [
 
 
 @api_router.get("/vehicles/{vehicle_id}/core")
-async def get_vehicle_core(vehicle_id: str):
+async def get_vehicle_core(vehicle_id: str, request: Request):
     """Fiche Vehicle LOGITRAK pour Journal de bord / Énergie. LECTURE SEULE.
     N'expose ni fichiers, ni chemins de stockage, ni assurance/leasing/documents."""
-    v = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
-    if not v:
-        raise HTTPException(status_code=404, detail="Véhicule introuvable")
+    v = await find_tenant_vehicle(request, vehicle_id)
     metas = {m["field"]: m for m in await db.vehicle_field_meta.find(
         {"vehicle_id": vehicle_id}, {"_id": 0}).to_list(200)}
 
@@ -778,10 +854,9 @@ async def get_vehicle_core(vehicle_id: str):
 
 
 @api_router.get("/vehicles/{vehicle_id}")
-async def get_vehicle(vehicle_id: str):
-    v = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
-    if not v:
-        raise HTTPException(status_code=404, detail="Véhicule introuvable")
+async def get_vehicle(vehicle_id: str, request: Request):
+    v = await find_tenant_vehicle(request, vehicle_id)
+    v["vin_check"] = vin_check(v.get("vin"))
     v["metrics"] = compute_metrics(v)
     return v
 
@@ -791,7 +866,8 @@ async def update_vehicle(vehicle_id: str, payload: VehicleUpdate, request: Reque
     update = payload.model_dump(exclude_unset=True)
     if not update:
         raise HTTPException(status_code=400, detail="Aucune donnée à mettre à jour")
-    existing = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0, "type_carburant": 1})
+    existing = await db.vehicles.find_one({"id": vehicle_id, "tenant_id": tid(request)},
+                                          {"_id": 0, "type_carburant": 1})
     if not existing:
         raise HTTPException(status_code=404, detail="Véhicule introuvable")
     fuel = update.get("type_carburant", existing.get("type_carburant"))
@@ -806,10 +882,10 @@ async def update_vehicle(vehicle_id: str, payload: VehicleUpdate, request: Reque
         else:
             flat[k] = val
     flat["updated_at"] = datetime.now(timezone.utc).isoformat()
-    result = await db.vehicles.update_one({"id": vehicle_id}, {"$set": flat})
+    result = await db.vehicles.update_one({"id": vehicle_id, "tenant_id": tid(request)}, {"$set": flat})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Véhicule introuvable")
-    v = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
+    v = await db.vehicles.find_one({"id": vehicle_id, "tenant_id": tid(request)}, {"_id": 0})
     if NAVIXY_PUSH_KEYS & set(flat.keys()):
         v["navixy_push"] = await push_vehicle_to_navixy(v, request)
     v["metrics"] = compute_metrics(v)
@@ -817,10 +893,14 @@ async def update_vehicle(vehicle_id: str, payload: VehicleUpdate, request: Reque
 
 
 @api_router.delete("/vehicles/{vehicle_id}")
-async def delete_vehicle(vehicle_id: str):
-    await db.vehicles.delete_one({"id": vehicle_id})
+async def delete_vehicle(vehicle_id: str, request: Request):
+    result = await db.vehicles.delete_one({"id": vehicle_id, "tenant_id": tid(request)})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Véhicule introuvable")
     await db.documents.delete_many({"vehicle_id": vehicle_id})
     await db.inspections.delete_many({"vehicle_id": vehicle_id})
+    await db.vehicle_field_meta.delete_many({"vehicle_id": vehicle_id})
+    await db.fuel_snapshots.delete_many({"vehicle_id": vehicle_id})
     return {"ok": True}
 
 
@@ -828,7 +908,7 @@ async def delete_vehicle(vehicle_id: str):
 # File upload / serving
 # ---------------------------------------------------------------------------
 @api_router.post("/upload")
-async def upload_file(file: UploadFile = File(...), vehicle_id: str = Form("misc")):
+async def upload_file(request: Request, file: UploadFile = File(...), vehicle_id: str = Form("misc")):
     ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "bin"
     path = f"{APP_NAME}/uploads/{vehicle_id}/{uuid.uuid4()}.{ext}"
     data = await file.read()
@@ -847,6 +927,7 @@ async def upload_file(file: UploadFile = File(...), vehicle_id: str = Form("misc
         "content_type": content_type,
         "size": result.get("size", len(data)),
         "vehicle_id": vehicle_id,
+        "tenant_id": tid(request),
         "is_deleted": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -861,7 +942,9 @@ async def upload_file(file: UploadFile = File(...), vehicle_id: str = Form("misc
 
 
 @api_router.get("/files/{path:path}")
-async def serve_file(path: str, download: bool = False, filename: Optional[str] = None):
+async def serve_file(path: str, request: Request, download: bool = False, filename: Optional[str] = None):
+    if not await _path_belongs_to_tenant(path, tid(request)):
+        raise HTTPException(status_code=404, detail="Fichier introuvable")
     try:
         data, content_type = get_object(path)
     except Exception:
@@ -884,16 +967,18 @@ REQUIRED_FOLDERS = ["Carte grise", "Leasing", "Assurance", "Contrôle technique"
 
 
 @api_router.get("/vehicles/{vehicle_id}/documents")
-async def list_documents(vehicle_id: str):
+async def list_documents(vehicle_id: str, request: Request):
+    await find_tenant_vehicle(request, vehicle_id, {"_id": 1})
     docs = await db.documents.find(
         {"vehicle_id": vehicle_id, "is_deleted": False}, {"_id": 0}
-    ).to_list(1000)
+    ).to_list(None)
     docs.sort(key=lambda d: d.get("created_at", ""), reverse=True)
     return docs
 
 
 @api_router.post("/vehicles/{vehicle_id}/documents")
-async def add_document(vehicle_id: str, file: UploadFile = File(...), folder: str = Form("Divers")):
+async def add_document(vehicle_id: str, request: Request, file: UploadFile = File(...), folder: str = Form("Divers")):
+    await find_tenant_vehicle(request, vehicle_id, {"_id": 1})
     ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "bin"
     path = f"{APP_NAME}/uploads/{vehicle_id}/{uuid.uuid4()}.{ext}"
     data = await file.read()
@@ -908,6 +993,7 @@ async def add_document(vehicle_id: str, file: UploadFile = File(...), folder: st
     record = {
         "id": str(uuid.uuid4()),
         "vehicle_id": vehicle_id,
+        "tenant_id": tid(request),
         "folder": folder if folder in FOLDERS else "Divers",
         "original_filename": file.filename,
         "storage_path": result["path"],
@@ -921,8 +1007,11 @@ async def add_document(vehicle_id: str, file: UploadFile = File(...), folder: st
 
 
 @api_router.delete("/documents/{doc_id}")
-async def delete_document(doc_id: str):
-    await db.documents.update_one({"id": doc_id}, {"$set": {"is_deleted": True}})
+async def delete_document(doc_id: str, request: Request):
+    result = await db.documents.update_one({"id": doc_id, "tenant_id": tid(request)},
+                                           {"$set": {"is_deleted": True}})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Document introuvable")
     return {"ok": True}
 
 
@@ -930,17 +1019,20 @@ async def delete_document(doc_id: str):
 # Inspections (état des lieux)
 # ---------------------------------------------------------------------------
 @api_router.get("/vehicles/{vehicle_id}/inspections")
-async def list_inspections(vehicle_id: str):
-    items = await db.inspections.find({"vehicle_id": vehicle_id}, {"_id": 0}).to_list(1000)
+async def list_inspections(vehicle_id: str, request: Request):
+    await find_tenant_vehicle(request, vehicle_id, {"_id": 1})
+    items = await db.inspections.find({"vehicle_id": vehicle_id}, {"_id": 0}).to_list(None)
     items.sort(key=lambda x: x.get("date") or "", reverse=True)
     return items
 
 
 @api_router.post("/vehicles/{vehicle_id}/inspections")
-async def create_inspection(vehicle_id: str, payload: InspectionCreate):
+async def create_inspection(vehicle_id: str, payload: InspectionCreate, request: Request):
+    await find_tenant_vehicle(request, vehicle_id, {"_id": 1})
     doc = payload.model_dump()
     doc["id"] = str(uuid.uuid4())
     doc["vehicle_id"] = vehicle_id
+    doc["tenant_id"] = tid(request)
     doc["created_at"] = datetime.now(timezone.utc).isoformat()
     if not doc.get("date"):
         doc["date"] = date.today().isoformat()
@@ -949,8 +1041,10 @@ async def create_inspection(vehicle_id: str, payload: InspectionCreate):
 
 
 @api_router.delete("/inspections/{inspection_id}")
-async def delete_inspection(inspection_id: str):
-    await db.inspections.delete_one({"id": inspection_id})
+async def delete_inspection(inspection_id: str, request: Request):
+    result = await db.inspections.delete_one({"id": inspection_id, "tenant_id": tid(request)})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="État des lieux introuvable")
     return {"ok": True}
 
 
@@ -958,11 +1052,11 @@ async def delete_inspection(inspection_id: str):
 # Dashboard & Timeline
 # ---------------------------------------------------------------------------
 @api_router.get("/dashboard")
-async def dashboard():
-    vehicles = await db.vehicles.find({}, {"_id": 0}).to_list(1000)
+async def dashboard(request: Request):
+    vehicles = await db.vehicles.find({"tenant_id": tid(request)}, {"_id": 0}).to_list(None)
     documents = await db.documents.find(
-        {"is_deleted": False}, {"_id": 0, "vehicle_id": 1, "folder": 1}
-    ).to_list(5000)
+        {"is_deleted": False, "tenant_id": tid(request)}, {"_id": 0, "vehicle_id": 1, "folder": 1}
+    ).to_list(None)
 
     folders_by_vehicle: dict = {}
     for d in documents:
@@ -1009,8 +1103,8 @@ async def dashboard():
 
 
 @api_router.get("/timeline")
-async def timeline():
-    vehicles = await db.vehicles.find({}, {"_id": 0}).to_list(1000)
+async def timeline(request: Request):
+    vehicles = await db.vehicles.find({"tenant_id": tid(request)}, {"_id": 0}).to_list(None)
     events = []
 
     def add(v, type_, label, date_str):
@@ -1083,15 +1177,16 @@ def _extract_fuel_readings(resp: dict) -> dict:
     return out
 
 
-async def _record_fuel_snapshot(vehicle_id: str, litres: float, km: int):
+async def _record_fuel_snapshot(vehicle_id: str, litres: float, km: int, tenant_id: str = None):
     """Snapshot quotidien (litres cumulés CAN + odomètre) puis calcul de la conso réelle MESURÉE.
     Jamais d'estimation : il faut deux snapshots espacés d'au moins 100 km."""
     now = datetime.now(timezone.utc)
     await db.fuel_snapshots.update_one(
         {"vehicle_id": vehicle_id, "day": now.date().isoformat()},
-        {"$set": {"litres_cumules": litres, "km": km, "recorded_at": now.isoformat()}},
+        {"$set": {"litres_cumules": litres, "km": km, "tenant_id": tenant_id,
+                  "recorded_at": now.isoformat()}},
         upsert=True)
-    snaps = await db.fuel_snapshots.find({"vehicle_id": vehicle_id}, {"_id": 0}).sort("day", 1).to_list(400)
+    snaps = await db.fuel_snapshots.find({"vehicle_id": vehicle_id}, {"_id": 0}).sort("day", 1).to_list(None)
     if len(snaps) < 2:
         return
     last = snaps[-1]
@@ -1109,19 +1204,23 @@ async def _record_fuel_snapshot(vehicle_id: str, litres: float, km: int):
         {"vehicle_id": vehicle_id, "field": "conso_reelle_l_100km"},
         {"$set": {"label": "Consommation réelle (L/100 km)", "source": "can",
                   "provider": "navixy_can", "confidence": None,
-                  "measurement_type": "measured",
+                  "measurement_type": "measured", "tenant_id": tenant_id,
                   "validated_by": "système", "validated_at": iso, "updated_at": iso}},
         upsert=True)
 
 
-async def navixy_sync_internal() -> dict:
-    trackers = navixy_post("/tracker/list").get("list", [])
+async def navixy_sync_internal(tenant_id: str = "default") -> dict:
+    """Synchronisation descendante Navixy → véhicules canoniques DU TENANT uniquement."""
+    integ = await get_navixy_integration(tenant_id)
+    if not integ:
+        return {"status": "not_configured", "tenant_id": tenant_id}
+    trackers = navixy_post(integ, "/tracker/list").get("list", [])
     tracker_ids = [t["id"] for t in trackers]
     odometer = {}
     if tracker_ids:
-        cres = navixy_post("/tracker/counter/value/list", {"type": "odometer", "trackers": tracker_ids})
+        cres = navixy_post(integ, "/tracker/counter/value/list", {"type": "odometer", "trackers": tracker_ids})
         odometer = cres.get("value", {}) or {}
-    vehicles_remote = navixy_post("/vehicle/list").get("list", [])
+    vehicles_remote = navixy_post(integ, "/vehicle/list").get("list", [])
     veh_by_tracker = {v["tracker_id"]: v for v in vehicles_remote if v.get("tracker_id")}
 
     now = datetime.now(timezone.utc).isoformat()
@@ -1154,20 +1253,24 @@ async def navixy_sync_internal() -> dict:
             "tracker_gps": source_obj.get("device_id") or label,
             "navixy_tracker_id": tid,
             "navixy_vehicle_id": linked.get("id"),
+            "integrations.navixy.tracker_id": tid,
+            "integrations.navixy.external_vehicle_id": linked.get("id"),
+            "integrations.navixy.sync_status": "ok",
+            "integrations.navixy.last_sync_at": now,
             "source": "navixy",
             "updated_at": now,
         }
 
         fuel = {}
         try:
-            fuel = _extract_fuel_readings(navixy_post("/tracker/readings/list", {"tracker_id": tid}))
+            fuel = _extract_fuel_readings(navixy_post(integ, "/tracker/readings/list", {"tracker_id": tid}))
         except Exception:
             pass
         if fuel.get("niveau_pct") is not None:
             navixy_fields["carburant_niveau_pct"] = fuel["niveau_pct"]
             navixy_fields["carburant_niveau_date"] = fuel["niveau_date"]
 
-        existing = await db.vehicles.find_one({"navixy_tracker_id": tid})
+        existing = await db.vehicles.find_one({"navixy_tracker_id": tid, "tenant_id": tenant_id})
         color = (linked.get("color") or "").strip()
         if existing:
             # Les champs validés depuis un document scanné restent prioritaires sur Navixy
@@ -1181,11 +1284,13 @@ async def navixy_sync_internal() -> dict:
             fields_to_set = {k: val for k, val in navixy_fields.items() if k not in protected}
             if color and "carte_grise.couleur" not in protected:
                 fields_to_set["carte_grise.couleur"] = color
-            await db.vehicles.update_one({"navixy_tracker_id": tid}, {"$set": fields_to_set})
+            await db.vehicles.update_one({"navixy_tracker_id": tid, "tenant_id": tenant_id},
+                                         {"$set": fields_to_set})
             updated += 1
         else:
             doc = {
                 "id": str(uuid.uuid4()),
+                "tenant_id": tenant_id,
                 "photo_url": "",
                 "groupe": "",
                 "base": "",
@@ -1194,8 +1299,12 @@ async def navixy_sync_internal() -> dict:
                 "prochaine_expertise": None,
                 "created_at": now,
                 **_empty_nested(),
-                **navixy_fields,
             }
+            for k, val in navixy_fields.items():
+                if k.startswith("integrations."):
+                    doc.setdefault("integrations", {}).setdefault("navixy", {})[k.rsplit(".", 1)[-1]] = val
+                else:
+                    doc[k] = val
             if color:
                 doc["carte_grise"]["couleur"] = color
             await db.vehicles.insert_one(dict(doc))
@@ -1203,23 +1312,27 @@ async def navixy_sync_internal() -> dict:
 
         vid = existing["id"] if existing else doc["id"]
         if fuel.get("litres_cumules") is not None and km > 0:
-            await _record_fuel_snapshot(vid, fuel["litres_cumules"], km)
+            await _record_fuel_snapshot(vid, fuel["litres_cumules"], km, tenant_id)
 
-    removed = await db.vehicles.delete_many({"source": {"$in": ["demo", None]}})
+    removed = await db.vehicles.delete_many({"source": {"$in": ["demo", None]}, "tenant_id": tenant_id})
+    await db.tenant_integrations.update_one(
+        {"tenant_id": tenant_id, "provider": "navixy"},
+        {"$set": {"last_sync_at": now}})
     return {"synced": len(trackers), "created": created, "updated": updated, "removed_demo": removed.deleted_count}
 
 
 @api_router.get("/navixy/status")
-async def navixy_status():
-    if not NAVIXY_HASH:
+async def navixy_status(request: Request):
+    integ = await get_navixy_integration(tid(request))
+    if not integ:
         return {"connected": False, "configured": False}
     try:
-        trackers = navixy_post("/tracker/list").get("list", [])
-        info = navixy_post("/user/get_info")
+        trackers = navixy_post(integ, "/tracker/list").get("list", [])
+        info = navixy_post(integ, "/user/get_info")
     except NavixyError as e:
         return {"connected": False, "configured": True, "error": str(e)}
     account = (info.get("paas_settings", {}) or {}).get("service_title") or "Télématique"
-    imported = await db.vehicles.count_documents({"source": "navixy"})
+    imported = await db.vehicles.count_documents({"source": "navixy", "tenant_id": tid(request)})
     return {
         "connected": True,
         "configured": True,
@@ -1230,42 +1343,48 @@ async def navixy_status():
 
 
 @api_router.post("/navixy/sync")
-async def navixy_sync():
+async def navixy_sync(request: Request):
     try:
-        result = await navixy_sync_internal()
+        result = await navixy_sync_internal(tid(request))
     except NavixyError as e:
         raise HTTPException(status_code=502, detail=str(e))
+    if result.get("status") == "not_configured":
+        raise HTTPException(status_code=503, detail="Aucune intégration télématique configurée pour ce compte")
     return result
 
 
 @api_router.post("/demo/fill-admin")
-async def demo_fill_admin():
-    """Remplit les véhicules sans données administratives avec un jeu de
-    démonstration fictif (leasing, assurance, carte grise, contrôle technique)
-    + quelques états des lieux. Non destructif : ne touche pas aux données déjà saisies."""
-    result = await enrich_demo_admin()
+async def demo_fill_admin(request: Request):
+    """Jeu de démonstration fictif — INTERDIT hors environnement de développement
+    (règle « real data only » : jamais de données simulées silencieuses en production)."""
+    if os.environ.get("SEED_DEMO_DATA", "false").strip().lower() != "true":
+        raise HTTPException(status_code=403, detail=(
+            "Données de démonstration désactivées (SEED_DEMO_DATA=false). "
+            "Les données de production doivent être réelles."))
+    result = await enrich_demo_admin(tid(request))
     return result
 
 
 @api_router.get("/vehicles/{vehicle_id}/live")
-async def vehicle_live(vehicle_id: str):
-    v = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
-    if not v:
-        raise HTTPException(status_code=404, detail="Véhicule introuvable")
-    tid = v.get("navixy_tracker_id")
-    if not tid:
+async def vehicle_live(vehicle_id: str, request: Request):
+    v = await find_tenant_vehicle(request, vehicle_id)
+    tracker = v.get("navixy_tracker_id")
+    if not tracker:
         raise HTTPException(status_code=400, detail="Véhicule non lié à un tracker GPS")
+    integ = await get_navixy_integration(tid(request))
+    if not integ:
+        raise HTTPException(status_code=503, detail="Aucune intégration télématique configurée pour ce compte")
     try:
-        states = navixy_post("/tracker/get_states", {"trackers": [tid]}).get("states", {}) or {}
-        cres = navixy_post("/tracker/counter/value/list", {"type": "odometer", "trackers": [tid]}).get("value", {}) or {}
+        states = navixy_post(integ, "/tracker/get_states", {"trackers": [tracker]}).get("states", {}) or {}
+        cres = navixy_post(integ, "/tracker/counter/value/list", {"type": "odometer", "trackers": [tracker]}).get("value", {}) or {}
     except NavixyError as e:
         raise HTTPException(status_code=502, detail=str(e))
-    st = states.get(str(tid)) or {}
+    st = states.get(str(tracker)) or {}
     gps = st.get("gps") or {}
     loc = gps.get("location") or {}
-    odo = cres.get(str(tid))
+    odo = cres.get(str(tracker))
     return {
-        "tracker_id": tid,
+        "tracker_id": tracker,
         "connection_status": st.get("connection_status"),
         "movement_status": st.get("movement_status"),
         "lat": loc.get("lat"),
@@ -1282,8 +1401,9 @@ async def vehicle_live(vehicle_id: str):
 # ---------------------------------------------------------------------------
 # Deadline alerts engine + OCR
 # ---------------------------------------------------------------------------
-async def run_alerts() -> dict:
-    vehicles = await db.vehicles.find({}, {"_id": 0}).to_list(1000)
+async def run_alerts(tenant_id: Optional[str] = None) -> dict:
+    tenant_filter = {"tenant_id": tenant_id} if tenant_id else {}
+    vehicles = await db.vehicles.find(tenant_filter, {"_id": 0}).to_list(None)
     now = datetime.now(timezone.utc).isoformat()
     created = 0
     emails_sent = 0
@@ -1300,7 +1420,9 @@ async def run_alerts() -> dict:
                 continue
             level = level_from_days(days)
             if days <= 180:
-                upcoming.append({"plaque": v.get("plaque"), "type": type_, "label": label, "due": due[:10], "days": days, "level": level})
+                upcoming.append({"plaque": v.get("plaque"), "type": type_, "label": label,
+                                 "due": due[:10], "days": days, "level": level,
+                                 "tenant_id": v.get("tenant_id") or "default"})
 
             thresholds = ALERT_THRESHOLDS[type_]
             crossed = [t for t in thresholds if 0 <= days <= t]
@@ -1322,6 +1444,7 @@ async def run_alerts() -> dict:
                 emails_sent += 1
             rec = {
                 **key, "id": str(uuid.uuid4()), "plaque": v.get("plaque"), "label": label,
+                "tenant_id": v.get("tenant_id") or "default",
                 "days_remaining": days, "level": level, "message": msg, "kind": "threshold",
                 "channel": "email", "status": status, "recipients": ALERT_RECIPIENTS, "created_at": now,
             }
@@ -1331,15 +1454,20 @@ async def run_alerts() -> dict:
     upcoming.sort(key=lambda x: x["days"])
     today = date.today().isoformat()
     digest_status = "skipped"
-    if upcoming and not await db.alerts.find_one({"kind": "digest", "digest_date": today}):
-        rows = "".join(f"<li>{u['plaque']} — {u['label']} le {u['due']} (dans {u['days']} j)</li>" for u in upcoming)
-        subject = f"[LogiTrak] Récapitulatif des échéances — {len(upcoming)} à suivre"
+    # Récapitulatif quotidien PAR TENANT — jamais de digest mélangeant plusieurs comptes
+    for t_id in sorted({u["tenant_id"] for u in upcoming}):
+        t_up = [u for u in upcoming if u["tenant_id"] == t_id]
+        if await db.alerts.find_one({"kind": "digest", "digest_date": today, "tenant_id": t_id}):
+            continue
+        rows = "".join(f"<li>{u['plaque']} — {u['label']} le {u['due']} (dans {u['days']} j)</li>" for u in t_up)
+        subject = f"[LogiTrak] Récapitulatif des échéances — {len(t_up)} à suivre"
         digest_status = await asyncio.to_thread(send_email_sync, ALERT_RECIPIENTS, subject, f"<h3>Échéances à venir</h3><ul>{rows}</ul>")
         await db.alerts.insert_one({
             "id": str(uuid.uuid4()), "kind": "digest", "digest_date": today, "type": "digest",
-            "label": "Récapitulatif quotidien", "message": f"{len(upcoming)} échéance(s) à venir",
+            "tenant_id": t_id,
+            "label": "Récapitulatif quotidien", "message": f"{len(t_up)} échéance(s) à venir",
             "level": "info", "channel": "email", "status": digest_status,
-            "recipients": ALERT_RECIPIENTS, "items": upcoming, "created_at": now,
+            "recipients": ALERT_RECIPIENTS, "items": t_up, "created_at": now,
         })
 
     return {"created": created, "emails_sent": emails_sent, "digest_status": digest_status,
@@ -1347,8 +1475,8 @@ async def run_alerts() -> dict:
 
 
 @api_router.get("/alerts")
-async def list_alerts():
-    vehicles = await db.vehicles.find({}, {"_id": 0}).to_list(1000)
+async def list_alerts(request: Request):
+    vehicles = await db.vehicles.find({"tenant_id": tid(request)}, {"_id": 0}).to_list(None)
     items = []
     for v in vehicles:
         m = compute_metrics(v)
@@ -1374,13 +1502,13 @@ async def list_alerts():
 
 
 @api_router.get("/alerts/log")
-async def alerts_log():
-    return await db.alerts.find({}, {"_id": 0}).sort("created_at", -1).to_list(100)
+async def alerts_log(request: Request):
+    return await db.alerts.find({"tenant_id": tid(request)}, {"_id": 0}).sort("created_at", -1).to_list(100)
 
 
 @api_router.post("/alerts/run")
-async def alerts_run():
-    return await run_alerts()
+async def alerts_run(request: Request):
+    return await run_alerts(tid(request))
 
 
 # ---------------------------------------------------------------------------
@@ -1455,9 +1583,7 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
                                 document_type: Optional[str] = Form(None),
                                 document_id: Optional[str] = Form(None),
                                 as_pdf: Optional[str] = Form(None)):
-    vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
-    if not vehicle:
-        raise HTTPException(status_code=404, detail="Véhicule introuvable")
+    vehicle = await find_tenant_vehicle(request, vehicle_id)
     if not (ANTHROPIC_KEY or EMERGENT_KEY):
         raise HTTPException(status_code=503,
                             detail="Scan non configuré sur ce serveur — renseignez ANTHROPIC_API_KEY (Claude) "
@@ -1555,6 +1681,7 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
                 total_size += len(data)
         record = {
             "id": str(uuid.uuid4()), "vehicle_id": vehicle_id,
+            "tenant_id": tid(request),
             "folder": DOC_TYPES.get(document_type, {}).get("folder", "Divers"),
             "original_filename": pages[0]["original_filename"],
             "storage_path": pages[0]["storage_path"],
@@ -1624,15 +1751,14 @@ class DocumentValidate(BaseModel):
 
 @api_router.post("/documents/{doc_id}/validate")
 async def validate_scanned_document(doc_id: str, payload: DocumentValidate, request: Request):
-    docrec = await db.documents.find_one({"id": doc_id, "is_deleted": False}, {"_id": 0})
+    docrec = await db.documents.find_one(
+        {"id": doc_id, "is_deleted": False, "tenant_id": tid(request)}, {"_id": 0})
     if not docrec:
         raise HTTPException(status_code=404, detail="Document introuvable")
     dtype = payload.document_type
     if dtype not in DOC_TYPES:
         raise HTTPException(status_code=400, detail="Type de document inconnu")
-    vehicle = await db.vehicles.find_one({"id": docrec["vehicle_id"]}, {"_id": 0})
-    if not vehicle:
-        raise HTTPException(status_code=404, detail="Véhicule introuvable")
+    vehicle = await find_tenant_vehicle(request, docrec["vehicle_id"])
 
     defs = {d["key"]: d for d in FIELD_DEFS.get(dtype, [])}
     conf_by_field = {f["field"]: f.get("confidence") for f in docrec.get("extracted_fields") or []}
@@ -1671,7 +1797,7 @@ async def validate_scanned_document(doc_id: str, payload: DocumentValidate, requ
         await db.vehicle_field_meta.update_one(
             {"vehicle_id": vehicle["id"], "field": fpath},
             {"$set": {"label": fd["label"], "source": "document_scan",
-                      "measurement_type": "reference",
+                      "measurement_type": "reference", "tenant_id": tid(request),
                       "source_document_id": doc_id, "confidence": conf_by_field.get(key),
                       "validated_by": "utilisateur", "validated_at": now, "updated_at": now}},
             upsert=True)
@@ -1698,7 +1824,8 @@ async def validate_scanned_document(doc_id: str, payload: DocumentValidate, requ
 
 
 @api_router.get("/vehicles/{vehicle_id}/field-meta")
-async def get_vehicle_field_meta(vehicle_id: str):
+async def get_vehicle_field_meta(vehicle_id: str, request: Request):
+    await find_tenant_vehicle(request, vehicle_id, {"_id": 1})
     return await db.vehicle_field_meta.find(
         {"vehicle_id": vehicle_id}, {"_id": 0}).sort("updated_at", -1).to_list(200)
 
@@ -1724,9 +1851,10 @@ async def technical_data_status():
 
 
 @api_router.get("/config/status")
-async def config_status():
+async def config_status(request: Request):
     return {"scan_configured": bool(ANTHROPIC_KEY or EMERGENT_KEY),
             "scan_provider": "claude" if ANTHROPIC_KEY else ("gpt" if EMERGENT_KEY else None),
+            "navixy_configured": bool(await get_navixy_integration(tid(request))),
             "technical_data_configured": await astra_data.is_imported(db)}
 
 
@@ -1783,34 +1911,32 @@ async def astra_search(homologation: Optional[str] = None,
 
 
 @api_router.get("/reports/conformite.pdf")
-async def conformity_report():
-    vehicles = await db.vehicles.find({}, {"_id": 0}).sort("plaque", 1).to_list(1000)
+async def conformity_report(request: Request):
+    vehicles = await db.vehicles.find({"tenant_id": tid(request)}, {"_id": 0}).sort("plaque", 1).to_list(None)
     for v in vehicles:
         v["metrics"] = compute_metrics(v)
     pdf_bytes = build_conformity_pdf(vehicles)
-    await audit("download", "report", None, "conformite", None,
+    await audit("download", "report", request, "conformite", None,
                 f"Export PDF du rapport de conformité flotte ({len(vehicles)} véhicules)")
     return Response(content=pdf_bytes, media_type="application/pdf",
                     headers={"Content-Disposition": 'attachment; filename="rapport-conformite-logitrak.pdf"'})
 
 
 @api_router.get("/reports/couts.csv")
-async def costs_csv_report():
-    vehicles = await db.vehicles.find({}, {"_id": 0}).sort("plaque", 1).to_list(1000)
+async def costs_csv_report(request: Request):
+    vehicles = await db.vehicles.find({"tenant_id": tid(request)}, {"_id": 0}).sort("plaque", 1).to_list(None)
     for v in vehicles:
         v["metrics"] = compute_metrics(v)
     csv_text = build_costs_csv(vehicles)
-    await audit("download", "report", None, "couts_csv", None,
+    await audit("download", "report", request, "couts_csv", None,
                 f"Export CSV des coûts flotte ({len(vehicles)} véhicules)")
     return Response(content="\ufeff" + csv_text, media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": 'attachment; filename="couts-flotte-logitrak.csv"'})
 
 
 @api_router.get("/reports/vehicule/{vehicle_id}.pdf")
-async def vehicle_report(vehicle_id: str):
-    vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
-    if not vehicle:
-        raise HTTPException(status_code=404, detail="Véhicule introuvable")
+async def vehicle_report(vehicle_id: str, request: Request):
+    vehicle = await find_tenant_vehicle(request, vehicle_id)
     vehicle["metrics"] = compute_metrics(vehicle)
     history = await db.audit_logs.find(
         {"vehicle_id": vehicle_id}, {"_id": 0}).sort("created_at", -1).to_list(30)
@@ -1818,7 +1944,7 @@ async def vehicle_report(vehicle_id: str):
         {"vehicle_id": vehicle_id, "is_deleted": False}, {"_id": 0}).sort("created_at", -1).to_list(200)
     pdf_bytes = build_vehicle_pdf(vehicle, history, documents,
                                   {k: v["label"] for k, v in DOC_TYPES.items()})
-    await audit("download", "report", None, f"vehicule_{vehicle_id}", vehicle_id,
+    await audit("download", "report", request, f"vehicule_{vehicle_id}", vehicle_id,
                 f"Export PDF de la fiche véhicule {vehicle.get('plaque')}")
     plaque_slug = re.sub(r"\W+", "-", vehicle.get("plaque") or vehicle_id).strip("-").lower()
     return Response(content=pdf_bytes, media_type="application/pdf",
@@ -1834,9 +1960,7 @@ class TechnicalApply(BaseModel):
 
 @api_router.post("/vehicles/{vehicle_id}/enrich-technical")
 async def enrich_technical(vehicle_id: str, request: Request):
-    vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
-    if not vehicle:
-        raise HTTPException(status_code=404, detail="Véhicule introuvable")
+    vehicle = await find_tenant_vehicle(request, vehicle_id)
     try:
         result = await astra_data.resolve_vehicle_data(db, vehicle)
     except AstraLookupError as e:
@@ -1862,9 +1986,7 @@ async def enrich_technical(vehicle_id: str, request: Request):
 
 @api_router.post("/vehicles/{vehicle_id}/enrich-technical/apply")
 async def apply_technical_enrichment(vehicle_id: str, payload: TechnicalApply, request: Request):
-    vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
-    if not vehicle:
-        raise HTTPException(status_code=404, detail="Véhicule introuvable")
+    vehicle = await find_tenant_vehicle(request, vehicle_id)
     defs = {d["key"]: d for d in TECH_FIELD_DEFS}
     can_locked = await _can_locked_keys(vehicle_id)
     root_updates, sub_updates, applied = {}, {}, []
@@ -1897,7 +2019,7 @@ async def apply_technical_enrichment(vehicle_id: str, payload: TechnicalApply, r
         await db.vehicle_field_meta.update_one(
             {"vehicle_id": vehicle["id"], "field": fpath},
             {"$set": {"label": fd["label"], "source": "external_vehicle_database",
-                      "measurement_type": "reference",
+                      "measurement_type": "reference", "tenant_id": tid(request),
                       "provider": payload.provider or "astra_tas", "source_ref": payload.matched_by or "",
                       "retrieved_at": payload.retrieved_at or "", "confidence": None,
                       "previous_value": old if not _is_empty(old) else None,
@@ -1919,9 +2041,7 @@ class TechnicalRevert(BaseModel):
 
 @api_router.post("/vehicles/{vehicle_id}/enrich-technical/revert")
 async def revert_technical_field(vehicle_id: str, payload: TechnicalRevert, request: Request):
-    vehicle = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
-    if not vehicle:
-        raise HTTPException(status_code=404, detail="Véhicule introuvable")
+    vehicle = await find_tenant_vehicle(request, vehicle_id)
     defs = {d["key"]: d for d in TECH_FIELD_DEFS}
     key = payload.field.split(".")[-1]
     fd = defs.get(key)
@@ -1953,10 +2073,11 @@ async def revert_technical_field(vehicle_id: str, payload: TechnicalRevert, requ
 
 @api_router.post("/vehicles/enrich-technical/batch")
 async def enrich_technical_batch(request: Request):
+    """Recherche groupée dans la base ASTRA locale pour tous les véhicules du tenant."""
     if not await astra_data.is_imported(db):
         raise HTTPException(status_code=503,
                             detail="Base technique ASTRA non importée — lancez POST /api/astra/import.")
-    vehicles = await db.vehicles.find({}, {"_id": 0}).sort("plaque", 1).to_list(1000)
+    vehicles = await db.vehicles.find({"tenant_id": tid(request)}, {"_id": 0}).sort("plaque", 1).to_list(None)
     out = []
     for v in vehicles:
         base = {"vehicle_id": v["id"], "plaque": v.get("plaque"),
@@ -1982,16 +2103,32 @@ async def enrich_technical_batch(request: Request):
 
 
 @api_router.get("/fleet/integrity")
-async def fleet_integrity(request: Request):
-    """Contrôle d'intégrité Documents (canonique) = Dashboard = Navixy, champ par champ.
-    Documents et Dashboard lisent le MÊME document canonique (collection vehicles) —
-    la comparaison porte donc sur canonique vs Navixy réel. LECTURE SEULE."""
-    vehicles = await db.vehicles.find({}, {"_id": 0}).sort("plaque", 1).to_list(1000)
-    try:
-        remote_by_id = {rv["id"]: rv for rv in navixy_post("/vehicle/list").get("list", [])}
-        navixy_status = "ok"
-    except NavixyError as e:
-        remote_by_id, navixy_status = {}, f"error: {e}"
+async def fleet_integrity(request: Request,
+                          vehicle_id: Optional[str] = None,
+                          status: Optional[str] = None,
+                          field: Optional[str] = None,
+                          groupe: Optional[str] = None,
+                          provider: str = "navixy"):
+    """Contrôle d'intégrité Documents (canonique) = Dashboard = fournisseur télématique,
+    champ par champ, pour le TENANT authentifié uniquement. LECTURE SEULE.
+    Statuts champ : IDENTIQUE / DIFFERENT / NON_DISPONIBLE / NON_SUPPORTE.
+    Statuts véhicule : LIE / NON_LIE / ERREUR_INTEGRATION / INTEGRATION_ABSENTE."""
+    if provider != "navixy":
+        raise HTTPException(status_code=422, detail="Fournisseur télématique inconnu (supportés : navixy)")
+    vfilter = {"tenant_id": tid(request)}
+    if vehicle_id:
+        vfilter["id"] = vehicle_id
+    if groupe:
+        vfilter["groupe"] = groupe
+    vehicles = await db.vehicles.find(vfilter, {"_id": 0}).sort("plaque", 1).to_list(None)
+    integ = await get_navixy_integration(tid(request))
+    remote_by_id, navixy_status = {}, "not_configured"
+    if integ:
+        try:
+            remote_by_id = {rv["id"]: rv for rv in navixy_post(integ, "/vehicle/list").get("list", [])}
+            navixy_status = "ok"
+        except NavixyError as e:
+            navixy_status = f"error: {e}"
 
     def cmp(doc_val, nav_val, norm=None):
         n = norm or (lambda s: str(s or "").strip().casefold())
@@ -2003,16 +2140,32 @@ async def fleet_integrity(request: Request):
     out, total_div, linked_count = [], 0, 0
     for v in vehicles:
         nvid = v.get("navixy_vehicle_id")
-        rv = remote_by_id.get(nvid) if nvid else None
+        vc = vin_check(v.get("vin"))
         entry = {"vehicle_id": v["id"], "plaque": v.get("plaque"),
-                 "navixy_vehicle_id": nvid, "linked": bool(rv)}
-        if not rv:
+                 "navixy_vehicle_id": nvid, "provider": provider,
+                 "vin_check": vc}
+        if not integ:
+            entry["link_status"] = "INTEGRATION_ABSENTE"
             entry["fields"] = None
-            entry["note"] = ("aucun objet vehicle Navixy lié" if not nvid
-                             else "vehicle Navixy introuvable côté API")
+            entry["note"] = "Aucune intégration télématique configurée pour ce compte — sync NON_DISPONIBLE"
+            out.append(entry)
+            continue
+        if navixy_status != "ok":
+            entry["link_status"] = "ERREUR_INTEGRATION"
+            entry["fields"] = None
+            entry["note"] = navixy_status
+            out.append(entry)
+            continue
+        rv = remote_by_id.get(nvid) if nvid else None
+        if not rv:
+            entry["link_status"] = "NON_LIE"
+            entry["fields"] = None
+            entry["note"] = ("aucun objet vehicle chez le fournisseur" if not nvid
+                             else "objet vehicle lié introuvable côté fournisseur")
             out.append(entry)
             continue
         linked_count += 1
+        entry["link_status"] = "LIE"
         model_doc = f"{v.get('marque') or ''} {v.get('modele') or ''}".strip()
         couleur_doc = (v.get("carte_grise") or {}).get("couleur")
         annee_doc, annee_nav = int(v.get("annee") or 0), int(rv.get("manufacture_year") or 0)
@@ -2023,7 +2176,8 @@ async def fleet_integrity(request: Request):
                        "documents": v.get("plaque"), "navixy": rv.get("reg_number"),
                        "navixy_writable": True},
             "vin": {"status": cmp(v.get("vin"), rv.get("vin"), _norm_vin),
-                    "documents": v.get("vin"), "navixy": rv.get("vin"), "navixy_writable": True},
+                    "documents": v.get("vin"), "navixy": rv.get("vin"),
+                    "navixy_writable": True, "vin_check": vc},
             "marque_modele": {"status": cmp(model_doc, rv.get("model")),
                               "documents": model_doc, "navixy": rv.get("model"),
                               "navixy_writable": True,
@@ -2039,27 +2193,195 @@ async def fleet_integrity(request: Request):
                      "navixy_writable": True, "note": "type/sous-type non modélisés côté Documents"},
             "garage": {"status": "NON_DISPONIBLE", "documents": None, "navixy": rv.get("garage_id"),
                        "navixy_writable": True, "note": "garage non modélisé côté Documents"},
-            "departement": {"status": "NON_SUPPORTE_PAR_NAVIXY", "documents": None, "navixy": None,
+            "departement": {"status": "NON_SUPPORTE", "documents": None, "navixy": None,
                             "navixy_writable": False,
                             "note": "absent de l'objet vehicle de l'API Navixy"},
         }
+        if field:
+            fields = {k: f for k, f in fields.items() if k == field}
+        if status:
+            fields = {k: f for k, f in fields.items() if f["status"] == status}
         div = sum(1 for f in fields.values() if f["status"] == "DIFFERENT")
         total_div += div
         entry["fields"] = fields
         entry["divergences"] = div
         out.append(entry)
+    if status in ("NON_LIE", "ERREUR_INTEGRATION", "INTEGRATION_ABSENTE"):
+        out = [e for e in out if e.get("link_status") == status]
+    elif status:
+        out = [e for e in out if e.get("fields")]
     await audit("integrity_check", "fleet", request, "fleet", None,
                 f"Contrôle d'intégrité flotte — {total_div} divergence(s) sur "
-                f"{linked_count} véhicule(s) lié(s) Navixy")
-    return {"navixy_status": navixy_status, "write_enabled": NAVIXY_WRITE_ENABLED,
+                f"{linked_count} véhicule(s) lié(s)")
+    return {"navixy_status": navixy_status, "provider": provider,
+            "write_enabled": bool(integ and integ.get("write_enabled", NAVIXY_WRITE_ENABLED)),
             "canonical_note": ("Documents et Dashboard lisent le même véhicule canonique "
                                "(collection vehicles) — identité structurelle"),
-            "total": len(out), "linked": linked_count, "divergences": total_div, "vehicles": out}
+            "total": len(out), "linked": linked_count,
+            "non_lies": sum(1 for e in out if e.get("link_status") == "NON_LIE"),
+            "divergences": total_div, "vehicles": out}
+
+
+# ---------------------------------------------------------------------------
+# Assistant générique de liaison véhicule canonique ↔ objet vehicle du fournisseur
+# Matching STRICT : VIN exact > plaque normalisée > tracker prouvé. Jamais label/marque/couleur.
+# ---------------------------------------------------------------------------
+def _link_candidates(v: dict, available: list) -> list:
+    cands = []
+    for r in available:
+        reasons = []
+        if _norm_vin(v.get("vin")) and _norm_vin(v.get("vin")) == _norm_vin(r.get("vin")):
+            reasons.append("vin_exact")
+        if _norm_plate(v.get("plaque")) and _norm_plate(v.get("plaque")) == _norm_plate(r.get("reg_number")):
+            reasons.append("plaque")
+        if v.get("navixy_tracker_id") and r.get("tracker_id") == v.get("navixy_tracker_id"):
+            reasons.append("tracker")
+        if reasons:
+            cands.append({"external_vehicle_id": r["id"], "label": r.get("label"),
+                          "model": r.get("model"), "reg_number": r.get("reg_number"),
+                          "vin": r.get("vin"), "tracker_id": r.get("tracker_id"),
+                          "matched_by": reasons})
+    return cands
+
+
+@api_router.get("/integrations/navixy/link-suggestions")
+async def navixy_link_suggestions(request: Request):
+    """Suggestions de liaison pour les véhicules canoniques non liés du tenant. LECTURE SEULE."""
+    integ = await get_navixy_integration(tid(request))
+    if not integ:
+        raise HTTPException(status_code=503, detail="Aucune intégration télématique configurée pour ce compte")
+    try:
+        remote = navixy_post(integ, "/vehicle/list").get("list", [])
+    except NavixyError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    vehicles = await db.vehicles.find({"tenant_id": tid(request)}, {"_id": 0}).sort("plaque", 1).to_list(None)
+    linked_ext = {v.get("navixy_vehicle_id") for v in vehicles if v.get("navixy_vehicle_id")}
+    available = [r for r in remote if r["id"] not in linked_ext]
+    suggestions = []
+    for v in vehicles:
+        if v.get("navixy_vehicle_id"):
+            continue
+        cands = _link_candidates(v, available)
+        status_ = ("aucun_candidat" if not cands
+                   else "candidat_unique" if len(cands) == 1 else "plusieurs_candidats")
+        suggestions.append({"vehicle_id": v["id"], "plaque": v.get("plaque"),
+                            "marque": v.get("marque"), "modele": v.get("modele"),
+                            "vin": v.get("vin") or None, "status": status_,
+                            "candidates": cands, "can_create": True})
+    return {"unlinked": len(suggestions), "available_remote": len(available),
+            "suggestions": suggestions}
+
+
+class NavixyLinkPayload(BaseModel):
+    vehicle_id: str
+    external_vehicle_id: int
+
+
+@api_router.post("/integrations/navixy/link")
+async def navixy_link(payload: NavixyLinkPayload, request: Request):
+    """Liaison manuelle validée — acceptée UNIQUEMENT si prouvable (VIN/plaque/tracker)."""
+    v = await find_tenant_vehicle(request, payload.vehicle_id)
+    if v.get("navixy_vehicle_id"):
+        raise HTTPException(status_code=409, detail="Véhicule déjà lié à un objet du fournisseur")
+    integ = await get_navixy_integration(tid(request))
+    if not integ:
+        raise HTTPException(status_code=503, detail="Aucune intégration télématique configurée pour ce compte")
+    conflict = await db.vehicles.find_one(
+        {"tenant_id": tid(request), "navixy_vehicle_id": payload.external_vehicle_id}, {"_id": 1})
+    if conflict:
+        raise HTTPException(status_code=409, detail="Objet fournisseur déjà lié à un autre véhicule canonique")
+    try:
+        remote = navixy_post(integ, "/vehicle/read", {"vehicle_id": payload.external_vehicle_id}).get("value") or {}
+    except NavixyError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    cands = _link_candidates(v, [remote])
+    if not cands:
+        raise HTTPException(status_code=422, detail=(
+            "Liaison refusée : aucune correspondance prouvable (VIN exact, plaque ou tracker). "
+            "Les rapprochements par label/marque/couleur ne sont pas autorisés."))
+    now = datetime.now(timezone.utc).isoformat()
+    await db.vehicles.update_one({"id": v["id"], "tenant_id": tid(request)}, {"$set": {
+        "navixy_vehicle_id": payload.external_vehicle_id,
+        "integrations.navixy.external_vehicle_id": payload.external_vehicle_id,
+        "integrations.navixy.sync_status": "linked",
+        "integrations.navixy.last_sync_at": now, "updated_at": now}})
+    await audit("navixy_link", "vehicle", request, v["id"], v["id"],
+                f"Liaison Navixy validée (objet {payload.external_vehicle_id}, "
+                f"preuve: {', '.join(cands[0]['matched_by'])})")
+    return {"ok": True, "matched_by": cands[0]["matched_by"]}
+
+
+class NavixyCreatePayload(BaseModel):
+    vehicle_id: str
+    confirm: bool = False
+
+
+@api_router.post("/integrations/navixy/create-vehicle")
+async def navixy_create_vehicle(payload: NavixyCreatePayload, request: Request):
+    """Création d'un objet vehicle chez le fournisseur — OPÉRATION SENSIBLE.
+    confirm=false → simulation (aucun appel d'écriture). confirm=true → création + liaison + audit."""
+    v = await find_tenant_vehicle(request, payload.vehicle_id)
+    if v.get("navixy_vehicle_id"):
+        raise HTTPException(status_code=409, detail="Véhicule déjà lié à un objet du fournisseur")
+    integ = await get_navixy_integration(tid(request))
+    if not integ:
+        raise HTTPException(status_code=503, detail="Aucune intégration télématique configurée pour ce compte")
+    if not integ.get("write_enabled", NAVIXY_WRITE_ENABLED):
+        raise HTTPException(status_code=403, detail="Écriture désactivée pour cette intégration")
+    try:
+        remote = navixy_post(integ, "/vehicle/list").get("list", [])
+    except NavixyError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    notes = []
+    tracker_id = v.get("navixy_tracker_id")
+    if tracker_id and any(r.get("tracker_id") == tracker_id for r in remote):
+        notes.append("Tracker déjà assigné à un autre objet vehicle — non inclus (pas de réaffectation)")
+        tracker_id = None
+    sim = {"label": (f"{v.get('marque') or ''} {v.get('modele') or ''}".strip()
+                     or v.get("plaque") or "Véhicule"),
+           "type": "car", "subtype": "universal"}
+    notes.append("type/subtype par défaut « car/universal » (non modélisés côté Documents) — modifiables ensuite")
+    model = f"{v.get('marque') or ''} {v.get('modele') or ''}".strip()
+    if model:
+        sim["model"] = model
+    plate = (v.get("plaque") or "").strip()
+    if plate and _PLATE_RE.search(plate.upper()):
+        sim["reg_number"] = plate
+    elif plate:
+        notes.append(f"« {plate} » n'est pas une plaque valide — reg_number non envoyé (à saisir sur la fiche)")
+    vin_n = _norm_vin(v.get("vin"))
+    if vin_n:
+        sim["vin"] = vin_n
+    else:
+        notes.append("VIN absent — non envoyé")
+    if v.get("annee"):
+        sim["manufacture_year"] = int(v["annee"])
+    couleur = ((v.get("carte_grise") or {}).get("couleur") or "").strip()
+    if couleur:
+        sim["color"] = couleur
+    if tracker_id:
+        sim["tracker_id"] = tracker_id
+    if not payload.confirm:
+        return {"simulation": sim, "notes": notes, "confirmed": False}
+    try:
+        res = navixy_post(integ, "/vehicle/create", {"vehicle": sim, "force_reassign": False})
+    except NavixyError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    new_id = res.get("id")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.vehicles.update_one({"id": v["id"], "tenant_id": tid(request)}, {"$set": {
+        "navixy_vehicle_id": new_id,
+        "integrations.navixy.external_vehicle_id": new_id,
+        "integrations.navixy.sync_status": "created",
+        "integrations.navixy.last_sync_at": now, "updated_at": now}})
+    await audit("navixy_create", "vehicle", request, v["id"], v["id"],
+                f"Création objet vehicle fournisseur (id {new_id}) après simulation confirmée")
+    return {"ok": True, "external_vehicle_id": new_id, "confirmed": True}
 
 
 @api_router.get("/fleet/consumption-ranking")
-async def fleet_consumption_ranking():
-    vehicles = await db.vehicles.find({}, {"_id": 0}).sort("plaque", 1).to_list(1000)
+async def fleet_consumption_ranking(request: Request):
+    vehicles = await db.vehicles.find({"tenant_id": tid(request)}, {"_id": 0}).sort("plaque", 1).to_list(None)
     items, missing = [], []
     for v in vehicles:
         off = v.get("conso_officielle_l_100km")
@@ -2089,7 +2411,8 @@ async def fleet_consumption_ranking():
 
 
 @api_router.get("/vehicles/{vehicle_id}/history")
-async def get_vehicle_history(vehicle_id: str):
+async def get_vehicle_history(vehicle_id: str, request: Request):
+    await find_tenant_vehicle(request, vehicle_id, {"_id": 1})
     return await db.audit_logs.find(
         {"vehicle_id": vehicle_id}, {"_id": 0}).sort("created_at", -1).to_list(50)
 
@@ -2181,9 +2504,9 @@ def _has_admin_data(v: dict) -> bool:
     return bool(leasing or assurance or controle)
 
 
-async def enrich_demo_admin() -> dict:
-    """Fill fictional admin data on vehicles that have none (non-destructive)."""
-    vehicles = await db.vehicles.find({}, {"_id": 0}).sort("plaque", 1).to_list(1000)
+async def enrich_demo_admin(tenant_id: str = "default") -> dict:
+    """Fill fictional admin data on vehicles that have none (non-destructive, dev only)."""
+    vehicles = await db.vehicles.find({"tenant_id": tenant_id}, {"_id": 0}).sort("plaque", 1).to_list(None)
     now = datetime.now(timezone.utc).isoformat()
     enriched = 0
     for i, v in enumerate(vehicles):
@@ -2229,6 +2552,10 @@ async def enrich_demo_admin() -> dict:
 
 
 async def seed_data():
+    """Jeu de démonstration — INTERDIT par défaut (règle « real data only »).
+    Activable uniquement en développement via SEED_DEMO_DATA=true."""
+    if os.environ.get("SEED_DEMO_DATA", "false").strip().lower() != "true":
+        return
     count = await db.vehicles.count_documents({})
     if count > 0:
         return
@@ -2369,6 +2696,30 @@ async def startup():
     except Exception as e:
         logger.error(f"Auth seed failed: {e}")
     try:
+        # Migration multi-tenant idempotente : rattache l'existant au tenant « default »
+        for coll in (db.vehicles, db.documents, db.alerts, db.inspections, db.fuel_snapshots,
+                     db.vehicle_field_meta, db.audit_logs, db.files, db.users):
+            await coll.update_many({"tenant_id": {"$exists": False}}, {"$set": {"tenant_id": "default"}})
+        await db.tenants.update_one(
+            {"id": "default"},
+            {"$setOnInsert": {"id": "default", "name": "Compte pilote",
+                              "created_at": datetime.now(timezone.utc).isoformat()}},
+            upsert=True)
+        await db.vehicles.create_index([("tenant_id", 1), ("id", 1)])
+        await db.vehicles.create_index([("tenant_id", 1), ("navixy_tracker_id", 1)])
+        await db.documents.create_index([("tenant_id", 1), ("vehicle_id", 1)])
+        await db.tenant_integrations.create_index([("tenant_id", 1), ("provider", 1)], unique=True)
+        if NAVIXY_HASH:
+            await db.tenant_integrations.update_one(
+                {"tenant_id": "default", "provider": "navixy"},
+                {"$setOnInsert": {"tenant_id": "default", "provider": "navixy", "enabled": True,
+                                  "base_url": NAVIXY_BASE_URL, "api_hash": NAVIXY_HASH,
+                                  "write_enabled": NAVIXY_WRITE_ENABLED,
+                                  "created_at": datetime.now(timezone.utc).isoformat()}},
+                upsert=True)
+    except Exception as e:
+        logger.error(f"Tenant migration failed: {e}")
+    try:
         init_storage()
         logger.info("Storage initialized")
     except Exception as e:
@@ -2379,7 +2730,7 @@ async def startup():
         logger.error(f"Seed failed: {e}")
     try:
         if NAVIXY_HASH and await db.vehicles.count_documents({"source": "navixy"}) == 0:
-            result = await navixy_sync_internal()
+            result = await navixy_sync_internal("default")
             logger.info("Navixy auto-sync: %s", result)
     except Exception as e:
         logger.error(f"Navixy sync failed: {e}")
@@ -2392,9 +2743,18 @@ async def startup():
         scheduler = AsyncIOScheduler(timezone="UTC")
 
         async def daily_job():
+            # Synchronisation PAR TENANT : jamais de sync croisée entre comptes
             try:
+                integs = await db.tenant_integrations.find(
+                    {"provider": "navixy", "enabled": True}, {"_id": 0, "tenant_id": 1}).to_list(None)
+                tenant_ids = {i["tenant_id"] for i in integs}
                 if NAVIXY_HASH:
-                    await navixy_sync_internal()
+                    tenant_ids.add("default")
+                for t_id in sorted(tenant_ids):
+                    try:
+                        await navixy_sync_internal(t_id)
+                    except Exception as e:
+                        logger.error(f"Scheduled Navixy sync failed (tenant {t_id}): {e}")
             except Exception as e:
                 logger.error(f"Scheduled Navixy sync failed: {e}")
             try:

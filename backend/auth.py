@@ -104,7 +104,8 @@ async def seed_admin(db):
     if existing is None:
         await db.users.insert_one({
             "id": str(uuid.uuid4()), "email": email, "name": "Super Admin",
-            "role": "superadmin", "password_hash": hash_password(password),
+            "role": "superadmin", "tenant_id": "default",
+            "password_hash": hash_password(password),
             "password_changed_in_app": False, "created_at": now, "updated_at": now})
         logger.info("Compte superadmin créé: %s", email)
     elif force or (not existing.get("password_changed_in_app")
