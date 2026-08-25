@@ -819,3 +819,80 @@ READY FOR SECURITY FIXES
 Priorité avant Documents V2 : (1) redéploiement prod avec auth (action utilisateur), (2) rotation du mot de passe superadmin (autorisation en attente), (3) exécution du script Mongo VPS et retour des résultats pour clore l'audit prod.
 
 **STATUT : EN ATTENTE DE VALIDATION UTILISATEUR — AUCUNE MIGRATION DOCUMENTS V2 EXÉCUTÉE**
+
+---
+
+# ADDENDUM 3 — Rotation du secret & vérification de l'authentification API (2026-08-25)
+
+## A. Rotation du secret superadmin
+```text
+PREVIEW ET PROD MÊME CREDENTIAL : NON (la production n'a AUCUN credential en service —
+                                  auth non déployée, POST /api/auth/login → 404)
+ROTATION PREVIEW REQUISE : OUI → EFFECTUÉE
+ROTATION PROD REQUISE : NON (aucun secret actif) — INTERDICTION de réutiliser l'ancien
+                        secret dans deploy/.env lors du déploiement
+```
+Détails (aucun secret affiché) : compte concerné = superadmin unique (`users`, rôle superadmin) ; credential configuré uniquement dans `backend/.env` preview (`ADMIN_PASSWORD`) ; frontend/bundle : 0 copie restante (vérifié avant rotation). Procédure : nouveau secret aléatoire 32 hex (sans caractères spéciaux, généré par `secrets.token_hex`), `ADMIN_PASSWORD` remplacé ligne à ligne dans `backend/.env` (19 lignes préservées), passage temporaire `ADMIN_FORCE_RESET=true` + restart (nécessaire car `password_changed_in_app=True`), puis retour à `false` + restart. `memory/test_credentials.md` mis à jour (fichier IGNORÉ par Git — le nouveau secret n'entre pas dans l'historique). Copie temporaire `/tmp/.rot_old` purgée.
+
+Tests réels : login ANCIEN mot de passe → **401** · login ancienne variante (extrait fichier) → **401** · login NOUVEAU → **200** · `/auth/me` → 200 role=superadmin · après retour `ADMIN_FORCE_RESET=false` + restart → login **200** (hash non ré-écrasé).
+
+## B. Historique Git
+```text
+SECRET ROTÉ : OUI
+HISTORIQUE GIT CONTIENT ANCIEN SECRET : OUI — 4 commits (7e0a008 → 2f8c434),
+                                        fichier frontend/src/pages/Login.jsx
+RÉÉCRITURE HISTORIQUE RECOMMANDÉE : NON — la rotation neutralise l'ancien secret
+  (il ne donne plus accès à rien) ; une réécriture d'historique casserait les clones,
+  branches et le déploiement VPS (git pull) pour un bénéfice nul.
+```
+
+## C. Correctif authentification API (audité)
+- Mécanisme : dépendance globale `require_auth` appliquée au router — `server.py` l.2791 : `app.include_router(api_router, dependencies=[Depends(require_auth)])` ; JWT Bearer vérifié dans `auth.py::require_auth` (401 « Non authentifié » sans/mauvais token, TTL 24 h) ; `tenant_id` injecté depuis le JWT (`request.state.tenant_id`).
+- Routes protégées : **TOUTES** les routes `/api/*` métier (véhicules, documents, fichiers, alertes, timeline, dashboard, rapports, intégrité, ASTRA, Navixy, config, demo, upload).
+- Routes volontairement publiques : **uniquement `POST /api/auth/login`** (router auth séparé ; `/auth/me`, `/auth/change-password`, `/auth/logout` exigent le Bearer). Aucun healthcheck HTTP applicatif n'existe (le healthcheck compose interroge Mongo directement) — rien à exempter.
+- Comportement sans JWT : 401 immédiat, avant tout traitement métier.
+
+## D. Tests preview (matrice réelle du 2026-08-25, après rotation)
+- **Sans authentification — 16/16 GET → 401** : /vehicles, /vehicles/{id}, /vehicles/{id}/documents, /vehicles/{id}/history, /vehicles/{id}/field-meta, /alerts, /alerts/log, /timeline, /dashboard, /reports/conformite.pdf, /reports/couts.csv, /reports/vehicule/{id}.pdf, /fleet/integrity, /document-types, /config/status, /astra/status.
+- **Sans authentification — 9/9 écritures → 401 (rejetées avant traitement, aucune écriture réelle)** : POST /vehicles, PUT /vehicles/{id}, DELETE /vehicles/{id}, POST /navixy/sync, POST /demo/fill-admin, POST /alerts/run, POST /documents/{id}/validate, DELETE /documents/{id}, POST /astra/import.
+- **Avec JWT valide — 7/7 → 200** avec données du tenant (12 véhicules, 20 documents, alertes, timeline, dashboard, history, PDF conformité).
+- **Isolation tenant re-prouvée après rotation** : `test_multitenant.py + test_logitrak_api.py` → **19 passed** (12.11 s).
+- PASS : 51 vérifications · FAIL : 0 · SKIP : 0.
+
+## E. Déploiement production : À FAIRE MANUELLEMENT (aucun accès VPS depuis le pod)
+Contenu à déployer = HEAD au moment du « Save to GitHub » (inclut `4a0be47` = suppression du bloc démo Login.jsx, `18ecc44` = script d'audit Mongo, et toutes les itérations 15-22 dont l'auth). Fichiers du lot sécurité : `frontend/src/pages/Login.jsx` (modifié), `deploy/audit-mongo-prod-readonly.js` (nouveau) ; `backend/.env` preview non versionné (normal).
+Procédure canonique (deploy/README.md §3-4bis) :
+```bash
+# 1. Depuis Emergent : « Save to GitHub »
+# 2. Sur le VPS :
+cd ~/documents && git pull
+cd deploy
+# Éditer .env : JWT_SECRET (openssl rand -hex 32), ADMIN_EMAIL,
+# ADMIN_PASSWORD (NOUVEAU secret — JAMAIS l'ancien), ANTHROPIC_API_KEY,
+# NAVIXY_API_HASH, ADMIN_FORCE_RESET=false, SEED_DEMO_DATA=false
+docker compose up -d --build
+docker compose ps
+curl -s -X POST http://127.0.0.1:8090/api/auth/login -H "Content-Type: application/json" \
+  -d '{"email":"<ADMIN_EMAIL>","password":"<ADMIN_PASSWORD>"}'   # doit renvoyer {"token": ...}
+```
+Validation post-déploiement (je referai ces requêtes réelles dès que déployé) — matrice attendue :
+| Endpoint | Avant (prouvé 25.08) | Après (attendu) |
+|---|---|---|
+| GET /api/vehicles | 200 sans token | 401 |
+| GET /api/vehicles/{id}/documents | 200 sans token | 401 |
+| GET /api/alerts, /api/alerts/log | 200 sans token | 401 |
+| GET /api/timeline (échéances) | 200 sans token | 401 |
+| GET /api/dashboard, /api/reports/* | 200 sans token | 401 |
+| POST /api/auth/login (bons identifiants) | 404 | 200 + token |
+| GET avec Bearer valide | n/a | 200, tenant correct |
+
+## F. Audit Mongo production : NON VÉRIFIÉ — en attente de l'exécution du script par l'utilisateur
+(`deploy/audit-mongo-prod-readonly.js`, strictement lecture seule — commande au §ADDENDUM 2.)
+
+## G. Verdict de l'étape sécurité
+```text
+READY WITH CONDITIONS
+```
+Conditions restantes : (1) déploiement prod par l'utilisateur + validation post-déploiement, (2) sortie du script Mongo VPS, (3) GO explicite Phase 1. Côté preview : secret roté et testé, bundle propre, API 100 % protégée, isolation tenant PASS.
+
+**STATUT : EN ATTENTE DU GO UTILISATEUR POUR DOCUMENTS V2 PHASE 1**

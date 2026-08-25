@@ -292,6 +292,14 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - [x] Sécurité login : SECRET EXPOSÉ : OUI (corrigé source/bundle ; reste historique Git + chat) · ROTATION RECOMMANDÉE : OUI (aucune rotation effectuée).
 - Verdict étape : **READY FOR SECURITY FIXES**. STATUT : EN ATTENTE DE VALIDATION UTILISATEUR — AUCUNE MIGRATION DOCUMENTS V2 EXÉCUTÉE.
 
+## Lot sécurité : rotation du secret + vérification auth API (2026-08-25)
+- [x] **Rotation superadmin preview EFFECTUÉE** : nouveau secret 32 hex dans backend/.env (ADMIN_FORCE_RESET=true temporaire car password_changed_in_app=True, puis false) ; test_credentials.md à jour (fichier gitignoré). Tests : ancien mdp → 401, nouveau → 200, /auth/me 200, stable après restart. PROD : aucun credential en service (login 404) → rotation N/A, interdiction de réutiliser l'ancien secret dans deploy/.env.
+- [x] **Historique Git** : ancien secret présent dans 4 commits (7e0a008→2f8c434, Login.jsx). RÉÉCRITURE HISTORIQUE : NON recommandée (rotation neutralise ; réécriture casserait clones/VPS).
+- [x] **Auth API auditée + matrice réelle** : require_auth global (server.py l.2791) ; seule route publique = POST /api/auth/login. Preview : 16/16 GET sans token → 401 ; 9/9 écritures sans token → 401 (aucune écriture réelle) ; 7/7 avec JWT → 200 tenant-scopé ; test_multitenant+logitrak_api → 19 passed post-rotation. Total 51 PASS / 0 FAIL.
+- [ ] **Déploiement prod : À FAIRE MANUELLEMENT par l'utilisateur** (Save to GitHub → git pull → deploy/.env avec JWT_SECRET + NOUVEAU ADMIN_PASSWORD → docker compose up -d --build). Je referai la matrice 401/200 en prod après déploiement.
+- [ ] Audit Mongo prod : en attente sortie de deploy/audit-mongo-prod-readonly.js.
+- Verdict : **READY WITH CONDITIONS** — STATUT : EN ATTENTE DU GO UTILISATEUR POUR DOCUMENTS V2 PHASE 1.
+
 ## Backlog (prioritized)
 - Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.
 - Phase 3+ (gros chantiers, à cadrer 1 par 1): modules Contrats & renouvellements, Conducteurs, Clients, Modèles, Corbeille/Favoris/Partagés ; permissions/rôles + auth ; multi-tenant.
