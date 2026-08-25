@@ -229,13 +229,20 @@ class TestAstraUnits:
 
 
 class TestNoNavixyWrite:
-    def test_only_readonly_navixy_calls(self):
+    """Politique mise à jour (exigence « mêmes données partout ») : l'écriture Navixy est
+    désormais AUTORISÉE, mais UNIQUEMENT vehicle/read + vehicle/update via
+    push_vehicle_to_navixy (read-merge-write). vehicle/create et la réaffectation de
+    tracker restent interdits."""
+
+    def test_only_whitelisted_navixy_calls(self):
         src = Path(BACKEND_DIR, "server.py").read_text()
         targets = set(re.findall(r"navixy_post\(\s*[\"']([^\"']+)[\"']", src))
         allowed = {"/tracker/list", "/vehicle/list", "/tracker/counter/value/list",
-                   "/tracker/readings/list", "/tracker/get_states", "/user/get_info"}
+                   "/tracker/readings/list", "/tracker/get_states", "/user/get_info",
+                   "/vehicle/read", "/vehicle/update"}
         assert targets <= allowed, f"appels Navixy non autorisés: {targets - allowed}"
-        assert "vehicle/update" not in src and "vehicle/create" not in src
+        assert "/vehicle/create" not in targets
+        assert '"force_reassign": False' in src
 
 
 class TestRegressionFleet:

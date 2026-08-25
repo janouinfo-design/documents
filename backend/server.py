@@ -255,6 +255,62 @@ def parse_navixy_label(label: str):
 
 
 # ---------------------------------------------------------------------------
+# Écriture Navixy — véhicule canonique (exigence « mêmes données partout »)
+# Whitelist STRICTE des champs writables prouvés via vehicle/update.
+# Read-merge-write obligatoire : vehicle/update remplace l'objet COMPLET.
+# ---------------------------------------------------------------------------
+NAVIXY_WRITE_ENABLED = (os.environ.get("NAVIXY_WRITE_ENABLED", "true").strip().lower() == "true")
+NAVIXY_PUSH_KEYS = {"plaque", "marque", "modele", "vin", "annee", "carte_grise.couleur"}
+
+
+def _navixy_merge_payload(remote: dict, vehicle: dict):
+    """Fusionne les champs whitelist Documents dans l'objet Navixy COMPLET (lu via vehicle/read).
+    Retourne (payload complet, [(champ_navixy, ancien, nouveau), ...]). Jamais de champ vidé."""
+    merged = dict(remote)
+    changes = []
+
+    def setf(key, new):
+        old = merged.get(key)
+        if new not in (None, "", 0) and str(new).strip() != str(old or "").strip():
+            merged[key] = new
+            changes.append((key, old, new))
+
+    setf("reg_number", (vehicle.get("plaque") or "").strip())
+    vin_norm = _norm_vin(vehicle.get("vin"))
+    if vin_norm and vin_norm != _norm_vin(merged.get("vin")):
+        changes.append(("vin", merged.get("vin"), vin_norm))
+        merged["vin"] = vin_norm
+    setf("model", f"{vehicle.get('marque') or ''} {vehicle.get('modele') or ''}".strip())
+    if vehicle.get("annee"):
+        setf("manufacture_year", int(vehicle["annee"]))
+    setf("color", ((vehicle.get("carte_grise") or {}).get("couleur") or "").strip())
+    return merged, changes
+
+
+async def push_vehicle_to_navixy(vehicle: dict, request=None) -> dict:
+    """Propage les champs communs vers Navixy (best effort — n'empêche jamais la sauvegarde
+    locale). Toute écriture est auditée. Jamais de vehicle/create ni de réaffectation tracker."""
+    if not NAVIXY_WRITE_ENABLED:
+        return {"status": "disabled"}
+    nvid = vehicle.get("navixy_vehicle_id")
+    if not nvid:
+        return {"status": "not_linked"}
+    try:
+        remote = navixy_post("/vehicle/read", {"vehicle_id": nvid}).get("value") or {}
+        payload, changes = _navixy_merge_payload(remote, vehicle)
+        if not changes:
+            return {"status": "in_sync"}
+        navixy_post("/vehicle/update", {"vehicle": payload, "force_reassign": False})
+        detail = ", ".join(f"{k}: {o or '—'} → {n}" for k, o, n in changes)
+        await audit("navixy_push", "vehicle", request, vehicle["id"], vehicle["id"],
+                    f"Synchronisation Navixy (écriture) — {detail}")
+        return {"status": "pushed", "fields": [k for k, _, _ in changes]}
+    except NavixyError as e:
+        logger.error("Push Navixy échoué (%s): %s", vehicle.get("plaque"), e)
+        return {"status": "error", "message": str(e)}
+
+
+# ---------------------------------------------------------------------------
 # Email / deadline alerts
 # ---------------------------------------------------------------------------
 EMAIL_PROVIDER = (os.environ.get("EMAIL_PROVIDER") or "").strip().lower()
@@ -731,7 +787,7 @@ async def get_vehicle(vehicle_id: str):
 
 
 @api_router.put("/vehicles/{vehicle_id}")
-async def update_vehicle(vehicle_id: str, payload: VehicleUpdate):
+async def update_vehicle(vehicle_id: str, payload: VehicleUpdate, request: Request):
     update = payload.model_dump(exclude_unset=True)
     if not update:
         raise HTTPException(status_code=400, detail="Aucune donnée à mettre à jour")
@@ -754,6 +810,8 @@ async def update_vehicle(vehicle_id: str, payload: VehicleUpdate):
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Véhicule introuvable")
     v = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
+    if NAVIXY_PUSH_KEYS & set(flat.keys()):
+        v["navixy_push"] = await push_vehicle_to_navixy(v, request)
     v["metrics"] = compute_metrics(v)
     return v
 
@@ -1110,15 +1168,19 @@ async def navixy_sync_internal() -> dict:
             navixy_fields["carburant_niveau_date"] = fuel["niveau_date"]
 
         existing = await db.vehicles.find_one({"navixy_tracker_id": tid})
+        color = (linked.get("color") or "").strip()
         if existing:
             # Les champs validés depuis un document scanné restent prioritaires sur Navixy
             metas = await db.vehicle_field_meta.find(
                 {"vehicle_id": existing["id"], "source": "document_scan",
-                 "field": {"$in": ["plaque", "marque", "modele", "vin", "annee"]}},
+                 "field": {"$in": ["plaque", "marque", "modele", "vin", "annee",
+                                   "carte_grise.couleur"]}},
                 {"_id": 0, "field": 1},
             ).to_list(10)
             protected = {m["field"] for m in metas}
             fields_to_set = {k: val for k, val in navixy_fields.items() if k not in protected}
+            if color and "carte_grise.couleur" not in protected:
+                fields_to_set["carte_grise.couleur"] = color
             await db.vehicles.update_one({"navixy_tracker_id": tid}, {"$set": fields_to_set})
             updated += 1
         else:
@@ -1134,6 +1196,8 @@ async def navixy_sync_internal() -> dict:
                 **_empty_nested(),
                 **navixy_fields,
             }
+            if color:
+                doc["carte_grise"]["couleur"] = color
             await db.vehicles.insert_one(dict(doc))
             created += 1
 
@@ -1624,8 +1688,13 @@ async def validate_scanned_document(doc_id: str, payload: DocumentValidate, requ
                 f"Validation {type_label} — {len(applied) + len(doc_data)} champ(s) appliqué(s)")
 
     fresh = await db.vehicles.find_one({"id": vehicle["id"]}, {"_id": 0})
+    navixy_push = None
+    push_keys = {(k if fd["target"] == "root" else f"{fd['target']}.{k}") for k, fd, _, _ in applied}
+    if NAVIXY_PUSH_KEYS & push_keys:
+        navixy_push = await push_vehicle_to_navixy(fresh, request)
     fresh["metrics"] = compute_metrics(fresh)
-    return {"ok": True, "applied": len(applied) + len(doc_data), "document_id": doc_id, "vehicle": fresh}
+    return {"ok": True, "applied": len(applied) + len(doc_data), "document_id": doc_id,
+            "vehicle": fresh, "navixy_push": navixy_push}
 
 
 @api_router.get("/vehicles/{vehicle_id}/field-meta")
@@ -1910,6 +1979,82 @@ async def enrich_technical_batch(request: Request):
     await audit("enrich", "vehicle", request, "fleet", None,
                 f"Recherche flotte base officielle ASTRA/OFROU — {found}/{len(out)} véhicule(s) trouvé(s)")
     return {"total": len(out), "found": found, "results": out}
+
+
+@api_router.get("/fleet/integrity")
+async def fleet_integrity(request: Request):
+    """Contrôle d'intégrité Documents (canonique) = Dashboard = Navixy, champ par champ.
+    Documents et Dashboard lisent le MÊME document canonique (collection vehicles) —
+    la comparaison porte donc sur canonique vs Navixy réel. LECTURE SEULE."""
+    vehicles = await db.vehicles.find({}, {"_id": 0}).sort("plaque", 1).to_list(1000)
+    try:
+        remote_by_id = {rv["id"]: rv for rv in navixy_post("/vehicle/list").get("list", [])}
+        navixy_status = "ok"
+    except NavixyError as e:
+        remote_by_id, navixy_status = {}, f"error: {e}"
+
+    def cmp(doc_val, nav_val, norm=None):
+        n = norm or (lambda s: str(s or "").strip().casefold())
+        d, r = n(doc_val), n(nav_val)
+        if not d and not r:
+            return "NON_DISPONIBLE"
+        return "IDENTIQUE" if d == r else "DIFFERENT"
+
+    out, total_div, linked_count = [], 0, 0
+    for v in vehicles:
+        nvid = v.get("navixy_vehicle_id")
+        rv = remote_by_id.get(nvid) if nvid else None
+        entry = {"vehicle_id": v["id"], "plaque": v.get("plaque"),
+                 "navixy_vehicle_id": nvid, "linked": bool(rv)}
+        if not rv:
+            entry["fields"] = None
+            entry["note"] = ("aucun objet vehicle Navixy lié" if not nvid
+                             else "vehicle Navixy introuvable côté API")
+            out.append(entry)
+            continue
+        linked_count += 1
+        model_doc = f"{v.get('marque') or ''} {v.get('modele') or ''}".strip()
+        couleur_doc = (v.get("carte_grise") or {}).get("couleur")
+        annee_doc, annee_nav = int(v.get("annee") or 0), int(rv.get("manufacture_year") or 0)
+        fields = {
+            "nom": {"status": "NON_DISPONIBLE", "documents": None, "navixy": rv.get("label"),
+                    "navixy_writable": True, "note": "champ « nom » non modélisé côté Documents"},
+            "plaque": {"status": cmp(v.get("plaque"), rv.get("reg_number"), _norm_plate),
+                       "documents": v.get("plaque"), "navixy": rv.get("reg_number"),
+                       "navixy_writable": True},
+            "vin": {"status": cmp(v.get("vin"), rv.get("vin"), _norm_vin),
+                    "documents": v.get("vin"), "navixy": rv.get("vin"), "navixy_writable": True},
+            "marque_modele": {"status": cmp(model_doc, rv.get("model")),
+                              "documents": model_doc, "navixy": rv.get("model"),
+                              "navixy_writable": True,
+                              "note": "Navixy n'a qu'un champ « model » — mapping marque+modèle"},
+            "annee": {"status": ("NON_DISPONIBLE" if not annee_doc and not annee_nav
+                                 else "IDENTIQUE" if annee_doc == annee_nav else "DIFFERENT"),
+                      "documents": annee_doc or None, "navixy": annee_nav or None,
+                      "navixy_writable": True},
+            "couleur": {"status": cmp(couleur_doc, rv.get("color")),
+                        "documents": couleur_doc, "navixy": rv.get("color"),
+                        "navixy_writable": True},
+            "type": {"status": "NON_DISPONIBLE", "documents": None, "navixy": rv.get("type"),
+                     "navixy_writable": True, "note": "type/sous-type non modélisés côté Documents"},
+            "garage": {"status": "NON_DISPONIBLE", "documents": None, "navixy": rv.get("garage_id"),
+                       "navixy_writable": True, "note": "garage non modélisé côté Documents"},
+            "departement": {"status": "NON_SUPPORTE_PAR_NAVIXY", "documents": None, "navixy": None,
+                            "navixy_writable": False,
+                            "note": "absent de l'objet vehicle de l'API Navixy"},
+        }
+        div = sum(1 for f in fields.values() if f["status"] == "DIFFERENT")
+        total_div += div
+        entry["fields"] = fields
+        entry["divergences"] = div
+        out.append(entry)
+    await audit("integrity_check", "fleet", request, "fleet", None,
+                f"Contrôle d'intégrité flotte — {total_div} divergence(s) sur "
+                f"{linked_count} véhicule(s) lié(s) Navixy")
+    return {"navixy_status": navixy_status, "write_enabled": NAVIXY_WRITE_ENABLED,
+            "canonical_note": ("Documents et Dashboard lisent le même véhicule canonique "
+                               "(collection vehicles) — identité structurelle"),
+            "total": len(out), "linked": linked_count, "divergences": total_div, "vehicles": out}
 
 
 @api_router.get("/fleet/consumption-ranking")

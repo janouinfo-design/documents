@@ -105,10 +105,33 @@ Journal de bord et Énergie doivent d'abord être auditées. Quand le contrat se
 Décisions restant à prendre : source de vérité du tenant (hub ?), format d'id, mécanisme
 d'authentification de service inter-projets (actuellement : JWT superadmin Documents).
 
-## 7. Navixy — AUCUNE ÉCRITURE
+## 7. Navixy — écriture whitelist (mise à jour : exigence « mêmes données partout »)
 
-Interdits dans ce lot (et vérifiés par test automatisé) : `vehicle/update`,
-`vehicle/create`, réaffectation tracker, toute modification côté Navixy.
-Seuls appels autorisés (lecture) : `/tracker/list`, `/vehicle/list`,
-`/tracker/counter/value/list`, `/tracker/readings/list`.
-La whitelist de synchronisation sera définie après l'audit du projet New Navixy.
+Depuis le lot « véhicule canonique », l'écriture Navixy est AUTORISÉE sur une whitelist
+STRICTE, en read-merge-write obligatoire (`vehicle/read` → fusion → `vehicle/update`
+avec `force_reassign: false`) :
+
+| Documents (canonique) | Navixy | Sens |
+|---|---|---|
+| plaque | reg_number | ↔ |
+| vin | vin | ↔ |
+| marque + modele | model (concaténé « Marque Modèle ») | ↔ |
+| annee | manufacture_year | ↔ |
+| carte_grise.couleur | color | ↔ |
+
+Règles :
+- Push déclenché UNIQUEMENT par : validation d'un scan de document, édition de la fiche
+  véhicule. Jamais de push massif automatique. Best effort : un échec Navixy ne bloque
+  jamais la sauvegarde locale (statut retourné + log). Chaque écriture est auditée.
+- Descendant : la sync importe désormais aussi `color` ; les champs validés par document
+  (dont couleur) restent protégés contre l'écrasement descendant.
+- Toujours INTERDITS : `vehicle/create`, réaffectation de tracker (`force_reassign: false`),
+  tout champ hors whitelist (leasing, assurance détaillée, documents, conso, etc.).
+- `NAVIXY_WRITE_ENABLED=false` désactive toute écriture (les données locales restent canoniques).
+- Contrôle d'intégrité : `GET /api/fleet/integrity` — statuts IDENTIQUE / DIFFERENT /
+  NON_DISPONIBLE / NON_SUPPORTE_PAR_NAVIXY par champ (nom, plaque, vin, marque_modele,
+  annee, couleur, type, garage, departement), divergences auditées.
+- Champs Navixy non modélisés côté Documents (nom/label, type/subtype, garage) : signalés
+  NON_DISPONIBLE — pas de sync bidirectionnelle prétendue.
+- La whitelist étendue (type, garage, tags, assurance) reste à définir après l'audit du
+  projet New Navixy.
