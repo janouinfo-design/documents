@@ -285,6 +285,13 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - Conditions restantes : (1) redéploiement prod it.15-22 par l'utilisateur (API publique = CRITIQUE), (2) autorisation rotation mdp, (3) audit Mongo prod complet si souhaité (commande VPS), (4) GO explicite Phase 1 (catégories + moteur de statut, SANS migration Assurance/Leasing).
 - Verdict : **READY FOR DOCUMENTS V2 PHASE 1** — STATUT : EN ATTENTE DU GO UTILISATEUR POUR DOCUMENTS V2 PHASE 1.
 
+## Tentative audit Mongo PRODUCTION (2026-08-25) — ACCÈS INDISPONIBLE, script fourni
+- [x] **PRODUCTION (niveau MongoDB) : NON VÉRIFIÉE — ACCÈS INDISPONIBLE** : mongo prod sans port exposé (compose, réseau interne), 27017 fermé depuis le pod, aucun SSH. Base configurée `logitrak_fleet` (compose l.30-31).
+- [x] Script lecture seule créé : **`deploy/audit-mongo-prod-readonly.js`** (counts, index, tenant, orphelins, signatures démo — plaques masquées, 0 écriture). Exécution utilisateur : `docker exec -i logitrak-fleet_mongo mongosh logitrak_fleet --quiet < audit-mongo-prod-readonly.js` après Save to GitHub + git pull.
+- [x] Complément prod via API publique (GET only) : 0 field-meta (aucune validation OCR jamais faite en prod), audit trail ≈ vide (1 download), timeline 36 échéances = 100 % données démo. **API PUBLIQUE NON AUTHENTIFIÉE : PROUVÉE** (login 404, toutes routes GET ouvertes ; routes d'écriture non testées mais code déployé pré-auth sans contrôle).
+- [x] Sécurité login : SECRET EXPOSÉ : OUI (corrigé source/bundle ; reste historique Git + chat) · ROTATION RECOMMANDÉE : OUI (aucune rotation effectuée).
+- Verdict étape : **READY FOR SECURITY FIXES**. STATUT : EN ATTENTE DE VALIDATION UTILISATEUR — AUCUNE MIGRATION DOCUMENTS V2 EXÉCUTÉE.
+
 ## Backlog (prioritized)
 - Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.
 - Phase 3+ (gros chantiers, à cadrer 1 par 1): modules Contrats & renouvellements, Conducteurs, Clients, Modèles, Corbeille/Favoris/Partagés ; permissions/rôles + auth ; multi-tenant.

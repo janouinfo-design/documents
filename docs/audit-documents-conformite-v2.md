@@ -764,3 +764,58 @@ READY FOR DOCUMENTS V2 PHASE 1
 (catégories documentaires + moteur de statut, additif, sans migration legacy — les conditions restantes G.1-G.3 concernent la production et la sécurité, pas la Phase 1 en preview. Ce verdict ne vaut PAS autorisation de commencer.)
 
 **STATUT : EN ATTENTE DU GO UTILISATEUR POUR DOCUMENTS V2 PHASE 1**
+
+---
+
+# ADDENDUM 2 — Tentative d'audit MongoDB PRODUCTION (2026-08-25, lecture seule)
+
+## Environnement confirmé
+- Serveur : VPS OVH `83.228.207.198` · App : LOGITRAK Documents (`https://documents.logitrak.ch`, Nginx hôte → conteneur `logitrak-fleet_web`).
+- Base configurée : `logitrak_fleet` sur `mongodb://mongo:27017` (réseau Docker interne `logitrak-fleet_net`) — source : `deploy/docker-compose.yml` l.30-31. Valeurs runtime du `deploy/.env` VPS : NON VÉRIFIÉES directement.
+
+## Résultat : PRODUCTION (niveau MongoDB) : NON VÉRIFIÉE — ACCÈS INDISPONIBLE
+Preuves : (1) le service `mongo` du docker-compose n'expose AUCUN port (pas de section `ports:`) — accessible uniquement depuis le réseau interne du VPS (bonne pratique) ; (2) test TCP 83.228.207.198:27017 depuis le pod : FERMÉ ; (3) aucune clé SSH VPS dans le projet. Aucune tentative d'intrusion effectuée, aucune écriture.
+
+→ Script d'inspection STRICTEMENT LECTURE SEULE fourni : **`deploy/audit-mongo-prod-readonly.js`** (uniquement getCollectionNames/countDocuments/getIndexes/aggregate en lecture ; plaques masquées, aucun secret ni numéro de contrat affiché). Exécution par l'utilisateur sur le VPS :
+```bash
+cd ~/documents/deploy
+docker exec -i logitrak-fleet_mongo mongosh logitrak_fleet --quiet < audit-mongo-prod-readonly.js
+```
+(Le fichier arrive sur le VPS via Save to GitHub + git pull, ou copier-coller.)
+
+## Ce qui A PU être vérifié en production (API publique, GET uniquement — aucun endpoint écrivant)
+- `vehicle_field_meta` équivalent : **0 validation OCR/ASTRA sur les 12 véhicules** (GET field-meta ×12).
+- Audit trail : quasi vide (1 seule action `download` sur les 50 dernières entrées par véhicule).
+- Timeline : 36 échéances calculées (12 leasing + 12 assurance + 12 contrôle) — **100 % issues des données DEMO_PROUVÉE**.
+- Documents actifs : 1 (sans type, jamais validé) · Assurance/Leasing : sous-objets `vehicles` (même code, version antérieure), 12/12 remplis, 12/12 signatures seed.
+- Index, orphelins, documents soft-supprimés, collections internes : NON VÉRIFIABLES via API → script VPS.
+
+## Sécurité login (rappel de statut — aucune action dans cette étape)
+```text
+SECRET EXPOSÉ : OUI (prouvé — corrigé côté source/bundle preview le 2026-08-25 ;
+                subsiste dans l'historique Git et a été divulgué dans le chat)
+ROTATION RECOMMANDÉE : OUI (aucune rotation effectuée — en attente d'autorisation)
+```
+
+## API publique — PROUVÉE
+```text
+API PUBLIQUE NON AUTHENTIFIÉE : PROUVÉE (2026-08-25)
+Preuves : POST /api/auth/login → 404 (auth non déployée) ;
+GET /api/vehicles, /api/dashboard, /api/alerts/log, /api/timeline,
+/api/vehicles/{id}/documents|history|field-meta, /api/astra/status,
+/api/config/status → 200 SANS token.
+Données exposées : flotte complète (plaques, VIN partiels, kilométrage, GPS tracker ids,
+échéances, coûts leasing/assurance — actuellement fictifs), journal d'alertes, audit.
+Risque : la version déployée (pré-it.18) n'a AUCUNE protection sur les routes
+d'écriture (PUT/DELETE vehicles, POST sync, etc.) — non testées (aucune écriture),
+mais le code déployé ne comporte aucun contrôle. Remédiation = redéployer it.15-22
+(auth incluse) — action utilisateur, aucun changement effectué sur cette base.
+```
+
+## Verdict de l'étape
+```text
+READY FOR SECURITY FIXES
+```
+Priorité avant Documents V2 : (1) redéploiement prod avec auth (action utilisateur), (2) rotation du mot de passe superadmin (autorisation en attente), (3) exécution du script Mongo VPS et retour des résultats pour clore l'audit prod.
+
+**STATUT : EN ATTENTE DE VALIDATION UTILISATEUR — AUCUNE MIGRATION DOCUMENTS V2 EXÉCUTÉE**
