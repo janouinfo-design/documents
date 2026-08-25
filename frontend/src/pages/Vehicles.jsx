@@ -13,6 +13,7 @@ import ConfigBanner from "@/components/ConfigBanner";
 import AstraStatusDialog from "@/components/AstraStatusDialog";
 import FleetEnrichDialog from "@/components/FleetEnrichDialog";
 import FleetConsumptionDialog from "@/components/FleetConsumptionDialog";
+import QueryErrorState from "@/components/QueryErrorState";
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
@@ -26,7 +27,7 @@ export default function Vehicles() {
   const [astraOpen, setAstraOpen] = useState(false);
   const [fleetOpen, setFleetOpen] = useState(false);
   const [consoOpen, setConsoOpen] = useState(false);
-  const { data: vehicles = [], isLoading } = useQuery({ queryKey: ["vehicles"], queryFn: getVehicles });
+  const { data: vehicles = [], isLoading, isError, error } = useQuery({ queryKey: ["vehicles"], queryFn: getVehicles });
 
   const filtered = vehicles.filter((v) => {
     const hay = `${v.plaque} ${v.marque} ${v.modele} ${v.responsable} ${v.base} ${v.groupe}`.toLowerCase();
@@ -101,6 +102,8 @@ export default function Vehicles() {
       </div>
 
       <ConfigBanner />
+
+      {isError && <QueryErrorState error={error} testId="vehicles-error" />}
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">

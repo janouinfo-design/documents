@@ -1,0 +1,38 @@
+{
+  "summary": "Frontend-only E2E testing of Lot 4 'Console Super Admin' (10 scenarios requested) on the preview URL. Scenarios 1-10 all PASS: superadmin login redirects to /admin with nav-admin tab, client creation with auto-slug (client-test-e2e), user creation, tenant isolation (new tenant user lands on dashboard, no Administration tab, /admin redirects to /, 0 vehicle), password reset (old pwd rejected / new accepted), user disable/enable (login blocked with 'Compte désactivé — contactez votre administrateur'), Navixy key config (toast, placeholder becomes '•••••••• configurée', key never present in DOM, badge 'Télématique inactive' shown), Documents module toggle (403 on business APIs then normal after re-enable), regression on admin@logitrak.ch (12 vehicles, all 5 tabs OK, no Administration tab, user-menu email correct, 0 console errors), and superadmin browsing business tabs without crash. Extra: tenant disable/enable also verified ('Compte client désactivé' at login). ONE HIGH bug found: the Dashboard page white-screens (full React crash) whenever GET /api/dashboard fails (e.g. 403 when the Documents module is disabled).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/integrations/navixy/link-suggestions", "issue": "Returns 503 for tenants without telematics integration (platform/superadmin, new clients) -> console error noise on the Intégrité page. UI handles it (informational banner), but a 200 with empty list would avoid the browser error."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "pages/Dashboard.jsx (l.55-62)", "issue": "CRASH / blank white page: KpiCard values use `isLoading ? '—' : kpi.leasing_expired`. When the dashboard query errors (403 when the tenant's Documents module is disabled, or any 5xx/network error), isLoading=false and kpi=undefined -> TypeError \"Cannot read properties of undefined (reading 'leasing_expired')\" -> whole app tree unmounts (document#root innerText empty, no <main>, no header/nav). Reproduced twice: (a) real 403 with module Documents disabled for client-test-e2e, (b) route-mocked 403 on /api/dashboard as admin@logitrak.ch. No React error boundary exists in App.js, so in a production build the user sees a fully blank page with no way to navigate.", "selector": "[data-testid=\"dashboard-page\"]", "priority": "HIGH"},
+      {"component": "pages/Vehicles.jsx", "issue": "Silent failure on 403 (Documents module disabled): after react-query retries the table shows 'Aucun véhicule trouvé' / '0 véhicule' with no error message or explanation. Same for Timeline/Intégrité. Suggest an explicit error state (e.g. 'Module désactivé — contactez l'administrateur')."}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/admin (Administration des clients)", "issues": ["Layout, spacing and contrast are clean; no issue found. Note: the client card row shows 'Télématique inactive' once a key is saved but sync switch is off — correct but could be confused with a broken integration."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Fix Dashboard.jsx: guard against undefined data (use `kpi?.leasing_expired ?? '—'` or an isError branch) AND add a React error boundary around the routed pages in App.js so an API failure can never blank the whole app.",
+    "Add an explicit 403/error state on business pages (Véhicules, Échéances, Intégrité, Alertes) when the tenant's Documents module is disabled, instead of showing an empty list.",
+    "Optional: make /api/integrations/navixy/link-suggestions return 200 with an empty list when no integration is configured, to remove the 503 console error."
+  ],
+  "critical_code_review_comments": [
+    "Dashboard.jsx dereferences query data without optional chaining while every other page (AlertsPage l.33) defaults it — inconsistent and the only crash source found.",
+    "No error boundary in App.js: any render-time exception in a page kills the whole SPA (blank screen).",
+    "Admin console components correctly avoid leaking the Navixy api_hash (verified absent from DOM/HTML) and correctly scope destructive actions per tenant id."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (per request)", "frontend": "10/10 requested scenarios PASS; 1 HIGH crash bug found in an adjacent error path"},
+  "seed_data_creation": "Created tenant 'Client Test E2E' (id client-test-e2e) with user e2e-admin@client-test.ch (password now TestE2E-Rotated1, active, role admin) and a fake Navixy key 'fake-hash-e2e' (sync switch left OFF). Final state verified: client actif=ON, module Documents=ON. The 'default' / Compte pilote client was NOT modified (still 12 vehicles / 42 docs / 1 user / télématique active); admin@logitrak.ch and superadmin@logitrak.ch passwords unchanged.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "superadmin@logitrak.ch / 8129413106bcdc0b11dcfa1c7dc9b5e5 (platform), admin@logitrak.ch / 3a9218d1606b52e003383e52d7aea3d6 (client default), e2e-admin@client-test.ch / TestE2E-Rotated1 (client-test-e2e)",
+  "context_for_next_testing_agent": "Lot 4 admin console frontend is functionally complete and passing. Test tenant 'client-test-e2e' + user e2e-admin@client-test.ch/TestE2E-Rotated1 remain available for reuse (ignore pytest-client-* tenants). To reproduce the dashboard crash without touching server state: login and page.route('**/api/dashboard*') -> fulfill 403, then goto '/' — document#root becomes empty. Re-verify that path plus /vehicules 403 error state after the fix.",
+  "rca_of_the_issue": "Backend require_auth returns 403 for every business endpoint when a tenant's Documents module is disabled. On the Dashboard, react-query then has data=undefined with isLoading=false; Dashboard.jsx renders `kpi.leasing_expired` unguarded, throwing a TypeError during render. With no error boundary in App.js, React unmounts the entire tree, producing a blank page (dev overlay in preview, pure white screen in production)."
+}

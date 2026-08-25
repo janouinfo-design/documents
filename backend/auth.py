@@ -80,6 +80,8 @@ async def authenticate_request(request: Request, db) -> dict:
     user = await db.users.find_one({"id": payload.get("sub")}, {"_id": 0, "password_hash": 0})
     if not user:
         raise HTTPException(status_code=401, detail="Utilisateur introuvable")
+    if user.get("disabled"):
+        raise HTTPException(status_code=401, detail="Compte désactivé — contactez votre administrateur")
     if int(payload.get("tv", 0) or 0) != int(user.get("token_version", 0) or 0):
         raise HTTPException(status_code=401, detail="Session révoquée — reconnectez-vous")
     if token_type == "file" and (payload.get("tenant_id") or "default") != (user.get("tenant_id") or "default"):
@@ -136,3 +138,33 @@ async def seed_admin(db):
             "password_hash": hash_password(password),
             "password_changed_in_app": False, "updated_at": now}})
         logger.info("Mot de passe superadmin resynchronisé depuis .env (%s)", email)
+
+
+async def seed_superadmin(db):
+    """Compte Super Admin PLATEFORME (console clients) depuis SUPERADMIN_EMAIL/SUPERADMIN_PASSWORD.
+    Une fois créé, tout autre compte encore marqué superadmin redevient admin de son tenant."""
+    email = (os.environ.get("SUPERADMIN_EMAIL") or "").strip().lower()
+    password = os.environ.get("SUPERADMIN_PASSWORD") or ""
+    if not email or not password:
+        return
+    force = (os.environ.get("SUPERADMIN_FORCE_RESET") or "").strip().lower() == "true"
+    existing = await db.users.find_one({"email": email})
+    now = datetime.now(timezone.utc).isoformat()
+    if existing is None:
+        await db.users.insert_one({
+            "id": str(uuid.uuid4()), "email": email, "name": "Super Admin LOGITRAK",
+            "role": "superadmin", "tenant_id": "platform",
+            "password_hash": hash_password(password),
+            "password_changed_in_app": False, "created_at": now, "updated_at": now})
+        logger.info("Compte superadmin plateforme créé: %s", email)
+    elif force or (not existing.get("password_changed_in_app")
+                   and not verify_password(password, existing.get("password_hash", ""))):
+        await db.users.update_one({"email": email}, {"$set": {
+            "password_hash": hash_password(password),
+            "password_changed_in_app": False, "updated_at": now}})
+        logger.info("Mot de passe superadmin plateforme resynchronisé (%s)", email)
+    result = await db.users.update_many(
+        {"role": "superadmin", "email": {"$ne": email}},
+        {"$set": {"role": "admin", "updated_at": now}})
+    if result.modified_count:
+        logger.info("Migration rôles: %d compte(s) superadmin hérité(s) → admin client", result.modified_count)

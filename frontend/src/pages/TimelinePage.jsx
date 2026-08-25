@@ -5,6 +5,7 @@ import { getTimeline } from "@/lib/api";
 import { dateFr, daysLabel } from "@/lib/format";
 import { EVENT_TYPES, lvl } from "@/lib/status";
 import StatusBadge from "@/components/StatusBadge";
+import QueryErrorState from "@/components/QueryErrorState";
 import { cn } from "@/lib/utils";
 import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
 
@@ -19,7 +20,7 @@ const tabForType = (t) => (t === "leasing" ? "leasing" : t === "assurance" ? "as
 export default function TimelinePage() {
   const { openVehicle } = useVehicleDrawer();
   const [view, setView] = useState("quarter");
-  const { data: events = [], isLoading } = useQuery({ queryKey: ["timeline"], queryFn: getTimeline });
+  const { data: events = [], isLoading, isError, error } = useQuery({ queryKey: ["timeline"], queryFn: getTimeline });
 
   const months = VIEWS.find((v) => v.key === view).months;
   const horizon = new Date();
@@ -75,6 +76,8 @@ export default function TimelinePage() {
           </span>
         ))}
       </div>
+
+      {isError && <QueryErrorState error={error} testId="timeline-error" />}
 
       {isLoading && <p className="text-sm text-slate-400">Chargement…</p>}
 

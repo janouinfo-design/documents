@@ -25,7 +25,7 @@ import astra_data
 from astra_data import AstraLookupError
 from auth import (authenticate_request, check_lockout, clear_failures, create_access_token,
                   create_file_token,
-                  hash_password, record_failure, seed_admin, verify_password)
+                  hash_password, record_failure, seed_admin, seed_superadmin, verify_password)
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -51,7 +51,16 @@ auth_router = APIRouter(prefix="/api/auth")
 async def require_auth(request: Request) -> dict:
     user = await authenticate_request(request, db)
     request.state.user = user
-    request.state.tenant_id = user.get("tenant_id") or "default"
+    tenant_id = user.get("tenant_id") or "default"
+    request.state.tenant_id = tenant_id
+    if user.get("role") != "superadmin":
+        t = await db.tenants.find_one({"id": tenant_id}, {"_id": 0, "disabled": 1, "modules": 1})
+        if t and t.get("disabled"):
+            raise HTTPException(status_code=401, detail="Compte client désactivé")
+        if (not request.url.path.startswith("/api/auth")
+                and t and isinstance(t.get("modules"), dict)
+                and t["modules"].get("documents") is False):
+            raise HTTPException(status_code=403, detail="Module Documents non activé pour ce compte")
     return user
 
 
@@ -75,6 +84,12 @@ async def auth_login(payload: LoginPayload, request: Request):
     if not user or not verify_password(payload.password, user.get("password_hash", "")):
         await record_failure(db, identifier)
         raise HTTPException(status_code=401, detail="Email ou mot de passe incorrect")
+    if user.get("disabled"):
+        raise HTTPException(status_code=401, detail="Compte désactivé — contactez votre administrateur")
+    if user.get("role") != "superadmin":
+        t = await db.tenants.find_one({"id": user.get("tenant_id") or "default"}, {"disabled": 1})
+        if t and t.get("disabled"):
+            raise HTTPException(status_code=401, detail="Compte client désactivé")
     await clear_failures(db, identifier)
     safe = {k: v for k, v in user.items() if k not in ("_id", "password_hash")}
     return {"token": create_access_token(user["id"], user["email"], user.get("token_version", 0)),
@@ -2693,6 +2708,241 @@ async def seed_data():
     logger.info("Seeded demo fleet: %d vehicles", len(vehicles))
 
 
+# ---------------------------------------------------------------------------
+# Console Super Admin — clients (tenants), utilisateurs, intégrations, modules
+# ---------------------------------------------------------------------------
+async def require_superadmin(request: Request) -> dict:
+    user = await require_auth(request)
+    if user.get("role") != "superadmin":
+        raise HTTPException(status_code=403, detail="Accès réservé au Super Admin")
+    return user
+
+
+admin_router = APIRouter(prefix="/api/admin", dependencies=[Depends(require_superadmin)])
+
+_SLUG_RE = re.compile(r"[^a-z0-9-]+")
+
+
+def _slugify(value: str) -> str:
+    return _SLUG_RE.sub("-", (value or "").strip().lower()).strip("-")[:40]
+
+
+class TenantCreate(BaseModel):
+    name: str
+    id: Optional[str] = None
+
+
+class TenantUpdate(BaseModel):
+    name: Optional[str] = None
+    disabled: Optional[bool] = None
+    modules: Optional[dict] = None
+
+
+class TenantUserCreate(BaseModel):
+    email: str
+    password: str
+    name: Optional[str] = ""
+    role: Optional[str] = "admin"
+
+
+class AdminUserUpdate(BaseModel):
+    password: Optional[str] = None
+    disabled: Optional[bool] = None
+    name: Optional[str] = None
+
+
+class IntegrationUpdate(BaseModel):
+    api_hash: Optional[str] = None
+    enabled: Optional[bool] = None
+    write_enabled: Optional[bool] = None
+    base_url: Optional[str] = None
+
+
+@admin_router.get("/overview")
+async def admin_overview():
+    tenants = await db.tenants.find({}, {"_id": 0}).to_list(None)
+    integs = {i["tenant_id"]: i for i in await db.tenant_integrations.find(
+        {"provider": "navixy"}, {"_id": 0}).to_list(None)}
+    out = []
+    for t in sorted(tenants, key=lambda x: x.get("created_at") or ""):
+        tid = t["id"]
+        integ = integs.get(tid) or {}
+        out.append({
+            "id": tid, "name": t.get("name") or tid,
+            "disabled": bool(t.get("disabled")),
+            "modules": t.get("modules") or {"documents": True},
+            "created_at": t.get("created_at"),
+            "vehicles": await db.vehicles.count_documents({"tenant_id": tid}),
+            "documents": await db.documents.count_documents({"tenant_id": tid, "is_deleted": False}),
+            "users": await db.users.count_documents({"tenant_id": tid}),
+            "integration": {
+                "configured": bool(integ.get("api_hash")),
+                "enabled": bool(integ.get("enabled")),
+                "write_enabled": bool(integ.get("write_enabled")),
+                "last_sync_at": integ.get("last_sync_at"),
+            },
+        })
+    return {"tenants": out}
+
+
+@admin_router.post("/tenants")
+async def admin_create_tenant(payload: TenantCreate, request: Request):
+    name = (payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Nom du client requis")
+    tid = _slugify(payload.id or name)
+    if not tid:
+        raise HTTPException(status_code=422, detail="Identifiant client invalide")
+    if tid == "platform" or await db.tenants.find_one({"id": tid}):
+        raise HTTPException(status_code=409, detail="Un client avec cet identifiant existe déjà")
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {"id": tid, "name": name, "disabled": False,
+           "modules": {"documents": True}, "created_at": now}
+    await db.tenants.insert_one(dict(doc))
+    await audit("admin_tenant_create", "tenant", request, tid, None,
+                f"Client créé: {name} ({tid})", tenant_id=tid)
+    return doc
+
+
+@admin_router.put("/tenants/{tid}")
+async def admin_update_tenant(tid: str, payload: TenantUpdate, request: Request):
+    t = await db.tenants.find_one({"id": tid}, {"_id": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Client introuvable")
+    updates, notes = {}, []
+    if payload.name is not None and payload.name.strip():
+        updates["name"] = payload.name.strip()
+        notes.append(f"nom → {updates['name']}")
+    if payload.disabled is not None:
+        updates["disabled"] = bool(payload.disabled)
+        notes.append("client désactivé" if payload.disabled else "client réactivé")
+    if payload.modules is not None:
+        if not isinstance(payload.modules, dict) or not all(isinstance(v, bool) for v in payload.modules.values()):
+            raise HTTPException(status_code=422, detail="Format modules invalide")
+        merged = dict(t.get("modules") or {"documents": True})
+        merged.update(payload.modules)
+        updates["modules"] = merged
+        notes.append(f"modules → {merged}")
+    if not updates:
+        return t
+    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.tenants.update_one({"id": tid}, {"$set": updates})
+    await audit("admin_tenant_update", "tenant", request, tid, None, "; ".join(notes), tenant_id=tid)
+    return {**t, **updates}
+
+
+@admin_router.get("/tenants/{tid}/users")
+async def admin_list_users(tid: str):
+    if not await db.tenants.find_one({"id": tid}):
+        raise HTTPException(status_code=404, detail="Client introuvable")
+    users = await db.users.find({"tenant_id": tid}, {"_id": 0, "password_hash": 0}).to_list(None)
+    users.sort(key=lambda u: u.get("created_at") or "")
+    return users
+
+
+@admin_router.post("/tenants/{tid}/users")
+async def admin_create_user(tid: str, payload: TenantUserCreate, request: Request):
+    if not await db.tenants.find_one({"id": tid}):
+        raise HTTPException(status_code=404, detail="Client introuvable")
+    email = (payload.email or "").strip().lower()
+    if "@" not in email or "." not in email.split("@")[-1]:
+        raise HTTPException(status_code=422, detail="Email invalide")
+    if len(payload.password or "") < 8:
+        raise HTTPException(status_code=422, detail="Mot de passe : 8 caractères minimum")
+    role = payload.role or "admin"
+    if role not in ("admin", "user"):
+        raise HTTPException(status_code=422, detail="Rôle invalide (admin ou user)")
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=409, detail="Un utilisateur avec cet email existe déjà")
+    now = datetime.now(timezone.utc).isoformat()
+    user = {"id": str(uuid.uuid4()), "email": email, "name": (payload.name or "").strip(),
+            "role": role, "tenant_id": tid, "password_hash": hash_password(payload.password),
+            "password_changed_in_app": True, "token_version": 0, "disabled": False,
+            "created_at": now, "updated_at": now}
+    await db.users.insert_one(dict(user))
+    await audit("admin_user_create", "user", request, user["id"], None,
+                f"Utilisateur {email} ({role}) créé pour le client {tid}", tenant_id=tid)
+    return {k: v for k, v in user.items() if k != "password_hash"}
+
+
+@admin_router.put("/users/{user_id}")
+async def admin_update_user(user_id: str, payload: AdminUserUpdate, request: Request):
+    target = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    if target.get("role") == "superadmin":
+        raise HTTPException(status_code=403, detail="Compte plateforme non modifiable par cette API")
+    updates, notes, revoke = {}, [], False
+    if payload.password is not None:
+        if len(payload.password) < 8:
+            raise HTTPException(status_code=422, detail="Mot de passe : 8 caractères minimum")
+        updates["password_hash"] = hash_password(payload.password)
+        updates["password_changed_in_app"] = True
+        notes.append("mot de passe réinitialisé")
+        revoke = True
+    if payload.disabled is not None:
+        updates["disabled"] = bool(payload.disabled)
+        notes.append("compte désactivé" if payload.disabled else "compte réactivé")
+        revoke = revoke or bool(payload.disabled)
+    if payload.name is not None:
+        updates["name"] = payload.name.strip()
+        notes.append("nom modifié")
+    if not updates:
+        return target
+    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+    op = {"$set": updates}
+    if revoke:
+        op["$inc"] = {"token_version": 1}
+    await db.users.update_one({"id": user_id}, op)
+    await audit("admin_user_update", "user", request, user_id, None,
+                f"{target['email']}: " + "; ".join(notes), tenant_id=target.get("tenant_id"))
+    return await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+
+
+@admin_router.get("/tenants/{tid}/integration")
+async def admin_get_integration(tid: str):
+    if not await db.tenants.find_one({"id": tid}):
+        raise HTTPException(status_code=404, detail="Client introuvable")
+    integ = await db.tenant_integrations.find_one(
+        {"tenant_id": tid, "provider": "navixy"}, {"_id": 0}) or {}
+    return {"provider": "navixy",
+            "configured": bool(integ.get("api_hash")),
+            "enabled": bool(integ.get("enabled")),
+            "write_enabled": bool(integ.get("write_enabled")),
+            "base_url": integ.get("base_url") or NAVIXY_BASE_URL,
+            "last_sync_at": integ.get("last_sync_at")}
+
+
+@admin_router.put("/tenants/{tid}/integration")
+async def admin_update_integration(tid: str, payload: IntegrationUpdate, request: Request):
+    if not await db.tenants.find_one({"id": tid}):
+        raise HTTPException(status_code=404, detail="Client introuvable")
+    updates, notes = {}, []
+    if payload.api_hash:
+        updates["api_hash"] = payload.api_hash.strip()
+        notes.append("clé API mise à jour")
+    if payload.enabled is not None:
+        updates["enabled"] = bool(payload.enabled)
+        notes.append(f"enabled={bool(payload.enabled)}")
+    if payload.write_enabled is not None:
+        updates["write_enabled"] = bool(payload.write_enabled)
+        notes.append(f"write_enabled={bool(payload.write_enabled)}")
+    if payload.base_url is not None and payload.base_url.strip():
+        updates["base_url"] = payload.base_url.strip()
+        notes.append("base_url modifiée")
+    if not updates:
+        raise HTTPException(status_code=422, detail="Aucune modification fournie")
+    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.tenant_integrations.update_one(
+        {"tenant_id": tid, "provider": "navixy"},
+        {"$set": updates,
+         "$setOnInsert": {"tenant_id": tid, "provider": "navixy", "created_at": updates["updated_at"]}},
+        upsert=True)
+    await audit("admin_integration_update", "tenant_integration", request, tid, None,
+                "; ".join(notes), tenant_id=tid)
+    return await admin_get_integration(tid)
+
+
 @app.on_event("startup")
 async def startup():
     try:
@@ -2714,7 +2964,9 @@ async def startup():
     try:
         await db.users.create_index("email", unique=True)
         await db.login_attempts.create_index("identifier", unique=True)
+        await db.tenants.create_index("id", unique=True)
         await seed_admin(db)
+        await seed_superadmin(db)
     except Exception as e:
         logger.error(f"Auth seed failed: {e}")
     try:
@@ -2810,6 +3062,7 @@ async def startup():
 
 
 app.include_router(auth_router)
+app.include_router(admin_router)
 app.include_router(api_router, dependencies=[Depends(require_auth)])
 
 app.add_middleware(

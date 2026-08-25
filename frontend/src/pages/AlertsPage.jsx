@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import KpiCard from "@/components/KpiCard";
 import StatusBadge from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
+import QueryErrorState from "@/components/QueryErrorState";
 import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
 
 const STATUS_LABEL = { mocked: "Simulé", sent: "Envoyé", failed: "Échec", skipped: "Ignoré" };
@@ -26,7 +27,7 @@ export default function AlertsPage() {
   const qc = useQueryClient();
   const { openVehicle } = useVehicleDrawer();
   const [running, setRunning] = useState(false);
-  const { data, isLoading } = useQuery({ queryKey: ["alerts"], queryFn: getAlerts });
+  const { data, isLoading, isError, error } = useQuery({ queryKey: ["alerts"], queryFn: getAlerts });
   const { data: log = [] } = useQuery({ queryKey: ["alerts-log"], queryFn: getAlertsLog });
 
   const items = data?.items || [];
@@ -58,6 +59,8 @@ export default function AlertsPage() {
           Lancer la vérification
         </Button>
       </div>
+
+      {isError && <QueryErrorState error={error} testId="alerts-error" />}
 
       {/* Email status banner */}
       <div

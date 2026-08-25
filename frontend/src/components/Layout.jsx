@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Truck, CalendarClock, Bell, Layers3, UserCircle2, KeyRound, LogOut, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, Truck, CalendarClock, Bell, Layers3, UserCircle2, KeyRound, LogOut, ShieldCheck, Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
@@ -33,9 +33,13 @@ function Brand() {
 
 function TopTabs() {
   const { pathname } = useLocation();
+  const { user } = useAuth();
+  const items = user?.role === "superadmin"
+    ? [...NAV, { to: "/admin", label: "Administration", icon: Building2, testId: "nav-admin" }]
+    : NAV;
   return (
     <nav className="no-scrollbar -mb-px flex items-center gap-1 overflow-x-auto" data-testid="top-nav">
-      {NAV.map(({ to, label, icon: Icon, testId }) => {
+      {items.map(({ to, label, icon: Icon, testId }) => {
         const active = pathname === to;
         return (
           <Link

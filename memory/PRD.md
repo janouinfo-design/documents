@@ -332,6 +332,16 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - [x] **Lot 3 — renommage libellés Navixy (preview uniquement, PAS ENCORE en prod)** : IntegrityPage.jsx l.266 `<th>Navixy</th>` → « Télématique » (choix par défaut, utilisateur n'a pas tranché a/b/c/d) + 6 messages backend visibles (server.py : « Intégration télématique non configurée », « Erreur du service télématique », audit « Synchronisation/Liaison télématique », 2 notes intégrité). Identifiants techniques/endpoints/provider `navixy` INCHANGÉS. Tests : py_compile OK, test_sync_integrity+test_p0_core 32 pass/1 skip, test_multitenant 10/10, screenshot preview validé (en-têtes LOGITRAK/Télématique, login OK). ⚠ Nécessite Save to GitHub + git pull + rebuild VPS pour être visible en prod.
 - ⚠ URL preview actuelle : fleet-admin-hub-7.preview.emergentagent.com (l'ancienne vehicle-doc-system est morte).
 
+## Lot 4 — Console Super Admin LIVRÉ ET TESTÉ EN PREVIEW (2026-08-25) — PAS DÉPLOYÉ EN PROD
+- [x] **Auth/rôles (playbook integration_expert appliqué)** : `seed_superadmin` (SUPERADMIN_EMAIL/PASSWORD/FORCE_RESET, tenant `platform`) + démotion automatique idempotente des anciens superadmin → `admin` de leur tenant (admin@logitrak.ch = admin du client default, PROUVÉ par test) ; `disabled` bloque login + tokens existants (token_version) ; tenant `disabled` bloque tout ; module `documents` désactivé → 403 sur l'API métier (routes /api/auth épargnées) ; `require_superadmin` sur /api/admin/*.
+- [x] **Endpoints /api/admin/*** : overview (compteurs véhicules/documents/users + état intégration par client, api_hash JAMAIS renvoyé), tenants POST/PUT (slug unique, `platform` réservé, jamais de delete physique), users GET/POST/PUT (rôles admin|user seulement, reset mdp + désactivation → révocation sessions, comptes superadmin non modifiables 403), integration GET/PUT (api_hash write-only). Tout audité dans audit_logs.
+- [x] **Frontend** : page /admin (guard rôle), onglet « Administration » (superadmin uniquement), redirection login selon rôle, cartes clients dépliables (switch actif + module Documents), section utilisateurs (créer/réinitialiser/désactiver), section intégration (clé masquée, switches sync/écriture). Fichiers : pages/AdminPage.jsx, components/admin/{NewClientDialog,ClientUsers,ClientIntegration}.jsx, Layout.jsx, Login.jsx, App.js, api.js.
+- [x] **Tests** : backend test_admin_console.py **25/25 PASS** ; régression complète **193 collectés = 191 PASS / 2 SKIP / 0 FAIL** ; testing agent it.24 frontend **10/10 scénarios PASS** (isolation tenant, reset mdp, désactivations, clé jamais dans le DOM, régression client default intacte).
+- [x] **Fix HIGH post-it.24** : crash page blanche Dashboard sur erreur API → gardes `!kpi`, bannière QueryErrorState (Dashboard/Véhicules/Échéances/Alertes/Intégrité), ErrorBoundary global dans App.js, retries react-query désactivés sur 4xx. Vérifié par screenshot (403 mocké → bannière, page vivante).
+- Artefacts preview : tenants `pytest-client-*` + `client-test-e2e` (user e2e-admin@client-test.ch) = données de TEST uniquement.
+- Identifiants superadmin preview : memory/test_credentials.md (gitignoré). PROD : l'utilisateur devra ajouter SUPERADMIN_EMAIL/SUPERADMIN_PASSWORD dans deploy/.env au prochain déploiement (sinon la console n'existe pas en prod et admin@logitrak.ch reste superadmin — comportement rétrocompatible voulu).
+- ⚠ NON DÉPLOYÉ EN PRODUCTION — en attente de validation utilisateur, comme exigé.
+
 ## Backlog (prioritized)
 - Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.
 - Phase 3+ (gros chantiers, à cadrer 1 par 1): modules Contrats & renouvellements, Conducteurs, Clients, Modèles, Corbeille/Favoris/Partagés ; permissions/rôles + auth ; multi-tenant.
@@ -342,5 +352,5 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 
 ## Next Tasks
 1. Utilisateur : rotation ANTHROPIC_API_KEY + NAVIXY_API_HASH (exposées en capture) puis `docker compose up -d backend`.
-2. Publier le Lot 3 en prod : Save to GitHub → `cd ~/documents && git pull` → `cd deploy && docker compose up -d --build`.
-3. GO PHASE 1 explicite de l'utilisateur → Documents V2 Phase 1 (9 catégories système + moteur de statut, périmètre déjà validé, sans migration Assurance/Leasing).
+2. Validation utilisateur du Lot 4 en preview → puis déploiement groupé possible (Lot 3 déjà en prod ; Lot 4 attendra le GO + ajout SUPERADMIN_EMAIL/SUPERADMIN_PASSWORD dans deploy/.env).
+3. GO explicite → Lot 5 Documents V2 Phase 1 (spec utilisateur 3.1→3.13 : catégories génériques 13 défauts, modèle document étendu, moteur statut backend VALID/EXPIRING_SOON/EXPIRED/MISSING/TO_REVIEW/ARCHIVED, seuils centraux 30/60/90, profils documentaires, versioning, dashboard KPI, page Documents, fiche véhicule, échéances unifiées anti-double-comptage, champs coûts). Décisions §11 audit-etape2 validées « OK partout ».

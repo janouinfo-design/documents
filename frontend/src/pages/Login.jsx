@@ -27,8 +27,8 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      await login(email, password);
-      navigate("/", { replace: true });
+      const u = await login(email, password);
+      navigate(u?.role === "superadmin" ? "/admin" : "/", { replace: true });
     } catch (err) {
       setError(formatApiErrorDetail(err?.response?.data?.detail) || "Connexion impossible");
     } finally {

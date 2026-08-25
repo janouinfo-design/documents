@@ -166,4 +166,15 @@ export const enrichTechnical = (id) =>
 export const applyTechnicalEnrichment = (id, payload) =>
   http.post(`/vehicles/${id}/enrich-technical/apply`, payload).then((r) => r.data);
 
+// Console Super Admin
+export const adminOverview = () => http.get("/admin/overview").then((r) => r.data);
+export const adminCreateTenant = (data) => http.post("/admin/tenants", data).then((r) => r.data);
+export const adminUpdateTenant = (tid, data) => http.put(`/admin/tenants/${tid}`, data).then((r) => r.data);
+export const adminListUsers = (tid) => http.get(`/admin/tenants/${tid}/users`).then((r) => r.data);
+export const adminCreateUser = (tid, data) => http.post(`/admin/tenants/${tid}/users`, data).then((r) => r.data);
+export const adminUpdateUser = (uid, data) => http.put(`/admin/users/${uid}`, data).then((r) => r.data);
+export const adminGetIntegration = (tid) => http.get(`/admin/tenants/${tid}/integration`).then((r) => r.data);
+export const adminUpdateIntegration = (tid, data) =>
+  http.put(`/admin/tenants/${tid}/integration`, data).then((r) => r.data);
+
 export default http;

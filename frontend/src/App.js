@@ -5,12 +5,14 @@ import { Toaster } from "@/components/ui/sonner";
 import { VehicleDrawerProvider } from "@/context/VehicleDrawerContext";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import Layout from "@/components/Layout";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import Dashboard from "@/pages/Dashboard";
 import Vehicles from "@/pages/Vehicles";
 import TimelinePage from "@/pages/TimelinePage";
 import AlertsPage from "@/pages/AlertsPage";
 import Login from "@/pages/Login";
 import IntegrityPage from "@/pages/IntegrityPage";
+import AdminPage from "@/pages/AdminPage";
 
 function Protected({ children }) {
   const { user } = useAuth();
@@ -37,13 +39,16 @@ function App() {
                 <Protected>
                   <VehicleDrawerProvider>
                     <Layout>
-                      <Routes>
-                        <Route path="/" element={<Dashboard />} />
-                        <Route path="/vehicules" element={<Vehicles />} />
-                        <Route path="/timeline" element={<TimelinePage />} />
-                        <Route path="/alertes" element={<AlertsPage />} />
-                        <Route path="/integrite" element={<IntegrityPage />} />
-                      </Routes>
+                      <ErrorBoundary>
+                        <Routes>
+                          <Route path="/" element={<Dashboard />} />
+                          <Route path="/vehicules" element={<Vehicles />} />
+                          <Route path="/timeline" element={<TimelinePage />} />
+                          <Route path="/alertes" element={<AlertsPage />} />
+                          <Route path="/integrite" element={<IntegrityPage />} />
+                          <Route path="/admin" element={<AdminPage />} />
+                        </Routes>
+                      </ErrorBoundary>
                     </Layout>
                   </VehicleDrawerProvider>
                 </Protected>

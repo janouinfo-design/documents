@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { RefreshCw, Link2, PlusCircle, Loader2, AlertTriangle } from "lucide-react";
 import { getIntegrity, getLinkSuggestions, linkNavixyVehicle, createNavixyVehicle } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import QueryErrorState from "@/components/QueryErrorState";
 import { cn } from "@/lib/utils";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
@@ -178,7 +179,7 @@ function LinkSection({ onDone }) {
 export default function IntegrityPage() {
   const qc = useQueryClient();
   const [filter, setFilter] = useState("tous");
-  const { data, isLoading, isFetching, refetch } = useQuery({
+  const { data, isLoading, isFetching, refetch, isError: mainError, error: mainErrorObj } = useQuery({
     queryKey: ["integrity"], queryFn: () => getIntegrity(), retry: false,
   });
 
@@ -229,6 +230,8 @@ export default function IntegrityPage() {
           <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} /> Re-vérifier
         </Button>
       </div>
+
+      {mainError && <QueryErrorState error={mainErrorObj} testId="integrity-error" />}
 
       {data?.navixy_status === "not_configured" && (
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600" data-testid="integration-absent-banner">

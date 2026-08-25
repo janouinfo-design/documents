@@ -18,13 +18,14 @@ import { lvl, EVENT_TYPES } from "@/lib/status";
 import { cn } from "@/lib/utils";
 import KpiCard from "@/components/KpiCard";
 import StatusBadge from "@/components/StatusBadge";
+import QueryErrorState from "@/components/QueryErrorState";
 import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
 
 const tabForType = (t) => (["leasing", "assurance", "controle"].includes(t) ? t : "general");
 
 export default function Dashboard() {
   const { openVehicle } = useVehicleDrawer();
-  const { data: kpi, isLoading } = useQuery({ queryKey: ["dashboard"], queryFn: getDashboard });
+  const { data: kpi, isLoading, isError, error } = useQuery({ queryKey: ["dashboard"], queryFn: getDashboard });
   const { data: events = [] } = useQuery({ queryKey: ["timeline"], queryFn: getTimeline });
 
   const upcoming = events
@@ -50,16 +51,18 @@ export default function Dashboard() {
         </p>
       </div>
 
+      {isError && <QueryErrorState error={error} testId="dashboard-error" />}
+
       {/* KPI grid */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard testId="kpi-leasing-expired" label="Leasing expirés" value={isLoading ? "—" : kpi.leasing_expired} accent="red" icon={FileWarning} sub="Contrats échus" />
-        <KpiCard testId="kpi-leasing-soon" label="Leasing bientôt expirés" value={isLoading ? "—" : kpi.leasing_soon} accent="amber" icon={CalendarClock} sub="≤ 90 jours" />
-        <KpiCard testId="kpi-assurance-renew" label="Assurances à renouveler" value={isLoading ? "—" : kpi.assurance_renew} accent="sky" icon={ShieldCheck} sub="Renouvellement proche" />
-        <KpiCard testId="kpi-controle-upcoming" label="Contrôles techniques à venir" value={isLoading ? "—" : kpi.controle_upcoming} accent="amber" icon={ClipboardCheck} sub="Expertise programmée" />
-        <KpiCard testId="kpi-documents-missing" label="Véhicules · docs manquants" value={isLoading ? "—" : kpi.documents_missing} accent="red" icon={FileStack} sub="Documents requis absents" />
-        <KpiCard testId="kpi-cout-leasing" label="Coût leasing mensuel" value={isLoading ? "—" : chf(kpi.cout_leasing_mensuel)} accent="slate" icon={Wallet} sub="Total flotte / mois" />
-        <KpiCard testId="kpi-cout-assurance" label="Coût assurance annuel" value={isLoading ? "—" : chf(kpi.cout_assurance_annuel)} accent="slate" icon={Banknote} sub="Total flotte / an" />
-        <KpiCard testId="kpi-conformes" label="Véhicules conformes" value={isLoading ? "—" : `${kpi.vehicles_conformes}/${kpi.total_vehicles}`} accent="emerald" icon={CheckCircle2} sub="Aucune alerte active" />
+        <KpiCard testId="kpi-leasing-expired" label="Leasing expirés" value={!kpi ? "—" : kpi.leasing_expired} accent="red" icon={FileWarning} sub="Contrats échus" />
+        <KpiCard testId="kpi-leasing-soon" label="Leasing bientôt expirés" value={!kpi ? "—" : kpi.leasing_soon} accent="amber" icon={CalendarClock} sub="≤ 90 jours" />
+        <KpiCard testId="kpi-assurance-renew" label="Assurances à renouveler" value={!kpi ? "—" : kpi.assurance_renew} accent="sky" icon={ShieldCheck} sub="Renouvellement proche" />
+        <KpiCard testId="kpi-controle-upcoming" label="Contrôles techniques à venir" value={!kpi ? "—" : kpi.controle_upcoming} accent="amber" icon={ClipboardCheck} sub="Expertise programmée" />
+        <KpiCard testId="kpi-documents-missing" label="Véhicules · docs manquants" value={!kpi ? "—" : kpi.documents_missing} accent="red" icon={FileStack} sub="Documents requis absents" />
+        <KpiCard testId="kpi-cout-leasing" label="Coût leasing mensuel" value={!kpi ? "—" : chf(kpi.cout_leasing_mensuel)} accent="slate" icon={Wallet} sub="Total flotte / mois" />
+        <KpiCard testId="kpi-cout-assurance" label="Coût assurance annuel" value={!kpi ? "—" : chf(kpi.cout_assurance_annuel)} accent="slate" icon={Banknote} sub="Total flotte / an" />
+        <KpiCard testId="kpi-conformes" label="Véhicules conformes" value={!kpi ? "—" : `${kpi.vehicles_conformes}/${kpi.total_vehicles}`} accent="emerald" icon={CheckCircle2} sub="Aucune alerte active" />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
