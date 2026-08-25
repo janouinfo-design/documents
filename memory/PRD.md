@@ -324,6 +324,14 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - [x] **Compte démo : décision = RIEN dans l'interface** (option b). Aucun secret ne retourne dans le frontend. Identifiants communiqués en privé : preview = memory/test_credentials.md (gitignoré, hors bundle) ; prod = valeurs ADMIN_EMAIL/ADMIN_PASSWORD définies par l'utilisateur dans deploy/.env sur le VPS (mot de passe NEUF obligatoire, jamais l'ancien compromis).
 - Aucun code modifié dans cette étape. Toujours en attente : preuves VPS (SHA, compose ps, login nouveau credential 200 / ancien 401, matrice 401/200, sortie audit Mongo) → puis GO PHASE 1 explicite.
 
+## DÉPLOIEMENT PRODUCTION VALIDÉ (2026-08-25) — session guidée commande par commande
+- [x] **Prod déployée et PROUVÉE** : VPS `77d739a` → `5ee11cd` (fast-forward, contient le HEAD sécurité `ae537d6` ; diff résiduel = PRD/métadonnées uniquement). Containers rebuild OK (backend/web recréés, mongo intact).
+- [x] **Matrice prod** : 16 GET sans token → 401, 5 écritures sans token → 401, faux token query /files → 401, login mauvais identifiants → 401, session utilisateur réelle → 200 (auth/me). OCR Claude + création véhicule Navixy fonctionnels en prod.
+- [x] **Audit Mongo prod (script read-only exécuté par l'utilisateur)** : users=1 (superadmin `admin@logitrak.ch`, tenant default), tenant_id 100 % (0 manquant sur toutes collections), index composés présents, 12/12 véhicules DEMO_PROUVÉE, documents 5 (1 actif/4 soft-del), alertes 125 (100 % mocked), 2 inspections orphelines, ASTRA importé (900k+ docs), login_attempts index unique. AUCUNE ÉCRITURE.
+- [x] **Incidents credentials pendant la session** : (1) capture d'écran .env → ANTHROPIC_API_KEY + NAVIXY_API_HASH + JWT_SECRET exposés → JWT régénéré sur VPS ; **rotation Anthropic + Navixy À FAIRE par l'utilisateur** ; (2) placeholder « VotreNouveauMotDePasse » utilisé comme mdp → corrigé ; (3) utilisateur a collé son ADMIN_PASSWORD en clair dans le chat → **mot de passe changé dans l'app** (password_changed_in_app=true, .env plus utilisé pour ce compte). Compte « logitrak@logitrak.ch » : N'EXISTE PAS (autofill navigateur/autre site).
+- [x] **Lot 3 — renommage libellés Navixy (preview uniquement, PAS ENCORE en prod)** : IntegrityPage.jsx l.266 `<th>Navixy</th>` → « Télématique » (choix par défaut, utilisateur n'a pas tranché a/b/c/d) + 6 messages backend visibles (server.py : « Intégration télématique non configurée », « Erreur du service télématique », audit « Synchronisation/Liaison télématique », 2 notes intégrité). Identifiants techniques/endpoints/provider `navixy` INCHANGÉS. Tests : py_compile OK, test_sync_integrity+test_p0_core 32 pass/1 skip, test_multitenant 10/10, screenshot preview validé (en-têtes LOGITRAK/Télématique, login OK). ⚠ Nécessite Save to GitHub + git pull + rebuild VPS pour être visible en prod.
+- ⚠ URL preview actuelle : fleet-admin-hub-7.preview.emergentagent.com (l'ancienne vehicle-doc-system est morte).
+
 ## Backlog (prioritized)
 - Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.
 - Phase 3+ (gros chantiers, à cadrer 1 par 1): modules Contrats & renouvellements, Conducteurs, Clients, Modèles, Corbeille/Favoris/Partagés ; permissions/rôles + auth ; multi-tenant.
@@ -333,6 +341,6 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - P3: Refactor server.py en routers ; upload async.
 
 ## Next Tasks
-1. Déployer les itérations 4-18 (dont l'AUTH) sur le VPS : Save to GitHub → `cd ~/documents && git pull` → renseigner dans `deploy/.env` : `JWT_SECRET` (openssl rand -hex 32), `ADMIN_EMAIL=admin@logitrak.ch`, `ADMIN_PASSWORD` (valeur de memory/test_credentials.md ou une nouvelle), `ANTHROPIC_API_KEY` → `cd deploy && docker compose up -d --build`. Import ASTRA auto au 1er boot (~1,6 Go, 10-15 min) — suivi `curl http://127.0.0.1:8090/api/astra/status` (401 attendu sans token : utiliser le token du login).
-2. Vérifier l'iframe hub après redéploiement (login requis désormais dans l'iframe) : test visuel utilisateur dans https://login.logitrak.fr/#/user-app/14328.
-3. SwissCarInfo : clé plus nécessaire (resolver 100 % ASTRA local). Code conservé en historique uniquement.
+1. Utilisateur : rotation ANTHROPIC_API_KEY + NAVIXY_API_HASH (exposées en capture) puis `docker compose up -d backend`.
+2. Publier le Lot 3 en prod : Save to GitHub → `cd ~/documents && git pull` → `cd deploy && docker compose up -d --build`.
+3. GO PHASE 1 explicite de l'utilisateur → Documents V2 Phase 1 (9 catégories système + moteur de statut, périmètre déjà validé, sans migration Assurance/Leasing).

@@ -263,7 +263,7 @@ export default function IntegrityPage() {
               <th className="px-4 py-3">Véhicule</th>
               <th className="px-4 py-3">Champ</th>
               <th className="px-4 py-3">LOGITRAK</th>
-              <th className="px-4 py-3">Navixy</th>
+              <th className="px-4 py-3">Télématique</th>
               <th className="px-4 py-3">Statut</th>
             </tr>
           </thead>

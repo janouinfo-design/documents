@@ -236,7 +236,7 @@ class NavixyError(Exception):
 def navixy_post(integ: dict, path: str, payload: dict = None) -> dict:
     """Appel API Navixy avec les credentials de l'intégration du TENANT concerné."""
     if not integ or not integ.get("api_hash"):
-        raise NavixyError("Intégration Navixy non configurée pour ce compte")
+        raise NavixyError("Intégration télématique non configurée pour ce compte")
     body = dict(payload or {})
     body["hash"] = integ["api_hash"]
     try:
@@ -249,7 +249,7 @@ def navixy_post(integ: dict, path: str, payload: dict = None) -> dict:
         raise NavixyError(f"Réponse du service de synchronisation invalide (HTTP {resp.status_code})")
     if isinstance(data, dict) and data.get("success") is False:
         status = data.get("status", {}) or {}
-        raise NavixyError(status.get("description") or "Erreur Navixy")
+        raise NavixyError(status.get("description") or "Erreur du service télématique")
     return data
 
 
@@ -340,7 +340,7 @@ async def push_vehicle_to_navixy(vehicle: dict, request=None) -> dict:
             "integrations.navixy.last_sync_at": datetime.now(timezone.utc).isoformat()}})
         detail = ", ".join(f"{k}: {o or '—'} → {n}" for k, o, n in changes)
         await audit("navixy_push", "vehicle", request, vehicle["id"], vehicle["id"],
-                    f"Synchronisation Navixy (écriture) — {detail}", tenant_id=tenant_id)
+                    f"Synchronisation télématique (écriture) — {detail}", tenant_id=tenant_id)
         return {"status": "pushed", "fields": [k for k, _, _ in changes]}
     except NavixyError as e:
         logger.error("Push Navixy échoué (%s): %s", vehicle.get("plaque"), e)
@@ -2203,7 +2203,7 @@ async def fleet_integrity(request: Request,
             "marque_modele": {"status": cmp(model_doc, rv.get("model")),
                               "documents": model_doc, "navixy": rv.get("model"),
                               "navixy_writable": True,
-                              "note": "Navixy n'a qu'un champ « model » — mapping marque+modèle"},
+                              "note": "La télématique n'a qu'un champ « model » — mapping marque+modèle"},
             "annee": {"status": ("NON_DISPONIBLE" if not annee_doc and not annee_nav
                                  else "IDENTIQUE" if annee_doc == annee_nav else "DIFFERENT"),
                       "documents": annee_doc or None, "navixy": annee_nav or None,
@@ -2217,7 +2217,7 @@ async def fleet_integrity(request: Request,
                        "navixy_writable": True, "note": "garage non modélisé côté Documents"},
             "departement": {"status": "NON_SUPPORTE", "documents": None, "navixy": None,
                             "navixy_writable": False,
-                            "note": "absent de l'objet vehicle de l'API Navixy"},
+                            "note": "absent de l'objet vehicle de l'API télématique"},
         }
         if field:
             fields = {k: f for k, f in fields.items() if k == field}
@@ -2328,7 +2328,7 @@ async def navixy_link(payload: NavixyLinkPayload, request: Request):
         "integrations.navixy.sync_status": "linked",
         "integrations.navixy.last_sync_at": now, "updated_at": now}})
     await audit("navixy_link", "vehicle", request, v["id"], v["id"],
-                f"Liaison Navixy validée (objet {payload.external_vehicle_id}, "
+                f"Liaison télématique validée (objet {payload.external_vehicle_id}, "
                 f"preuve: {', '.join(cands[0]['matched_by'])})")
     return {"ok": True, "matched_by": cands[0]["matched_by"]}
 
