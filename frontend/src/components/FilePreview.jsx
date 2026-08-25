@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Download } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { fileUrl, mediaSrc } from "@/lib/api";
@@ -8,13 +8,26 @@ const isPdf = (ct) => ct === "application/pdf";
 const isVideo = (ct) => (ct || "").startsWith("video/");
 
 export default function FilePreview({ open, onOpenChange, file }) {
+  const contentRef = useRef(null);
+
   useEffect(() => {
     if (!open) return undefined;
     const onKey = (e) => {
       if (e.key === "Escape") onOpenChange?.(false);
     };
+    // Si le focus part dans l'iframe (clic dans le PDF), on le ramène au dialog
+    // pour que la touche Escape continue d'atteindre la fenêtre parente.
+    const onBlur = () => {
+      setTimeout(() => {
+        if (document.activeElement?.tagName === "IFRAME") contentRef.current?.focus();
+      }, 0);
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("blur", onBlur);
+    };
   }, [open, onOpenChange]);
 
   if (!file) return null;
@@ -24,7 +37,17 @@ export default function FilePreview({ open, onOpenChange, file }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl" data-testid="file-preview-dialog">
+      <DialogContent
+        ref={contentRef}
+        tabIndex={-1}
+        onOpenAutoFocus={(e) => {
+          // Empêche Radix de donner l'autofocus à l'iframe : Escape doit rester capté par le dialog
+          e.preventDefault();
+          requestAnimationFrame(() => contentRef.current?.focus());
+        }}
+        className="max-w-3xl"
+        data-testid="file-preview-dialog"
+      >
         <DialogHeader>
           <DialogTitle className="truncate pr-8 text-base">{file.original_filename || "Aperçu"}</DialogTitle>
           <DialogDescription className="sr-only">Aperçu du document</DialogDescription>

@@ -1,0 +1,25 @@
+{
+  "summary": "RE-TEST CIBLÉ (frontend only) du POINT 6 d'iteration_22 après correctif FilePreview.jsx (onOpenAutoFocus + focus contentRef + window blur re-focus). RÉSULTAT : POINT 6 MAINTENANT VALIDÉ — 4/4 sous-cas OK. (a) juste après ouverture de l'aperçu PDF, document.activeElement = DIV[data-testid=file-preview-dialog] (plus l'IFRAME) ; (b) Escape ferme bien le dialog (0 occurrence de file-preview-dialog après 1,2 s) ; (c) après réouverture + clic réel au centre de l'iframe PDF + 500 ms, activeElement est ramené à DIV (handler blur OK) et Escape ferme le dialog ; (d) après fermeture, aucun overlay résiduel : clic sur [data-testid=tab-general] du drawer véhicule fonctionne sans force. Sanity 1 OK : iframe src = /api/files/...?token=... et 2 réponses HTTP 200 observées. Sanity 2 OK : suppression du PDF de test → toast 'Document supprimé' + disparition de la liste (dossier Divers revenu à 0). Les points 1-5 et 7-13 d'iteration_22 n'ont pas été re-testés (demande explicite). Aucun logout effectué. Zéro erreur console bloquante.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Optionnel (report d'it.21/22, non re-testé ici) : api.js withToken() renvoie l'URL sans token si fileToken est null → 401 silencieux sur iframe/img/rapports ; prévoir un refreshFileToken() ou un état d'erreur visible."
+  ],
+  "critical_code_review_comments": [
+    "FilePreview.jsx : le correctif est cohérent (preventDefault de l'autofocus Radix + focus du DialogContent via requestAnimationFrame, puis re-capture du focus sur window blur si activeElement===IFRAME). Le listener window keydown reste redondant avec onEscapeKeyDown de Radix mais est inoffensif.",
+    "Le handler blur global se déclenche pour tout blur de fenêtre (ex. focus sur la barre d'URL) mais est gardé par le test activeElement===IFRAME, donc sans effet de bord observé."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "non testé (frontend only, sur demande)", "frontend": "POINT 6 : 4/4 sous-cas + 2/2 sanity checks = 100%"},
+  "seed_data_creation": "1 PDF de test (TEST_qa_esc.pdf, 193 octets) uploadé dans le dossier 'Divers' du véhicule '1-Enyaq 01 Bern' puis supprimé en fin de test. Aucune donnée métier modifiée. Dossier Divers vérifié à 0 document après nettoyage.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": false,
+  "test_credentials": "/app/memory/test_credentials.md (superadmin) — utilisées telles quelles, jamais imprimées",
+  "context_for_next_testing_agent": "Le point 6 (Escape sur l'aperçu PDF) est corrigé et vérifié le 2026-07 sur l'URL preview : combiné aux 12 points déjà validés en iteration_22, le lot Sécurité 2 est à 13/13. Pour rejouer : login → /vehicules → premier véhicule → tab-documents → folder-divers → input[type=file] du dropzone-divers → doc-preview-{id} → mesurer document.activeElement puis keyboard.press('Escape'). Les PDF restent blancs en Chromium headless : valider par status réseau 200. Ne pas faire de logout (révoque tous les tokens).",
+  "rca_of_the_issue": "N/A — le correctif (neutralisation de l'autofocus Radix vers l'<iframe> + re-focus du DialogContent après clic dans l'iframe) résout la cause identifiée en iteration_22 (keydown capturés dans le document de l'iframe, non propagés au parent)."
+}
