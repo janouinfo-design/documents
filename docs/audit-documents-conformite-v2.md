@@ -679,4 +679,88 @@ L'architecture existante est saine pour une extension V2 non destructive : sourc
 
 ---
 
-**STATUT : EN ATTENTE DE VALIDATION — AUCUNE IMPLÉMENTATION DOCUMENTS V2 DÉMARRÉE**
+# ADDENDUM — Levée des conditions (2026-08-25, après validation de l'audit sous conditions)
+
+## A. PRODUCTION : VÉRIFIÉE (partiellement, via API — lecture seule)
+
+Constat majeur : **l'API de production https://documents.logitrak.ch est entièrement OUVERTE, sans authentification** (`/api/auth/login` → 404 ; `GET /api/vehicles` → 12 véhicules sans token). La production exécute une version ≈ itérations 14-17 (ASTRA importé, OCR Claude configuré) **SANS** l'auth (it.18), **SANS** le multi-tenant (it.22 : `tenant_id` absent 0/12) et **SANS** le P0 (champs batterie absents). L'audit prod a donc été réalisé par appels GET publics uniquement (endpoints écrivant un audit_log — integrity, reports — volontairement exclus ; AUCUN POST/PUT/DELETE).
+
+| Élément | Preview | Production | Différence |
+|---|---|---|---|
+| Version déployée | it.22 (auth + tenant + P0) | ≈ it.14-17 (pré-auth, pré-tenant) | prod en retard de 5+ itérations |
+| Authentification API | JWT obligatoire (401) | **AUCUNE — API publique lecture ET écriture** | **CRITIQUE** |
+| Véhicules | 12 (Navixy) | 12 (Navixy, mêmes trackers) | ids uuid différents |
+| tenant_id | 12/12 `default` | 0/12 (champ inexistant) | backfill non déployé |
+| navixy_vehicle_id / VIN | 5/12 · 5/12 | 3/12 · 2/12 | liaisons/push it.21-22 non déployés |
+| Données DEMO_PROUVÉE (LSG-2022-45xx + POL-78xxxx + commentaire démo) | 11/12 | **12/12** | fill-admin exécuté en prod aussi |
+| Photos Unsplash (seed) | 11/12 | 12/12 | idem |
+| Documents actifs | 30 (17 validés — majoritairement artefacts de tests OCR) | **1** (dossier Leasing, sans type, non validé) | prod quasi vide de documents |
+| Documents soft-supprimés / orphelins | 70 / 1 | NON VÉRIFIABLE via API (pas d'accès Mongo prod) | — |
+| Inspections rattachées | 0 (3 orphelines en base) | 0 | — |
+| Alertes (journal) | 61, 100 % mocked | ≥100 lues (73 digest + 27 seuils), 100 % mocked | accumulation digests quotidiens |
+| Index / collections internes prod | mesurés (preview) | NON VÉRIFIÉS (accès Mongo prod indisponible depuis le pod) | audit complet = commande à exécuter sur le VPS |
+
+Limite explicite : sans accès Mongo direct au VPS, les index, documents soft-supprimés, orphelins et collections internes de production restent **NON VÉRIFIÉS**.
+
+## B. DONNÉES DEMO — les deux environnements
+
+- **Preview : 11/12 véhicules DEMO_PROUVÉE** (liste anonymisée des vehicle_id fournie dans le chat du 2026-08-25 : d1099b53, 6491d528, 8540d020, f4f234b5, 50c156cb, acb99cee, 32f08fa5, 9a19070f, ec488eb5, 1ad61c35, 5909a77b — tenant `default`, champs `leasing.*` + `assurance.*`, signatures LSG-2022-45xx / POL-78xxxx / commentaire « Données de démonstration » / photo Unsplash). Le 12e (6d00f932, « 1-Enyaq ») porte des données de TEST (« TEST Assur », prime 1234.0) — pas du seed, mais pas réelles non plus.
+- **Production : 12/12 véhicules DEMO_PROUVÉE** (mêmes signatures, vérifiées champ par champ via l'API).
+- Conclusion structurante pour la migration : **il n'existe pratiquement AUCUNE donnée Assurance/Leasing réelle** dans les deux environnements. Décision utilisateur confirmée : ces données ne seront JAMAIS migrées en V2 comme réelles ; rien n'a été supprimé/modifié/migré.
+
+## C. DIVERGENCE ACTIVE — analyse exacte : ARTEFACT DE TEST PROUVÉ
+
+```text
+Tenant : default · Vehicle : 6d00f932-d74d-4e1b-84ad-6116ffb0af33 (« 1-Enyaq 01 Bern »,
+tracker Navixy réel 3218549, importé 2026-06-04) · Champ : assurance.date_echeance
+
+Fiche véhicule : 2027-06-01 (valeur actuelle ; 2026-09-09 au moment de l'instantané)
+  Source : cycles pytest test_docscan — scan répété d'un PDF de test (1031 octets,
+  compagnie « TEST Assur », prime 1234.0) puis reset déterministe à 2027-06-01.
+  Provenance : vehicle_field_meta source=document_scan ; audit : « anonymous » (pré-auth)
+  puis admin@logitrak.ch (runs récents via conftest).
+Document 5391814c (actif) : validated_fields.date_echeance = 2026-09-03,
+  validé le 2026-08-19 08:53 par un run de test.
+Consommateurs (Dashboard, fiche, alertes, échéances, rapports) : TOUS lisent
+  vehicles.assurance.date_echeance. Le document n'est lu par AUCUN consommateur (trace).
+Preuve : audit trail complet = ≥6 cycles identiques scan→validate du même PDF de test
+  entre le 11.08 et le 25.08 (2027-06-01 → 2026-08-26/27, 2026-09-03, 2026-09-09 → reset).
+```
+**Recommandation : VEHICLE DEVRAIT RESTER SOURCE** (architecture) — et pour ce cas précis, AUCUN arbitrage métier n'est nécessaire : les deux valeurs sont des artefacts de test prouvés, ni l'une ni l'autre n'est une donnée réelle. À traiter avec le futur nettoyage validé des données de test. Aucune valeur modifiée.
+
+## D. FAILLE LOGIN DÉMO — cause exacte et correction
+
+Cause : bloc JSX ajouté à l'itération 20 (commit `7e0a008`, demande utilisateur de l'époque) — `onClick` du bouton « Admin » appelait `setPassword("<secret en clair>")` → secret compilé dans le bundle JS livré à tout visiteur du preview. Audit AVANT correctif :
+```text
+SECRET DANS SOURCE : OUI (Login.jsx uniquement)
+SECRET DANS BUNDLE CLIENT : OUI (bundle dev preview ; le bundle de PRODUCTION ne le
+                            contenait PAS — la prod n'a jamais reçu la page login)
+SECRET DANS VARIABLE FRONTEND : NON (aucune REACT_APP_* ne porte de secret)
+SECRET DANS GIT TRACKÉ : OUI — présent dans 4 commits de l'historique (7e0a008 → 2f8c434)
+```
+**Correction : RÉALISÉE.** Fichier modifié : `frontend/src/pages/Login.jsx` (suppression complète du bloc « Comptes démo », aucune autre modification ; aucun mécanisme de remplacement — priorité à la suppression de l'exposition). Vérifications post-correctif : secret absent du source (grep=0), du build de production `yarn build` (0 fichier), du bundle dev servi (0 occurrence) ; `demo-admin-btn`/`demo-accounts` : 0 référence résiduelle (code + tests).
+
+**ROTATION DU SECRET RECOMMANDÉE : OUI** — triple exposition : (1) bundle navigateur du preview, (2) historique Git (le retrait du code ne purge pas l'historique ; il partira sur GitHub au prochain « Save to GitHub »), (3) divulgation antérieure dans le chat. Procédure (EN ATTENTE D'AUTORISATION, non exécutée) : changer le mot de passe via le menu utilisateur de l'app OU `ADMIN_PASSWORD` dans backend/.env (+ `ADMIN_FORCE_RESET=true` une fois) puis restart ; mettre à jour /app/memory/test_credentials.md ; reporter la nouvelle valeur dans deploy/.env AVANT le déploiement de l'auth en prod.
+
+## E-F. TESTS DE LA CORRECTION
+
+- Testing agent it.20 (`/app/test_reports/iteration_20.json`) : **7/7 PASS (100 %)** — DOM login sans bloc démo, champs vides au chargement, secret absent du DOM et des 9 bundles JS servis, mauvais mot de passe → erreur sans redirection (1 seul essai, verrou force brute préservé), login manuel → dashboard, session sur /vehicules /timeline /alertes /integrite, logout → purge lt_token + redirection, route protégée → /login. Seule erreur console : le 401 volontaire du test d'échec. Aucune donnée métier créée/modifiée.
+- `yarn build` : OK (24.3 s). Suite backend inchangée (147 PASS / 2 SKIP le matin même ; correctif 100 % frontend).
+- Notes non bloquantes du testing agent : logout n'appelle pas POST /api/auth/logout (purge locale seulement) ; le champ mot de passe n'est pas vidé après un échec.
+
+## G. CONDITIONS RESTANTES
+
+1. **PROD — API publique (CRITIQUE, action utilisateur)** : redéployer les itérations 15-22 (auth incluse) : Save to GitHub → `git pull` → renseigner `JWT_SECRET`/`ADMIN_EMAIL`/`ADMIN_PASSWORD`/`ANTHROPIC_API_KEY` dans `~/documents/deploy/.env` → `docker compose up -d --build`. Tant que ce n'est pas fait, les données de flotte prod sont lisibles ET modifiables par n'importe qui.
+2. **Rotation du mot de passe superadmin** : recommandée OUI — en attente d'autorisation.
+3. **Audit Mongo prod complet** (index/orphelins/soft-deleted) : impossible depuis le pod ; possible via une commande lecture seule à exécuter sur le VPS si souhaité.
+4. **GO utilisateur explicite** pour Documents V2 Phase 1 (catégories + moteur de statut, sans migration Assurance/Leasing).
+5. Migration Assurance/Leasing (phases 3+) : reste conditionnée à la stratégie démo confirmée (exclusion des DEMO_PROUVÉE) et au redéploiement prod.
+
+## H. VERDICT
+
+```text
+READY FOR DOCUMENTS V2 PHASE 1
+```
+(catégories documentaires + moteur de statut, additif, sans migration legacy — les conditions restantes G.1-G.3 concernent la production et la sécurité, pas la Phase 1 en preview. Ce verdict ne vaut PAS autorisation de commencer.)
+
+**STATUT : EN ATTENTE DU GO UTILISATEUR POUR DOCUMENTS V2 PHASE 1**

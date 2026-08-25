@@ -1,0 +1,23 @@
+{
+  "summary": "Frontend-only security regression audit (iteration 20) after removal of the hardcoded 'Comptes démo / Admin' block from Login.jsx. 7/7 Playwright scenarios passed: (1) /login DOM contains no demo-accounts / demo-admin-btn testids, no 'démo' text, both credential fields empty on load; (2) superadmin password string absent from served login DOM and from all 9 loaded JS bundles (fetched and scanned); (3) single wrong-password attempt -> login-error 'Email ou mot de passe incorrect', no redirect, no lt_token created; (4) manual login with credentials from /app/memory/test_credentials.md -> redirect to dashboard, lt_token stored; (5) session persists across /vehicules, /timeline, /alertes, /integrite with no redirect to /login; (6) user-menu-btn -> user-menu-logout -> back to /login and lt_token purged; (7) direct access to /vehicules after logout redirects to /login. Only one console error observed, the expected 401 from the deliberate wrong-password test. No Recharts or React errors on Dashboard. No business data was created, modified or deleted; backend untouched. Backend testing skipped per request.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_20.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Login.jsx is clean: no hardcoded credentials, state initialised to empty strings, autoComplete username/current-password, error rendered via login-error only. No residual demo helper functions left behind.",
+    "Optional hardening (non-blocking): AuthContext.logout() purges the token client-side and hard-redirects via window.location.assign, but does not call POST /api/auth/logout — server-side session/lockout bookkeeping is therefore not notified. Consider awaiting the logout endpoint (fire-and-forget with catch) before clearing the token.",
+    "Optional UX (non-blocking): after a failed login the password field keeps its value; clearing it on error would be slightly safer and reduces repeat-failure risk against the 5-attempt / 15-min IP+email lockout."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (skipped per request)", "frontend": "100% (7/7 scenarios)"},
+  "seed_data_creation": "none - read-only audit, no vehicles/documents/scans touched",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Login page audit is green. Note the brute-force lock: 5 failed logins per IP+email trigger a 15-min 429; iteration 20 used exactly ONE deliberate failure, so 4 attempts remain in the current window for admin@logitrak.ch from this IP. Testids in use: login-email-input, login-password-input, login-submit-btn, login-error, user-menu-btn, user-menu-logout. Token key in localStorage: lt_token. Protected routes: /, /vehicules, /timeline, /alertes, /integrite.",
+  "rca_of_the_issue": "N/A - no defect found. The reported security issue (hardcoded superadmin credentials shipped in the frontend bundle via the demo-accounts block) is confirmed fixed: the secret is absent from the source tree (grep = 0) and from every JS asset served to the login page at runtime."
+}
