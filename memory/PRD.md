@@ -388,6 +388,15 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - EN ATTENTE UTILISATEUR : test réel Option A = pointer temporairement l'URL de l'app #14328 vers la preview, ouvrir Documents depuis une vraie session, rapporter le tableau OUI/NON ; puis Save to GitHub + audit VPS + déploiement.
 - SECURITY FOLLOW-UP (lots séparés, non modifiés) : LOGITAG #52 et Livre de bord #18619 utilisent encore une API key → migration Session key à étudier.
 
+## Validation SSO réel + Audit VPS pré-déploiement (2026-08-26 fin de journée) — PRÊT, ATTENTE GO DEPLOY
+- [x] **SSO NAVIXY RÉEL TESTÉ EN PREVIEW — PREUVES SERVEUR** : app #14328 pointée temporairement vers la preview par l'utilisateur ; POST /api/auth/navixy/exchange → 200 OK ; utilisateur réel provisionné 26.08 14:52 UTC : logitrak@logitrak.ch, role read_only, tenant default, navixy_user_id présent ; master_user_id résolu automatiquement sur l'intégration default ; audit sso_user_provisioned créé. Fail-closed réel : 401 systématiques sur fausses clés (logs). Confirmation formelle « SANS SECOND LOGIN : OUI » demandée à l'utilisateur (dit « s'ouvre avec le lien preview »).
+- [x] **AUDIT VPS COMPLET (6 commandes read-only, sorties collées par l'utilisateur)** : branche main, SHA prod fa793385 (Lots 4/4b), worktree propre, origin/main = fa79338 (Save to GitHub PAS ENCORE fait pour SSO+sécurisation, local = 00c6a5c) ; containers backend (8001 interne) / mongo:7 healthy (27017 interne) / web (8090→80), backend+web recréés ~7 h avant l'audit ; /data/storage = volume nommé logitrak-fleet_storage_data → /var/lib/docker/volumes/.../_data, 456 K / 12 fichiers, plus ancien 08.06.2026 → **PERSISTANCE PROUVÉE** structurellement + empiriquement ; disque 16 G libres (80 %) ; backup Mongo existant 27 M (26.08 07:19).
+- [x] **BACKUP FICHIERS CRÉÉ** : ~/storage-backups/storage_data-20260826-150629.tar.gz (371 K, volume monté :ro).
+- Rollback prêt : SHA fa793385 + dump Mongo 27 M + tar fichiers + compose versionné + volumes préservés au rebuild.
+- Plan déploiement validé (au GO) : Save to GitHub → dump Mongo frais → git pull → vérif SHA → docker compose up -d --build → logs/health → sondes auth → repointer #14328 vers https://documents.logitrak.ch/ → smoke test réel Phase 18.
+- RESTE : confirmation formelle « OUI » du test réel, Save to GitHub, GO DEPLOY explicite, puis déploiement + smoke test prod + éventuelle promotion admin du compte SSO logitrak@logitrak.ch (read_only actuellement, décision utilisateur).
+- HORS PÉRIMÈTRE respecté : LOGITAG #52, Livre de bord #18619, Éco-conduite, Energy, V2 — rien touché.
+
 ## Backlog (prioritized)
 - Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.
 - Phase 3+ (gros chantiers, à cadrer 1 par 1): modules Contrats & renouvellements, Conducteurs, Clients, Modèles, Corbeille/Favoris/Partagés ; permissions/rôles + auth ; multi-tenant.
