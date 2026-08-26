@@ -15,11 +15,12 @@ import IntegrityPage from "@/pages/IntegrityPage";
 import AdminPage from "@/pages/AdminPage";
 
 function Protected({ children }) {
-  const { user } = useAuth();
-  if (user === undefined)
+  const { user, ssoPending } = useAuth();
+  if (user === undefined || ssoPending)
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-50">
         <Loader2 className="h-8 w-8 animate-spin text-slate-400" data-testid="auth-loading" />
+        {ssoPending && <p className="text-sm text-slate-500" data-testid="sso-pending">Ouverture de Documents…</p>}
       </div>
     );
   if (!user) return <Navigate to="/login" replace />;

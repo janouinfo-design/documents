@@ -124,6 +124,20 @@ export default function ClientUsers({ tenantId }) {
                 <p className="text-xs text-slate-400">{u.name || "—"} · rôle {u.role}</p>
               </div>
               {u.disabled && <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Désactivé</Badge>}
+              <select data-testid={`admin-user-role-change-${u.email}`} value={u.role}
+                onChange={async (e) => {
+                  try {
+                    await adminUpdateUser(u.id, { role: e.target.value });
+                    toast.success(`Rôle changé en ${e.target.value} — sessions révoquées`);
+                    refresh();
+                  } catch (err) {
+                    toast.error(String(err?.response?.data?.detail || "Échec du changement de rôle"));
+                  }
+                }}
+                className="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs">
+                <option value="admin">admin</option>
+                <option value="read_only">lecture seule</option>
+              </select>
               <Button size="sm" variant="ghost" data-testid={`admin-user-reset-btn-${u.email}`}
                 onClick={() => setResetUser(u)} className="gap-1.5 text-slate-500">
                 <KeyRound className="h-3.5 w-3.5" /> Réinitialiser

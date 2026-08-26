@@ -25,7 +25,8 @@ import astra_data
 from astra_data import AstraLookupError
 from auth import (authenticate_request, check_lockout, clear_failures, create_access_token,
                   create_file_token,
-                  hash_password, record_failure, seed_admin, seed_superadmin, verify_password)
+                  hash_password, record_failure, seed_admin, seed_superadmin, verify_password,
+                  create_sso_token, SSO_TOKEN_TTL_MINUTES)
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -51,7 +52,9 @@ auth_router = APIRouter(prefix="/api/auth")
 async def require_auth(request: Request) -> dict:
     user = await authenticate_request(request, db)
     request.state.user = user
-    tenant_id = user.pop("_token_tenant", None) or user.get("tenant_id") or "default"
+    tenant_id = user.pop("_token_tenant", None) or user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(status_code=403, detail="Tenant indéterminé — accès refusé")
     if user.get("role") == "superadmin":
         acting = request.headers.get("X-Acting-Tenant")
         if acting and not request.url.path.startswith(("/api/auth", "/api/admin")):
@@ -119,6 +122,101 @@ async def auth_file_token(request: Request, acting_tenant: Optional[str] = None,
             raise HTTPException(status_code=404, detail="Client introuvable")
         tenant_override = acting_tenant
     return {"token": create_file_token(user, tenant_override), "expires_in": 600}
+
+
+# ---------------------------------------------------------------------------
+# SSO Navixy (hub login.logitrak.fr → module Documents) — fail-closed
+# ---------------------------------------------------------------------------
+class NavixyExchangePayload(BaseModel):
+    session_key: str
+
+
+async def _tenant_for_navixy_master(master_id: int):
+    """Mapping STRICT master_user_id Navixy → tenant via la clé API configurée dans la console.
+    Aucun tenant deviné/créé : introuvable = None (fail-closed)."""
+    integ = await db.tenant_integrations.find_one(
+        {"provider": "navixy", "master_user_id": master_id}, {"_id": 0})
+    if not integ:
+        candidates = await db.tenant_integrations.find(
+            {"provider": "navixy", "api_hash": {"$nin": [None, ""]},
+             "master_user_id": {"$exists": False}}, {"_id": 0}).to_list(None)
+        for c in candidates:
+            mid = navixy_master_of(c["api_hash"], c.get("base_url"))
+            if isinstance(mid, int):
+                await db.tenant_integrations.update_one(
+                    {"tenant_id": c["tenant_id"], "provider": "navixy"},
+                    {"$set": {"master_user_id": mid}})
+                if mid == master_id:
+                    integ = {**c, "master_user_id": mid}
+                    break
+    if not integ:
+        return None
+    return await db.tenants.find_one({"id": integ["tenant_id"]}, {"_id": 0})
+
+
+@auth_router.post("/navixy/exchange")
+async def auth_navixy_exchange(payload: NavixyExchangePayload, request: Request):
+    """Échange un session_key Navixy (transmis par l'iframe du hub) contre un JWT Documents court.
+    Jamais de mot de passe. La clé n'est ni loggée ni persistée."""
+    key = (payload.session_key or "").strip()
+    if not (16 <= len(key) <= 256):
+        raise HTTPException(status_code=401, detail="Session Navixy absente ou invalide")
+    try:
+        data = navixy_get_user_info(key)
+    except NavixyError as exc:
+        if str(exc) == "invalid_session":
+            raise HTTPException(status_code=401,
+                                detail="Session Navixy expirée ou invalide — reconnectez-vous au hub LOGITRAK")
+        raise HTTPException(status_code=503,
+                            detail="Vérification Navixy indisponible — réessayez dans un instant")
+    info = data.get("user_info") or {}
+    nav_user_id = info.get("id")
+    master = data.get("master") or {}
+    nav_master_id = master.get("id") or nav_user_id
+    email = (info.get("login") or "").strip().lower()
+    if not isinstance(nav_user_id, int) or not isinstance(nav_master_id, int) or "@" not in email:
+        raise HTTPException(status_code=401, detail="Identité Navixy incomplète — accès refusé")
+    tenant = await _tenant_for_navixy_master(nav_master_id)
+    if not tenant:
+        raise HTTPException(status_code=403,
+                            detail="Aucun compte Documents associé à ce compte Navixy — contactez votre administrateur")
+    if tenant.get("disabled"):
+        raise HTTPException(status_code=401, detail="Compte client désactivé")
+    if isinstance(tenant.get("modules"), dict) and tenant["modules"].get("documents") is False:
+        raise HTTPException(status_code=403, detail="Module Documents non activé pour ce compte")
+    tid = tenant["id"]
+    now = datetime.now(timezone.utc).isoformat()
+    user = await db.users.find_one(
+        {"navixy_user_id": nav_user_id, "tenant_id": tid}, {"_id": 0, "password_hash": 0})
+    if not user:
+        existing = await db.users.find_one({"email": email})
+        if existing:
+            if existing.get("tenant_id") != tid or existing.get("role") == "superadmin":
+                raise HTTPException(status_code=403,
+                                    detail="Cet email est déjà associé à un autre compte — accès refusé")
+            await db.users.update_one({"id": existing["id"]}, {"$set": {
+                "navixy_user_id": nav_user_id, "navixy_master_user_id": nav_master_id,
+                "auth_provider": "navixy+password", "updated_at": now}})
+            user = await db.users.find_one({"id": existing["id"]}, {"_id": 0, "password_hash": 0})
+        else:
+            name = " ".join(x for x in [info.get("first_name"), info.get("last_name")] if x)
+            new_user = {"id": str(uuid.uuid4()), "email": email,
+                        "name": name or email.split("@")[0],
+                        "role": "read_only", "tenant_id": tid,
+                        "navixy_user_id": nav_user_id, "navixy_master_user_id": nav_master_id,
+                        "auth_provider": "navixy", "password_hash": None,
+                        "password_changed_in_app": False, "token_version": 0, "disabled": False,
+                        "created_at": now, "updated_at": now}
+            await db.users.insert_one(dict(new_user))
+            await audit("sso_user_provisioned", "user", request, new_user["id"], None,
+                        f"Utilisateur SSO Navixy créé: {email} (read_only) pour le client {tid}",
+                        tenant_id=tid)
+            user = {k: v for k, v in new_user.items() if k != "password_hash"}
+    if user.get("disabled"):
+        raise HTTPException(status_code=401, detail="Compte désactivé — contactez votre administrateur")
+    token = create_sso_token(user["id"], user["email"], user.get("token_version", 0))
+    return {"token": token, "expires_in": SSO_TOKEN_TTL_MINUTES * 60,
+            "user": {k: user.get(k) for k in ("id", "email", "name", "role", "tenant_id")}}
 
 
 @auth_router.get("/me")
@@ -285,6 +383,39 @@ def navixy_post(integ: dict, path: str, payload: dict = None) -> dict:
         status = data.get("status", {}) or {}
         raise NavixyError(status.get("description") or "Erreur du service télématique")
     return data
+
+
+def navixy_get_user_info(session_key: str) -> dict:
+    """Validation serveur d'un session_key/hash Navixy (SSO). Fail-closed.
+    La clé n'apparaît JAMAIS dans les logs, exceptions ou la base."""
+    try:
+        resp = requests.get(f"{NAVIXY_BASE_URL}/user/get_info",
+                            headers={"Authorization": f"NVX {session_key}"}, timeout=10)
+    except requests.RequestException:
+        raise NavixyError("network")
+    try:
+        data = resp.json()
+    except ValueError:
+        raise NavixyError("network")
+    if not isinstance(data, dict) or data.get("success") is not True:
+        raise NavixyError("invalid_session")
+    return data
+
+
+def navixy_master_of(api_hash: str, base_url: str = None):
+    """Résout le master_user_id Navixy d'une clé API de tenant. None si irrésolu (jamais d'exception)."""
+    try:
+        resp = requests.get(f"{(base_url or NAVIXY_BASE_URL)}/user/get_info",
+                            headers={"Authorization": f"NVX {api_hash}"}, timeout=10)
+        data = resp.json()
+    except Exception:
+        return None
+    if not isinstance(data, dict) or data.get("success") is not True:
+        return None
+    info = data.get("user_info") or {}
+    master = data.get("master") or {}
+    mid = master.get("id") or info.get("id")
+    return int(mid) if isinstance(mid, int) else None
 
 
 async def get_navixy_integration(tenant_id: str):
@@ -2768,6 +2899,7 @@ class AdminUserUpdate(BaseModel):
     password: Optional[str] = None
     disabled: Optional[bool] = None
     name: Optional[str] = None
+    role: Optional[str] = None
 
 
 class IntegrationUpdate(BaseModel):
@@ -2903,6 +3035,12 @@ async def admin_update_user(user_id: str, payload: AdminUserUpdate, request: Req
         updates["disabled"] = bool(payload.disabled)
         notes.append("compte désactivé" if payload.disabled else "compte réactivé")
         revoke = revoke or bool(payload.disabled)
+    if payload.role is not None:
+        if payload.role not in ("admin", "read_only"):
+            raise HTTPException(status_code=422, detail="Rôle invalide (admin ou read_only)")
+        updates["role"] = payload.role
+        notes.append(f"rôle → {payload.role}")
+        revoke = True
     if payload.name is not None:
         updates["name"] = payload.name.strip()
         notes.append("nom modifié")
@@ -2929,6 +3067,7 @@ async def admin_get_integration(tid: str):
             "enabled": bool(integ.get("enabled")),
             "write_enabled": bool(integ.get("write_enabled")),
             "base_url": integ.get("base_url") or NAVIXY_BASE_URL,
+            "master_user_id": integ.get("master_user_id"),
             "last_sync_at": integ.get("last_sync_at")}
 
 
@@ -2939,7 +3078,9 @@ async def admin_update_integration(tid: str, payload: IntegrationUpdate, request
     updates, notes = {}, []
     if payload.api_hash:
         updates["api_hash"] = payload.api_hash.strip()
-        notes.append("clé API mise à jour")
+        mid = navixy_master_of(updates["api_hash"], (payload.base_url or "").strip() or None)
+        updates["master_user_id"] = mid
+        notes.append("clé API mise à jour" + ("" if mid else " (compte Navixy non résolu — SSO indisponible pour ce client)"))
     if payload.enabled is not None:
         updates["enabled"] = bool(payload.enabled)
         notes.append(f"enabled={bool(payload.enabled)}")

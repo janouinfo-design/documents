@@ -15,7 +15,7 @@ function formatApiErrorDetail(detail) {
 }
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, ssoError } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -54,6 +54,11 @@ export default function Login() {
           <p className="mt-1 text-sm text-slate-500">Accès réservé — identifiez-vous pour continuer.</p>
 
           <form onSubmit={submit} className="mt-6 space-y-4">
+            {ssoError && (
+              <p data-testid="sso-error" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                {ssoError}
+              </p>
+            )}
             <div>
               <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-400">Email</label>
               <div className="relative">

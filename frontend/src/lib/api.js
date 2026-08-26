@@ -31,7 +31,8 @@ http.interceptors.response.use(
   (r) => r,
   (error) => {
     const url = String(error?.config?.url || "");
-    if (error?.response?.status === 401 && !url.includes("/auth/login") && !url.includes("/auth/change-password")) {
+    if (error?.response?.status === 401 && !url.includes("/auth/login")
+        && !url.includes("/auth/change-password") && !url.includes("/auth/navixy/exchange")) {
       setToken(null);
       if (!window.location.pathname.startsWith("/login")) window.location.assign("/login");
     }
@@ -63,6 +64,8 @@ const withToken = (url) => {
 export const authLogin = (email, password) =>
   http.post("/auth/login", { email, password }).then((r) => r.data);
 export const authMe = () => http.get("/auth/me").then((r) => r.data);
+export const exchangeNavixy = (session_key) =>
+  http.post("/auth/navixy/exchange", { session_key }).then((r) => r.data);
 export const authLogout = () => http.post("/auth/logout").then((r) => r.data);
 export const authChangePassword = (current_password, new_password) =>
   http.post("/auth/change-password", { current_password, new_password }).then((r) => r.data);

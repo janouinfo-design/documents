@@ -29,10 +29,23 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain: str, hashed: str) -> bool:
+    if not hashed:
+        return False
     try:
         return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
     except ValueError:
         return False
+
+
+SSO_TOKEN_TTL_MINUTES = int(os.environ.get("SSO_TOKEN_TTL_MINUTES", "60"))
+
+
+def create_sso_token(user_id: str, email: str, token_version: int = 0) -> str:
+    """JWT court (60 min) pour les sessions SSO Navixy — même vérification que les tokens access."""
+    payload = {"sub": user_id, "email": email, "type": "access", "sso": "navixy",
+               "tv": int(token_version or 0),
+               "exp": datetime.now(timezone.utc) + timedelta(minutes=SSO_TOKEN_TTL_MINUTES)}
+    return jwt.encode(payload, _secret(), algorithm=JWT_ALGORITHM)
 
 
 def create_access_token(user_id: str, email: str, token_version: int = 0) -> str:

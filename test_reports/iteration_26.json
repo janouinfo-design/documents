@@ -1,0 +1,32 @@
+{
+  "summary": "Frontend E2E testing of Lot SSO Navixy fail-closed (scenarios 1-6). Tested: real fail-closed SSO flow via ?session_key=fake..., no auto-login after failure, direct login regressions (superadmin + admin client), new console role selector, and direct API curl checks on /api/auth/navixy/exchange. 5/6 scenarios PASS. 1 CRITICAL FAIL: the amber sso-error banner never appears on /login because the axios 401 response interceptor performs a hard window.location.assign('/login'), which wipes the React ssoError state.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "lib/api.js axios 401 interceptor + Login.jsx", "issue": "After a failed SSO exchange (401 on /api/auth/navixy/exchange), the global 401 interceptor calls window.location.assign('/login') -> full page reload -> AuthContext ssoError state destroyed -> data-testid=sso-error banner is NEVER rendered (count=0 measured). User lands on a blank login screen with no explanation, which is exactly the confusing UX the fix intended to remove. Fix: exclude '/auth/navixy/exchange' from the interceptor redirect (like /auth/login and /auth/change-password), or persist the SSO error message across the reload (e.g. sessionStorage flag / navigate via react-router).", "selector": "[data-testid=\"sso-error\"]", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/admin ClientUsers role selector", "issues": ["Uses a native HTML <select> (browser default styling) instead of the shadcn Select used elsewhere - visual inconsistency, cosmetic only; functionality works"]}
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_26.json"],
+  "action_items": [
+    "Whitelist /auth/navixy/exchange in the axios 401 response interceptor (or persist the SSO error) so the amber sso-error banner is actually displayed on /login after a failed SSO exchange."
+  ],
+  "critical_code_review_comments": [
+    "lib/api.js l.34-37: the 401 interceptor unconditionally hard-redirects, defeating any component-level 401 error rendering; the exclusion list must include /auth/navixy/exchange.",
+    "AuthContext heartbeat useEffect (l.81-92) has ssoSessionKey (module-level mutable, non-reactive) in its condition but not in deps; works today because user changes at the same time, but fragile."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (3/3 curl fail-closed cases)", "frontend": "83% (5/6 scenarios)"},
+  "seed_data_creation": "None. ro-e2e@client-test.ch role toggled admin -> read_only and verified persisted as read_only after reload (restored to original state). No changes to client 'default' or superadmin/admin accounts.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "superadmin@logitrak.ch / admin@logitrak.ch / ro-e2e@client-test.ch from /app/memory/test_credentials.md - all valid and working",
+  "context_for_next_testing_agent": "Scenario details: (1) /?session_key=fake-e2e-... -> sso-pending loader 'Ouverture de Documents…' DOES appear, exchange returns 401 from real Navixy call, but sso-error banner count=0 on /login due to hard redirect (see ui_bugs). (2) PASS: no lt_token in localStorage, session_key stripped from URL (window.location.search empty), no trace of 'fake-e2e-session' in localStorage/sessionStorage/cookies. (3) PASS: superadmin -> /admin, logout via header avatar menu 'Se déconnecter' -> /login. (4) PASS: admin@logitrak.ch -> dashboard 12 vehicules, Vehicules/Echeances/Alertes all load, no SSO banner/loader, no Administration tab (correct). (5) PASS: select admin-user-role-change-ro-e2e@client-test.ch read_only -> admin -> read_only, toast 'Role change en read_only - sessions revoquees', persisted after reload. (6) PASS: empty key -> 401 'Session Navixy absente ou invalide'; fake key -> 401 'Session Navixy expiree ou invalide - reconnectez-vous au hub LOGITRAK'; missing field -> 422; sent key never echoed in response.",
+  "rca_of_the_issue": "Root cause of missing sso-error banner: /app/frontend/src/lib/api.js response interceptor (l.30-40) triggers setToken(null) + window.location.assign('/login') for ANY 401 except /auth/login and /auth/change-password. The failed SSO exchange returns 401, so a full browser navigation occurs and the React state (ssoError set in AuthContext catch block) is lost before Login.jsx can render it. Reproduced twice: framenavigated log shows 4 navigations to /login and sso-error locator count = 0."
+}
