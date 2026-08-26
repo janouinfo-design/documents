@@ -6,6 +6,7 @@ import { fileSize } from "@/components/Field";
 import { dateFr } from "@/lib/format";
 import DropZone from "@/components/DropZone";
 import FilePreview from "@/components/FilePreview";
+import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
 
 const iconFor = (ct = "") => {
@@ -25,6 +26,8 @@ const ANALYSIS_BADGE = {
 };
 
 export default function DocFolderSection({ vehicleId, folder, docs = [], onChange, compact = false }) {
+  const { user } = useAuth();
+  const readOnly = user?.role === "read_only";
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState(null);
   const items = docs.filter((d) => d.folder === folder);
@@ -38,7 +41,7 @@ export default function DocFolderSection({ vehicleId, folder, docs = [], onChang
       toast.success(`${files.length} fichier(s) ajouté(s) · ${folder}`);
       onChange?.();
     } catch (e) {
-      toast.error("Échec du téléversement");
+      toast.error(e?.response?.data?.detail || "Échec du téléversement");
     } finally {
       setBusy(false);
     }
@@ -50,19 +53,21 @@ export default function DocFolderSection({ vehicleId, folder, docs = [], onChang
       toast.success("Document supprimé");
       onChange?.();
     } catch (e) {
-      toast.error("Échec de la suppression");
+      toast.error(e?.response?.data?.detail || "Échec de la suppression");
     }
   };
 
   return (
     <div className="space-y-3">
-      <DropZone
-        onFiles={handleFiles}
-        busy={busy}
-        compact={compact}
-        testId={`dropzone-${folder.replace(/\s/g, "-").toLowerCase()}`}
-        accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.docx,.doc,.xlsx,.xls,.zip,.csv,.mp4,.mov,.webm"
-      />
+      {!readOnly && (
+        <DropZone
+          onFiles={handleFiles}
+          busy={busy}
+          compact={compact}
+          testId={`dropzone-${folder.replace(/\s/g, "-").toLowerCase()}`}
+          accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.docx,.doc,.xlsx,.xls,.zip,.csv,.mp4,.mov,.webm"
+        />
+      )}
       {items.length === 0 ? (
         <p className="px-1 text-xs text-slate-400">Aucun document dans ce dossier.</p>
       ) : (
@@ -96,12 +101,20 @@ export default function DocFolderSection({ vehicleId, folder, docs = [], onChang
                   <button onClick={() => setPreview(d)} data-testid={`doc-preview-${d.id}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Aperçu">
                     <Eye className="h-4 w-4" />
                   </button>
-                  <a href={fileUrl(d.storage_path, { download: true, filename: d.original_filename })} target="_blank" rel="noreferrer" className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Télécharger">
+                  {/* URL résolue au clic : jeton fichier toujours frais (rafraîchi toutes les 8 min) */}
+                  <button
+                    onClick={() => window.open(fileUrl(d.storage_path, { download: true, filename: d.original_filename }), "_blank", "noopener")}
+                    data-testid={`doc-download-${d.id}`}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                    aria-label="Télécharger"
+                  >
                     <Download className="h-4 w-4" />
-                  </a>
-                  <button onClick={() => handleDelete(d.id)} data-testid={`doc-delete-${d.id}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label="Supprimer">
-                    <Trash2 className="h-4 w-4" />
                   </button>
+                  {!readOnly && (
+                    <button onClick={() => handleDelete(d.id)} data-testid={`doc-delete-${d.id}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label="Supprimer">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               </li>
             );

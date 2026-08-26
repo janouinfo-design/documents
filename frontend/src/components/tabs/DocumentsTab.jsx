@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { SectionCard } from "@/components/Field";
 import DocFolderSection from "@/components/DocFolderSection";
 import ScanDocumentDialog from "@/components/ScanDocumentDialog";
+import { useAuth } from "@/context/AuthContext";
 
 const FOLDERS = [
   { name: "Leasing", icon: FileText },
@@ -23,6 +24,8 @@ const FOLDERS = [
 ];
 
 export default function DocumentsTab({ vehicle, onSaved, docs, refetchDocs }) {
+  const { user } = useAuth();
+  const readOnly = user?.role === "read_only";
   const [scanOpen, setScanOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [openFolders, setOpenFolders] = useState(["Leasing"]);
@@ -45,9 +48,11 @@ export default function DocumentsTab({ vehicle, onSaved, docs, refetchDocs }) {
         description="Tous les documents du véhicule, y compris ceux ajoutés depuis Carte grise, Assurance ou Leasing · Chaque dossier accepte aussi le dépôt manuel de fichiers"
         testId="documents-tab"
         action={
-          <Button data-testid="add-document-btn" size="sm" onClick={() => setScanOpen(true)} className="gap-1.5 bg-slate-900 hover:bg-slate-800">
-            <Plus className="h-4 w-4" /> Ajouter un document
-          </Button>
+          readOnly ? null : (
+            <Button data-testid="add-document-btn" size="sm" onClick={() => setScanOpen(true)} className="gap-1.5 bg-slate-900 hover:bg-slate-800">
+              <Plus className="h-4 w-4" /> Ajouter un document
+            </Button>
+          )
         }
       >
         <div className="relative mb-4">

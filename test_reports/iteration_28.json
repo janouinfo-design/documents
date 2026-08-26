@@ -1,0 +1,50 @@
+{
+  "summary": "Frontend-only non-regression E2E of the Documents module after the backend RBAC/audit-trail/Cache-Control hardening. All 5 requested parcours PASS (P1 admin upload/preview/download/delete, P2 no durable credential in URLs + 401 without file token, P3 read_only UI 403 handling with disposable account created then disabled, P4 vehicle history showing the new audit events, P5 login/logout non-regression). Zero blocking console errors on the final run. No production code modified, no mocks used - everything hit the real backend.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "GeneralTab > Provenance & historique (ProvenanceSection)",
+        "issues": [
+          "Les nouveaux evenements d'audit 'Acces fichier (inline|attachment) : <uuid>.png' affichent le nom de stockage technique (UUID) au lieu du nom d'origine du document -> illisible pour un utilisateur metier. Recommandation: journaliser/afficher original_filename (et eventuellement le dossier).",
+          "L'historique n'est ni limite ni pagine (>100 lignes deja sur le vehicule de test). Avec l'audit 'Acces fichier' ajoute a chaque apercu/telechargement, la liste va grossir tres vite. Recommandation: limit cote API + bouton 'Voir plus'."
+        ]
+      },
+      {
+        "screen": "DocumentsTab / DocFolderSection - role read_only",
+        "issues": [
+          "Aucune indication visuelle du RBAC: la DropZone 'Glissez vos fichiers ici', le bouton 'Ajouter un document' et les icones Corbeille restent pleinement actifs pour un read_only. L'echec n'apparait qu'apres l'appel via un toast generique ('Echec du televersement' / 'Echec de la suppression') qui ne mentionne pas l'absence de droits. Recommandation: masquer/desactiver ces controles selon user.role et remonter le detail du 403 backend dans le toast. Non bloquant (aucun crash, aucune page blanche)."
+        ]
+      }
+    ]
+  },
+  "parcours_results": {
+    "P1_admin_documents_e2e": "PASS - login admin@logitrak.ch -> /vehicules (12 vehicules) -> ouverture drawer -> tab-documents -> upload PNG via dropzone-leasing: le document apparait dans la liste (compteur Leasing 0->1, taille/date affichees), apercu (doc-preview-<id>) ouvre FilePreview avec l'image servie inline, lien de telechargement present, suppression (doc-delete-<id>) -> toast 'Document supprime' + disparition immediate de la ligne et compteur remis a 0. Aucune erreur console bloquante (0 erreur sur le run final).",
+    "P2_pas_de_fuite_identifiant": "PASS - Les URLs de fichiers utilisent uniquement le jeton court dedie (?token=..., scope file) obtenu via GET /api/auth/file-token. Verifie: le JWT de session (lt_token) n'apparait dans AUCUNE URL de fichier (comparaison programmatique du contenu de localStorage.lt_token avec les URLs sortantes -> 0 occurrence). URL de fichier copiee sans le parametre token -> HTTP 401 (refus). Avec token -> HTTP 200 et en-tete Cache-Control = 'no-store, no-cache, must-revalidate' (reecriture proxy preview, conforme).",
+    "P3_read_only_ui": "PASS - Compte jetable cree via la console superadmin (/admin > client 'default' > Utilisateurs > Ajouter, role read_only). Login OK, 12 vehicules visibles, tab Documents OK, 24 documents listes dans Assurance, telechargement fichier -> HTTP 200. Televersement -> refuse (toast rouge 'Echec du televersement', aucun fichier ajoute a la liste). Suppression -> refusee (toast rouge 'Echec de la suppression', le document reste present). Aucun crash, aucune page blanche, DocumentsTab toujours rendu. NETTOYAGE EFFECTUE: compte desactive via le switch de la console superadmin ('Utilisateur desactive - sessions revoquees', badge 'Desactive') et re-tentative de login verifiee -> reste sur /login.",
+    "P4_historique_vehicule": "PASS - GET /api/vehicles/{id}/history rendu dans 'Provenance & historique des donnees' (GeneralTab). Les nouveaux evenements d'audit sont bien presents et en tete de liste, sans casser le rendu: 'Televersement document \u00ab TEST_doc_qa.png \u00bb - dossier Leasing', 'Acces fichier (inline) : <uuid>.png', 'Acces fichier (attachment) : <uuid>.pdf', 'Suppression document \u00ab TEST_doc_qa.png \u00bb'. Verifie sans reload (invalidation react-query OK) ET apres F5 (persistance OK).",
+    "P5_login_logout": "PASS - Fermeture du drawer, menu utilisateur (user-menu-btn > user-menu-logout) -> retour /login, lt_token supprime du localStorage, /vehicules ensuite redirige vers /login avec le formulaire de login affiche."
+  },
+  "test_report_links": ["/app/test_reports/iteration_28.json"],
+  "action_items": [
+    "MINEUR/UX: dans l'audit 'Acces fichier', journaliser/afficher le nom d'origine du document au lieu du nom de stockage UUID (historique vehicule illisible actuellement).",
+    "MINEUR/UX read_only: desactiver ou masquer DropZone / 'Ajouter un document' / icone Corbeille quand user.role === 'read_only', et afficher le detail du 403 backend dans le toast plutot que 'Echec du televersement'.",
+    "HYGIENE: limiter/paginer GET /api/vehicles/{id}/history - l'ajout des evenements 'Acces fichier' fait croitre l'historique a chaque apercu/telechargement."
+  ],
+  "critical_code_review_comments": [
+    "DocFolderSection.jsx l.40-44 et l.50-54: les catch avalent l'erreur (`catch (e) { toast.error('Echec du televersement') }`) sans distinguer 401/403/413/500. Remonter `e?.response?.data?.detail` comme le fait deja ScanDocumentDialog.validate() donnerait un message RBAC exploitable.",
+    "DocumentsTab.jsx: les dossiers replies sont demontes par l'Accordion Radix, donc `dropzone-<folder>` n'existe pas tant que le dossier n'est pas ouvert. A garder en tete pour les tests automatises (il faut cliquer folder-<nom> avant set_input_files).",
+    "api.js: `fileToken` est une variable de module rafraichie via refreshFileToken(); si un onglet reste ouvert >10 min sans refresh, les URLs de fichiers (href du lien Telecharger, deja rendu dans le DOM) porteront un jeton expire -> 401 silencieux sur clic. Prevoir un refresh a la demande au moment du clic/apercu."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "non teste (frontend only, 233 pytest PASS deja valides par l'agent principal)", "frontend": "100% (5/5 parcours)" },
+  "seed_data_creation": "1 utilisateur read_only jetable cree dans le tenant 'default' via la console superadmin puis DESACTIVE en fin de test (login verifie comme bloque). 2 documents de test 'TEST_doc_qa.png' televerses dans le dossier Leasing du 1er vehicule puis supprimes (soft-delete) - aucun document de test residuel dans l'UI.",
+  "mocked_apis_used": [],
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "Comptes de /app/memory/test_credentials.md valides (superadmin plateforme + admin client 'default'). Aucun mot de passe, jeton de session ni jeton fichier reproduit dans ce rapport (URLs redigees).",
+  "context_for_next_testing_agent": "Module Documents valide e2e cote frontend (iteration 28). Points pratiques: 1) route vehicules = /vehicules; ouverture fiche = [data-testid^='open-vehicle-'] puis vehicle-drawer (Sheet MODAL: il faut appuyer Escape pour fermer le drawer AVANT de cliquer user-menu-btn, sinon l'overlay intercepte le clic - ce n'est pas un bug produit). 2) Upload deterministe = input[type=file] dans [data-testid='dropzone-<dossier>'] (le dossier doit etre OUVERT, l'Accordion demonte le contenu replie); le bouton 'Ajouter un document' ouvre le scan IA Claude (lent, non deterministe) - a eviter pour un test de non-regression. 3) Historique d'audit = tab-general > [data-testid='provenance-section'] (accordeon a ouvrir). 4) Le compte read_only ro-uitest-7f3a@logitrak-test.ch existe mais est DESACTIVE - en creer un nouveau si besoin. 5) Cache-Control observe en preview: 'no-store, no-cache, must-revalidate'.",
+  "rca_of_the_issue": "Aucun defaut bloquant. Deux echecs rencontres pendant les tests etaient d'origine test-script et non produit: (a) clic sur user-menu-btn intercepte par l'overlay du Sheet vehicle-drawer encore ouvert (comportement modal attendu, corrige en fermant le drawer); (b) 'dropzone-vignette input[type=file]' introuvable car l'AccordionContent du dossier replie n'est pas monte (corrige en utilisant un dossier ouvert). Les 401 vus dans la console du 1er run etaient les requetes de verification volontaires (URL de fichier sans jeton)."
+}

@@ -367,6 +367,16 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - **NON RÉALISÉ (bloquants production)** : SSO réel depuis une vraie session hub (prérequis console Navixy #14328 Auth=Session key TOUJOURS NON VÉRIFIÉ) ; Save to GitHub de ce lot ; audit VPS pré-déploiement ; backup Mongo ; déploiement + validation prod.
 - Verdict phase : **SSO CODE/CONTRAT : VALIDÉ · SSO NAVIXY RÉEL : NON TESTÉ · MICROSOFT ENTRA : ABSENT/NON APPLICABLE · PRODUCTION SSO : NON VALIDÉE → NOT READY FOR PRODUCTION** (blockers externes, pas de défaut code connu).
 
+## Lot Sécurisation Documents — RBAC / audit trail / fichiers (2026-08-26) — PREVIEW VALIDÉ
+- Divergence signalée : /app/memory/AUDIT_AUTH_DOCUMENTS.md INEXISTANT ; les prémisses du prompt (cookies HttpOnly, refresh 7j, /api/access/{token}, rôle DRIVER, AuthedFile) = AUTRE projet (dashboard.logitrak.ch), ABSENTES de ce code. Rôles réels : superadmin/admin/read_only. Rien inventé.
+- [x] Audit trail ajouté : create/document (upload), delete/document (avec nom d'origine), download/document|file (serve_file, au moment de l'autorisation backend, nom d'origine lisible), create/file (/api/upload). Convention existante audit() conservée (pas de log d'échec = convention).
+- [x] Cache-Control "private, no-store" sur /api/files/* + 3 rapports (le proxy preview réécrit en no-store,no-cache,must-revalidate — conforme). nosniff conservé.
+- [x] _path_belongs_to_tenant → {kind, vehicle_id, filename} ; soft-delete conservé ; delete_document fetch+audit.
+- [x] UX read_only (it.28) : DropZone + « Ajouter un document » + corbeille masqués si role=read_only (DocumentsTab/DocFolderSection via useAuth) ; toasts remontent e.response.data.detail (403 lisible) ; lien Télécharger → bouton résolvant fileUrl AU CLIC (jeton fichier jamais périmé dans le DOM), data-testid doc-download-<id>.
+- [x] Tests : test_documents_security.py 16/16 (audit events, RBAC read_only, isolation A/B fichiers+docs, no-token 401, access-token-en-query 401, ghost file 404, traversal, ext interdite 400, _local_path guard, put/get local roundtrip persistant). Piège appris : conftest.py injecte un Bearer admin auto → header {"Authorization": "None"} pour les tests query-token.
+- [x] Régression complète : 233 PASS / 2 SKIP / 0 FAIL. testing_agent it.28 : 5/5 parcours PASS ; correctifs post-it.28 auto-testés Playwright (read_only masqué OK / admin complet OK, compte jetable supprimé).
+- NON PROUVÉ (bloquants prod) : persistance + backup volume fichiers VPS (mongodump seul connu → backup fichiers = blocker si non couvert) ; SSO Navixy réel toujours en attente (session key hub) ; déploiement prod non fait.
+
 ## Backlog (prioritized)
 - Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.
 - Phase 3+ (gros chantiers, à cadrer 1 par 1): modules Contrats & renouvellements, Conducteurs, Clients, Modèles, Corbeille/Favoris/Partagés ; permissions/rôles + auth ; multi-tenant.

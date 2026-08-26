@@ -865,18 +865,26 @@ def vin_check(vin) -> Optional[dict]:
     return {"status": "ok", "motifs": []}
 
 
-async def _path_belongs_to_tenant(path: str, tenant_id: str) -> bool:
-    if await db.documents.find_one({"tenant_id": tenant_id,
-                                    "$or": [{"storage_path": path}, {"pages.path": path}]}, {"_id": 1}):
-        return True
-    if await db.files.find_one({"tenant_id": tenant_id, "storage_path": path}, {"_id": 1}):
-        return True
+async def _path_belongs_to_tenant(path: str, tenant_id: str):
+    """Source du fichier ({kind, vehicle_id}) si le chemin appartient au tenant, sinon None."""
+    d = await db.documents.find_one({"tenant_id": tenant_id,
+                                     "$or": [{"storage_path": path}, {"pages.path": path}]},
+                                    {"_id": 1, "vehicle_id": 1, "original_filename": 1})
+    if d:
+        return {"kind": "document", "vehicle_id": d.get("vehicle_id"),
+                "filename": d.get("original_filename")}
+    f = await db.files.find_one({"tenant_id": tenant_id, "storage_path": path},
+                                {"_id": 1, "vehicle_id": 1, "original_filename": 1})
+    if f:
+        vid = f.get("vehicle_id")
+        return {"kind": "file", "vehicle_id": vid if vid != "misc" else None,
+                "filename": f.get("original_filename")}
     if await db.inspections.find_one({"tenant_id": tenant_id, "photos.path": path}, {"_id": 1}):
-        return True
+        return {"kind": "inspection", "vehicle_id": None}
     if await db.vehicles.find_one({"tenant_id": tenant_id,
                                    "photo_url": {"$regex": re.escape(path)}}, {"_id": 1}):
-        return True
-    return False
+        return {"kind": "vehicle", "vehicle_id": None}
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -1109,6 +1117,9 @@ async def upload_file(request: Request, file: UploadFile = File(...), vehicle_id
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.files.insert_one(dict(record))
+    await audit("create", "file", request, record["id"],
+                vehicle_id if vehicle_id != "misc" else None,
+                f"Téléversement fichier « {file.filename} »")
     return {
         "id": record["id"],
         "path": result["path"],
@@ -1129,7 +1140,8 @@ def _safe_filename(name: str) -> str:
 
 @api_router.get("/files/{path:path}")
 async def serve_file(path: str, request: Request, download: bool = False, filename: Optional[str] = None):
-    if not await _path_belongs_to_tenant(path, tid(request)):
+    src = await _path_belongs_to_tenant(path, tid(request))
+    if not src:
         raise HTTPException(status_code=404, detail="Fichier introuvable")
     try:
         data, _stored_type = get_object(path)
@@ -1138,11 +1150,15 @@ async def serve_file(path: str, request: Request, download: bool = False, filena
     # Content-Type dérivé de l'extension côté serveur — jamais de la valeur fournie au téléversement
     content_type = guess_mime(path)
     disposition = "inline" if (content_type in SAFE_INLINE_MIME and not download) else "attachment"
-    headers = {"X-Content-Type-Options": "nosniff"}
+    headers = {"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"}
     if filename:
         headers["Content-Disposition"] = f'{disposition}; filename="{_safe_filename(filename)}"'
     else:
         headers["Content-Disposition"] = disposition
+    if src["kind"] in ("document", "file"):
+        await audit("download", src["kind"], request, path, src.get("vehicle_id"),
+                    f"Accès fichier ({disposition}) : "
+                    f"{src.get('filename') or path.rsplit('/', 1)[-1]}")
     return Response(content=data, media_type=content_type, headers=headers)
 
 
@@ -1190,15 +1206,21 @@ async def add_document(vehicle_id: str, request: Request, file: UploadFile = Fil
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.documents.insert_one(dict(record))
+    await audit("create", "document", request, record["id"], vehicle_id,
+                f"Téléversement document « {file.filename} » — dossier {record['folder']}")
     return clean(record)
 
 
 @api_router.delete("/documents/{doc_id}")
 async def delete_document(doc_id: str, request: Request):
-    result = await db.documents.update_one({"id": doc_id, "tenant_id": tid(request)},
-                                           {"$set": {"is_deleted": True}})
-    if result.matched_count == 0:
+    doc = await db.documents.find_one({"id": doc_id, "tenant_id": tid(request)},
+                                      {"_id": 0, "vehicle_id": 1, "original_filename": 1})
+    if not doc:
         raise HTTPException(status_code=404, detail="Document introuvable")
+    await db.documents.update_one({"id": doc_id, "tenant_id": tid(request)},
+                                  {"$set": {"is_deleted": True}})
+    await audit("delete", "document", request, doc_id, doc.get("vehicle_id"),
+                f"Suppression document « {doc.get('original_filename') or doc_id} »")
     return {"ok": True}
 
 
@@ -2106,7 +2128,8 @@ async def conformity_report(request: Request):
     await audit("download", "report", request, "conformite", None,
                 f"Export PDF du rapport de conformité flotte ({len(vehicles)} véhicules)")
     return Response(content=pdf_bytes, media_type="application/pdf",
-                    headers={"Content-Disposition": 'attachment; filename="rapport-conformite-logitrak.pdf"'})
+                    headers={"Content-Disposition": 'attachment; filename="rapport-conformite-logitrak.pdf"',
+                             "Cache-Control": "private, no-store"})
 
 
 @api_router.get("/reports/couts.csv")
@@ -2118,7 +2141,8 @@ async def costs_csv_report(request: Request):
     await audit("download", "report", request, "couts_csv", None,
                 f"Export CSV des coûts flotte ({len(vehicles)} véhicules)")
     return Response(content="\ufeff" + csv_text, media_type="text/csv; charset=utf-8",
-                    headers={"Content-Disposition": 'attachment; filename="couts-flotte-logitrak.csv"'})
+                    headers={"Content-Disposition": 'attachment; filename="couts-flotte-logitrak.csv"',
+                             "Cache-Control": "private, no-store"})
 
 
 @api_router.get("/reports/vehicule/{vehicle_id}.pdf")
@@ -2135,7 +2159,8 @@ async def vehicle_report(vehicle_id: str, request: Request):
                 f"Export PDF de la fiche véhicule {vehicle.get('plaque')}")
     plaque_slug = re.sub(r"\W+", "-", vehicle.get("plaque") or vehicle_id).strip("-").lower()
     return Response(content=pdf_bytes, media_type="application/pdf",
-                    headers={"Content-Disposition": f'attachment; filename="fiche-{plaque_slug}.pdf"'})
+                    headers={"Content-Disposition": f'attachment; filename="fiche-{plaque_slug}.pdf"',
+                             "Cache-Control": "private, no-store"})
 
 
 class TechnicalApply(BaseModel):
