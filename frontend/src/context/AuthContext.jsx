@@ -10,6 +10,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(undefined);
   const [ssoPending, setSsoPending] = useState(false);
   const [ssoError, setSsoError] = useState(null);
+  const [ssoUnconfigured, setSsoUnconfigured] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -31,8 +32,12 @@ export function AuthProvider({ children }) {
         })
         .catch((err) => {
           setToken(null);
-          setSsoError(String(err?.response?.data?.detail
-            || "Session Navixy invalide — reconnectez-vous au hub LOGITRAK."));
+          const detail = String(err?.response?.data?.detail || "");
+          if (err?.response?.status === 403 && detail.includes("Aucun compte Documents associé")) {
+            setSsoUnconfigured(true);
+          } else {
+            setSsoError(detail || "Session Navixy invalide — reconnectez-vous au hub LOGITRAK.");
+          }
           setUser(null);
         })
         .finally(() => setSsoPending(false));
@@ -101,7 +106,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, ssoPending, ssoError }}>
+    <AuthContext.Provider value={{ user, login, logout, ssoPending, ssoError, ssoUnconfigured }}>
       {children}
     </AuthContext.Provider>
   );

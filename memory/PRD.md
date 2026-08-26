@@ -357,6 +357,16 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - Chemin succès réel hub : PARTIEL (testable uniquement avec une vraie session hub après prérequis + déploiement).
 - ⚠ Toujours en attente utilisateur (lot précédent) : Tests 7/8 navigateur prod + test read_only prod (la commande 7 avait échoué car l'utilisateur ro-test n'était pas créé/mot de passe erroné).
 
+## Lot SSO — Phase VALIDATION complète (2026-08-26) — PREVIEW VALIDÉ, PROD NON DÉPLOYÉE
+- [x] **Audit existant (demande « Microsoft Entra »)** : Entra/OIDC/OAuth = **ABSENT du code (0 occurrence)**. Le SSO du projet est le SSO Navixy Session Key (échange serveur POST /api/auth/navixy/exchange). Cartographie livrée à l'utilisateur ; aucune fonctionnalité inventée, aucun Entra ajouté (hors périmètre).
+- [x] Écran « Accès à Documents non configuré » (SsoNotConfigured.jsx, branche 403 AuthContext, Protected App.js) TESTÉ pour la 1re fois — it.27 parcours 3 (MOCKÉ via Playwright route 403 « Aucun compte Documents associé… ») : PASS. Fix contraste lien (slate-400→slate-600 + underline) + commentaire anti-régression `<a>` full-reload.
+- [x] Tests SSO ciblés : **16/16 PASS** — 12 existants + 4 NOUVEAUX multi-tenant (2 tenants A/B, masters distincts) : A→A et B→B = 200 bon tenant ; session A → ressource B = 404 + liste filtrée ; X-Acting-Tenant ignoré pour user SSO ; B écrit = 403 read_only.
+- [x] Régression backend complète : **217 PASS / 2 SKIP / 0 FAIL** (219 collectés, 207 s, env REACT_APP_BACKEND_URL exportée requise pour test_navixy/test_alerts_ocr).
+- [x] testing_agent it.27 frontend : **8/8 parcours PASS** — login classique (superadmin + admin + mauvais mdp), fail-closed RÉEL (fausse clé → Navixy réel 401 → bannière sso-error, URL nettoyée, 0 session), non-configuré (mocké), page protégée sans session, logout + back navigateur, refresh, ZÉRO fuite session_key (URL/localStorage/sessionStorage/console/requêtes), edge : user loggé + clé périmée → purge + fail-closed. Bug it.26 (bannière perdue par redirect 401) CONFIRMÉ CORRIGÉ.
+- [x] Hygiène : teardown_module ajouté à test_admin_console.py + test_lot4b.py (pymongo, scope TENANT_ID du run) ; 10 tenants pytest-* résiduels purgés de la base PREVIEW (10 users, 6 integrations) ; re-run 35/35, 0 résidu.
+- **NON RÉALISÉ (bloquants production)** : SSO réel depuis une vraie session hub (prérequis console Navixy #14328 Auth=Session key TOUJOURS NON VÉRIFIÉ) ; Save to GitHub de ce lot ; audit VPS pré-déploiement ; backup Mongo ; déploiement + validation prod.
+- Verdict phase : **SSO CODE/CONTRAT : VALIDÉ · SSO NAVIXY RÉEL : NON TESTÉ · MICROSOFT ENTRA : ABSENT/NON APPLICABLE · PRODUCTION SSO : NON VALIDÉE → NOT READY FOR PRODUCTION** (blockers externes, pas de défaut code connu).
+
 ## Backlog (prioritized)
 - Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.
 - Phase 3+ (gros chantiers, à cadrer 1 par 1): modules Contrats & renouvellements, Conducteurs, Clients, Modèles, Corbeille/Favoris/Partagés ; permissions/rôles + auth ; multi-tenant.

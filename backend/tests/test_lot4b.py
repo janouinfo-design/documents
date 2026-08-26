@@ -135,3 +135,14 @@ class TestReadOnlyRole:
                           json={"email": f"u-{_RUN}@pytest-4b.ch", "password": "Whatever123", "role": "user"},
                           headers=sa(), timeout=30)
         assert r.status_code == 422
+
+
+def teardown_module():
+    from pymongo import MongoClient
+    c = MongoClient(_ENV["MONGO_URL"])
+    db = c[_ENV["DB_NAME"]]
+    db.users.delete_many({"tenant_id": TENANT_ID})
+    db.vehicles.delete_many({"tenant_id": TENANT_ID})
+    db.tenant_integrations.delete_many({"tenant_id": TENANT_ID})
+    db.tenants.delete_many({"id": TENANT_ID})
+    c.close()

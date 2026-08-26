@@ -169,3 +169,78 @@ class TestProvisioningAndRbac:
         assert r.status_code == 403
         u = await server_mod.db.users.find_one({"email": admin_email.lower()})
         assert u and u.get("tenant_id") == "default" and "navixy_user_id" not in u
+
+
+TENANT_A = f"pytest-ssoA-{_RUN}"
+TENANT_B = f"pytest-ssoB-{_RUN}"
+MASTER_A = MASTER_ID + 1
+MASTER_B = MASTER_ID + 2
+EMAIL_A = f"userA-{_RUN}@clienta.ch"
+EMAIL_B = f"userB-{_RUN}@clientb.ch"
+
+
+@pytest_asyncio.fixture
+async def two_tenants(aclient):
+    for tid, mid in ((TENANT_A, MASTER_A), (TENANT_B, MASTER_B)):
+        await server_mod.db.tenants.insert_one(
+            {"id": tid, "name": tid, "disabled": False, "modules": {"documents": True},
+             "created_at": "2026-01-01T00:00:00+00:00"})
+        await server_mod.db.tenant_integrations.insert_one(
+            {"tenant_id": tid, "provider": "navixy", "api_hash": f"h-{tid}",
+             "enabled": False, "master_user_id": mid})
+    veh_b = {"id": str(uuid.uuid4()), "tenant_id": TENANT_B, "plaque": "VD 999999",
+             "created_at": "2026-01-01T00:00:00+00:00"}
+    await server_mod.db.vehicles.insert_one(dict(veh_b))
+    yield aclient, veh_b["id"]
+    await server_mod.db.users.delete_many({"tenant_id": {"$in": [TENANT_A, TENANT_B]}})
+    await server_mod.db.vehicles.delete_many({"tenant_id": {"$in": [TENANT_A, TENANT_B]}})
+    await server_mod.db.tenant_integrations.delete_many({"tenant_id": {"$in": [TENANT_A, TENANT_B]}})
+    await server_mod.db.tenants.delete_many({"id": {"$in": [TENANT_A, TENANT_B]}})
+
+
+@pytest.mark.asyncio
+class TestMultiTenantSsoIsolation:
+    async def test_master_a_to_tenant_a_and_master_b_to_tenant_b(self, two_tenants, monkeypatch):
+        ac, _ = two_tenants
+        monkeypatch.setattr(server_mod, "navixy_get_user_info",
+                            _nav_ok(user_id=NAV_USER_ID + 10, master_id=MASTER_A, email=EMAIL_A))
+        ra = await _exchange(ac)
+        assert ra.status_code == 200 and ra.json()["user"]["tenant_id"] == TENANT_A
+        monkeypatch.setattr(server_mod, "navixy_get_user_info",
+                            _nav_ok(user_id=NAV_USER_ID + 11, master_id=MASTER_B, email=EMAIL_B))
+        rb = await _exchange(ac)
+        assert rb.status_code == 200 and rb.json()["user"]["tenant_id"] == TENANT_B
+
+    async def test_session_a_never_reads_tenant_b(self, two_tenants, monkeypatch):
+        ac, veh_b_id = two_tenants
+        monkeypatch.setattr(server_mod, "navixy_get_user_info",
+                            _nav_ok(user_id=NAV_USER_ID + 10, master_id=MASTER_A, email=EMAIL_A))
+        token_a = (await _exchange(ac)).json()["token"]
+        h = {"Authorization": f"Bearer {token_a}"}
+        lst = await ac.get("/api/vehicles", headers=h)
+        assert lst.status_code == 200
+        assert all(v.get("id") != veh_b_id for v in lst.json())
+        direct = await ac.get(f"/api/vehicles/{veh_b_id}", headers=h)
+        assert direct.status_code == 404
+
+    async def test_acting_tenant_header_ignored_for_sso_user(self, two_tenants, monkeypatch):
+        ac, veh_b_id = two_tenants
+        monkeypatch.setattr(server_mod, "navixy_get_user_info",
+                            _nav_ok(user_id=NAV_USER_ID + 10, master_id=MASTER_A, email=EMAIL_A))
+        token_a = (await _exchange(ac)).json()["token"]
+        h = {"Authorization": f"Bearer {token_a}", "X-Acting-Tenant": TENANT_B}
+        lst = await ac.get("/api/vehicles", headers=h)
+        assert lst.status_code in (200, 403)
+        if lst.status_code == 200:
+            assert all(v.get("id") != veh_b_id for v in lst.json())
+
+    async def test_session_b_never_writes_or_reads_a(self, two_tenants, monkeypatch):
+        ac, veh_b_id = two_tenants
+        monkeypatch.setattr(server_mod, "navixy_get_user_info",
+                            _nav_ok(user_id=NAV_USER_ID + 11, master_id=MASTER_B, email=EMAIL_B))
+        token_b = (await _exchange(ac)).json()["token"]
+        h = {"Authorization": f"Bearer {token_b}"}
+        w = await ac.post("/api/vehicles", json={"plaque": "GE 1"}, headers=h)
+        assert w.status_code == 403
+        ids = {v["id"] for v in (await ac.get("/api/vehicles", headers=h)).json()}
+        assert ids == {veh_b_id}

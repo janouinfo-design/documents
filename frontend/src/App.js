@@ -13,9 +13,11 @@ import AlertsPage from "@/pages/AlertsPage";
 import Login from "@/pages/Login";
 import IntegrityPage from "@/pages/IntegrityPage";
 import AdminPage from "@/pages/AdminPage";
+import SsoNotConfigured from "@/pages/SsoNotConfigured";
 
 function Protected({ children }) {
-  const { user, ssoPending } = useAuth();
+  const { user, ssoPending, ssoUnconfigured } = useAuth();
+  if (ssoUnconfigured) return <SsoNotConfigured />;
   if (user === undefined || ssoPending)
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-50">

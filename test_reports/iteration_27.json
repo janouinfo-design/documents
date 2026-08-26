@@ -1,0 +1,51 @@
+{
+  "summary": "Frontend-only E2E validation of the Navixy SSO (session_key exchange) lot — parcours 1 to 7 + 1 extra fail-closed edge case. ALL 7 requested parcours PASS. The iteration-26 CRITICAL bug (sso-error banner wiped by the axios 401 hard-redirect) is CONFIRMED FIXED: the amber banner 'Session Navixy expirée ou invalide — reconnectez-vous au hub LOGITRAK' now renders on /login. The NEW SsoNotConfigured screen (403 tenant non mappé) was tested for the first time via Playwright route interception (MOCKED) and behaves exactly as specified. No session_key leak found anywhere (URL, history, localStorage, sessionStorage, cookies, console logs, outbound request URLs). No production code was modified.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "/pages/SsoNotConfigured.jsx — lien 'Se connecter avec un compte Documents'",
+        "issues": [
+          "Lien en text-slate-400 sur fond blanc (~2.6:1) — sous le seuil WCAG AA 4.5:1 pour du texte 12px. C'est l'unique action de sortie de l'écran, elle est presque invisible. Recommandation: text-slate-500/600 + underline par défaut."
+        ]
+      },
+      {
+        "screen": "/admin — Administration des clients",
+        "issues": [
+          "12 tenants listés dont 10 résidus de tests backend (pytest-client-*, pytest-4b-*). Pollution de données preview, pas un bug frontend, mais dégrade la lisibilité de la console: prévoir un nettoyage/teardown côté pytest."
+        ]
+      }
+    ]
+  },
+  "parcours_results": {
+    "P1_login_classique": "PASS — superadmin@logitrak.ch -> /admin (console clients rendue), admin@logitrak.ch -> / (dashboard + nav). Mauvais mot de passe -> data-testid=login-error 'Email ou mot de passe incorrect', aucun lt_token créé, reste sur /login.",
+    "P2_sso_fail_closed_reel": "PASS — /?session_key=fake-invalid-key-... : loader data-testid=sso-pending affiché, backend réel répond 401, atterrissage sur /login avec data-testid=sso-error visible (texte attendu). URL nettoyée (replaceState), pas de session_key dans l'historique (go_back ne le réexpose pas), aucun lt_token, aucune redirection vers page protégée.",
+    "P3_sso_not_configured_MOCKED": "PASS (MOCKED via page.route sur POST **/api/auth/navixy/exchange -> 403 'Aucun compte Documents associé...') — écran data-testid=sso-not-configured avec titre exact 'Accès à Documents non configuré', texte contact administrateur/LOGITRAK, bannière générique sso-error absente (count=0), URL nettoyée, aucun lt_token. Lien data-testid=sso-not-configured-login-link -> /login fonctionnel, formulaire de login classique propre (écran SSO non re-rendu).",
+    "P4_page_protegee_sans_session": "PASS — /vehicules et / sans token redirigent vers /login.",
+    "P5_logout": "PASS — logout via user-menu-btn > user-menu-logout -> /login, lt_token supprimé (aucune clé lt_*), /vehicules ensuite redirigé vers /login, back navigateur ne recrée aucune session (token absent, nav protégée absente, formulaire de login affiché).",
+    "P6_refresh_apres_login": "PASS — F5 sur /admin : session maintenue via authMe, pas de retour au login.",
+    "P7_aucune_fuite": "PASS — après P2 et P3 : localStorage/sessionStorage/cookies ne contiennent que des clés PostHog (analytics tiers) et, en session valide, uniquement lt_token. Aucune occurrence de 'session_key' dans les logs console (3 messages, aucun contenant la clé) ni dans les URLs des requêtes sortantes — la clé n'est transmise que dans le corps du POST /api/auth/navixy/exchange. Seule occurrence: l'URL d'entrée fournie par le hub, immédiatement supprimée par replaceState (comportement attendu, pas une fuite applicative).",
+    "P8_edge_bonus_lien_sso_perime_alors_que_deja_connecte": "PASS — utilisateur déjà loggé qui ouvre /?session_key=stale-invalid : la session existante est bien purgée (lt_token supprimé), aucune UI protégée, bannière sso-error affichée. Fail-closed strict respecté."
+  },
+  "test_report_links": ["/app/test_reports/iteration_27.json"],
+  "action_items": [
+    "COSMÉTIQUE (optionnel) : augmenter le contraste du lien de retour dans SsoNotConfigured.jsx (text-slate-400 -> text-slate-600, underline par défaut).",
+    "HYGIÈNE (optionnel) : ajouter un teardown aux tests pytest backend pour supprimer les tenants pytest-client-* / pytest-4b-* qui polluent /admin en preview."
+  ],
+  "critical_code_review_comments": [
+    "AuthContext.jsx l.86-97 : le useEffect heartbeat SSO dépend de `ssoSessionKey` (variable de module mutable, non réactive) mais celle-ci n'est pas dans le tableau de dépendances. Ça fonctionne aujourd'hui car `user` change au même instant, mais c'est fragile — envisager un useRef exposé via state pour rendre la dépendance explicite. (Remarque déjà soulevée en itération 26, toujours présente, non bloquante.)",
+    "SsoNotConfigured utilise un <a href='/login'> (full page reload) plutôt qu'un <Link> react-router. C'est ici un CHOIX CORRECT (le reload purge l'état ssoUnconfigured et évite une boucle de rendu) — à documenter par un commentaire pour éviter une 'optimisation' future en Link qui casserait le retour au login.",
+    "api.js l.34-35 : la liste d'exclusion du redirect 401 est une chaîne de !url.includes(...). Extraire une constante AUTH_NO_REDIRECT_PATHS = ['/auth/login','/auth/change-password','/auth/navixy/exchange'] pour la lisibilité et éviter d'oublier un futur endpoint d'auth."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "non testé (frontend only, 217 pytest PASS déjà validés)", "frontend": "100% (8/8 parcours, dont P3 mocké)" },
+  "seed_data_creation": "Aucune. Aucune donnée créée ni modifiée. Connexions en lecture uniquement (superadmin@logitrak.ch, admin@logitrak.ch).",
+  "mocked_apis_used": ["POST /api/auth/navixy/exchange -> 403 (parcours 3 uniquement, Playwright page.route) — MOCKED car aucun compte Navixy réel non mappé n'est disponible en preview."],
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "Comptes de /app/memory/test_credentials.md valides et fonctionnels (superadmin plateforme + admin client). Aucun mot de passe, token ou session_key reproduit dans ce rapport.",
+  "context_for_next_testing_agent": "Le lot SSO Navixy est entièrement validé côté frontend (itération 27) : fail-closed réel (401), écran SsoNotConfigured (403, mocké), non-régression du login classique, logout, refresh, back-navigation, zéro fuite de session_key. Le bug de l'itération 26 (bannière sso-error perdue par le redirect 401 de l'intercepteur axios) est corrigé et vérifié. Il ne reste que 2 points cosmétiques/hygiène non bloquants. Pour re-tester le parcours 3 il faut impérativement mocker POST **/api/auth/navixy/exchange en 403 avec le detail exact contenant 'Aucun compte Documents associé' (AuthContext teste cette sous-chaîne). Le bouton de logout est dans le menu utilisateur : data-testid=user-menu-btn puis user-menu-logout. Route véhicules = /vehicules (français), pas /vehicles.",
+  "rca_of_the_issue": "Aucun défaut bloquant trouvé. RCA de confirmation du fix itération 26 : l'exclusion de '/auth/navixy/exchange' de l'intercepteur 401 (api.js l.35) empêche le window.location.assign('/login') qui détruisait l'état React ssoError ; la redirection est désormais assurée par <Navigate to='/login' replace/> du composant Protected, ce qui préserve l'état du AuthProvider et donc l'affichage de la bannière."
+}

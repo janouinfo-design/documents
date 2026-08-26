@@ -231,3 +231,14 @@ class TestModulesAndDisable:
 
     def test_default_tenant_unaffected(self):
         assert requests.get(f"{_BASE}/api/vehicles", headers=admin_headers(), timeout=30).status_code == 200
+
+
+def teardown_module():
+    from pymongo import MongoClient
+    c = MongoClient(_ENV["MONGO_URL"])
+    db = c[_ENV["DB_NAME"]]
+    db.users.delete_many({"tenant_id": TENANT_ID})
+    db.vehicles.delete_many({"tenant_id": TENANT_ID})
+    db.tenant_integrations.delete_many({"tenant_id": TENANT_ID})
+    db.tenants.delete_many({"id": TENANT_ID})
+    c.close()
