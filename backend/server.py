@@ -161,6 +161,11 @@ async def auth_navixy_exchange(payload: NavixyExchangePayload, request: Request)
     key = (payload.session_key or "").strip()
     if not (16 <= len(key) <= 256):
         raise HTTPException(status_code=401, detail="Session Navixy absente ou invalide")
+    # Une clé API (env ou intégration tenant) n'est JAMAIS une identité utilisateur : refus explicite.
+    if (NAVIXY_HASH and key == NAVIXY_HASH) or await db.tenant_integrations.find_one(
+            {"provider": "navixy", "api_hash": key}, {"_id": 1}):
+        raise HTTPException(status_code=401,
+                            detail="Clé API non autorisée pour le SSO — session utilisateur requise")
     try:
         data = navixy_get_user_info(key)
     except NavixyError as exc:

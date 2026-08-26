@@ -171,6 +171,31 @@ class TestProvisioningAndRbac:
         assert u and u.get("tenant_id") == "default" and "navixy_user_id" not in u
 
 
+@pytest.mark.asyncio
+class TestApiKeyNeverSso:
+    async def test_tenant_integration_api_hash_refused_as_session_key(self, aclient, monkeypatch):
+        called = {"n": 0}
+
+        def spy(_key):
+            called["n"] += 1
+            return _nav_ok()(_key)
+        monkeypatch.setattr(server_mod, "navixy_get_user_info", spy)
+        r = await aclient.post("/api/auth/navixy/exchange",
+                               json={"session_key": f"pytest-hash-{_RUN}"})
+        assert r.status_code == 401
+        assert "Clé API" in r.json()["detail"]
+        assert called["n"] == 0, "la clé API ne doit même pas être envoyée à Navixy"
+
+    async def test_env_master_api_hash_refused_as_session_key(self, aclient, monkeypatch):
+        fake_master_key = f"env-master-key-{_RUN}-0123456789"
+        monkeypatch.setattr(server_mod, "NAVIXY_HASH", fake_master_key)
+        monkeypatch.setattr(server_mod, "navixy_get_user_info", _nav_ok())
+        r = await aclient.post("/api/auth/navixy/exchange",
+                               json={"session_key": fake_master_key})
+        assert r.status_code == 401
+        assert "Clé API" in r.json()["detail"]
+
+
 TENANT_A = f"pytest-ssoA-{_RUN}"
 TENANT_B = f"pytest-ssoB-{_RUN}"
 MASTER_A = MASTER_ID + 1

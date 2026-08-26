@@ -377,6 +377,17 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - [x] Régression complète : 233 PASS / 2 SKIP / 0 FAIL. testing_agent it.28 : 5/5 parcours PASS ; correctifs post-it.28 auto-testés Playwright (read_only masqué OK / admin complet OK, compte jetable supprimé).
 - NON PROUVÉ (bloquants prod) : persistance + backup volume fichiers VPS (mongodump seul connu → backup fichiers = blocker si non couvert) ; SSO Navixy réel toujours en attente (session key hub) ; déploiement prod non fait.
 
+## Lot SSO — Confirmation Navixy + verrou anti-API-key (2026-08-26 après-midi)
+- Navixy a CONFIRMÉ : Documents #14328 = Authentication Session key + Embedded, API key statique désactivée pour Documents, App Connect non requis. Tableau de bord #11522 / Dashbord #18632 (AUTRE repo, non auditables ici) utilisent déjà Session key.
+- [x] Audit backend exchange re-vérifié : 8 points conformes (POST body, validation user/get_info serveur, identité complète exigée, mapping strict master→tenant SANS fallback default, rôle conservé/read_only, JWT 60 min, URL nettoyée frontend). Interdits respectés (pas de valeur fixe/accès direct/tenant default).
+- [x] NOUVEAU verrou anti-API-key : une clé égale à NAVIXY_HASH env OU à une api_hash de tenant_integrations est refusée 401 « Clé API non autorisée pour le SSO » AVANT tout appel Navixy. 2 tests ajoutés (spy prouve zéro appel réseau).
+- [x] Logs audités : aucune session_key loggée ; audit_event sso_user_provisioned sans clé. Critères corrigés session_key : présence initiale = normale ; nettoyée après auth PASS (it.27) ; absente logs PASS ; absente storage frontend PASS (it.27).
+- [x] Iframe Embedded : preview sans header anti-iframe ; nginx prod (frontend/nginx.conf) a déjà frame-ancestors 'self' *.logitrak.fr *.logitrak.ch *.navixy.com *.emergentagent.com.
+- [x] Tests SSO ciblés : 18/18. Régression complète : 235 PASS / 2 SKIP / 0 FAIL.
+- Mapping preview prêt : tenant default a api_hash en DB, master_user_id sera résolu paresseusement au 1er échange réel.
+- EN ATTENTE UTILISATEUR : test réel Option A = pointer temporairement l'URL de l'app #14328 vers la preview, ouvrir Documents depuis une vraie session, rapporter le tableau OUI/NON ; puis Save to GitHub + audit VPS + déploiement.
+- SECURITY FOLLOW-UP (lots séparés, non modifiés) : LOGITAG #52 et Livre de bord #18619 utilisent encore une API key → migration Session key à étudier.
+
 ## Backlog (prioritized)
 - Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.
 - Phase 3+ (gros chantiers, à cadrer 1 par 1): modules Contrats & renouvellements, Conducteurs, Clients, Modèles, Corbeille/Favoris/Partagés ; permissions/rôles + auth ; multi-tenant.
