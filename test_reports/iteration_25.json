@@ -1,0 +1,30 @@
+{
+  "summary": "Frontend-only E2E test of Lot 4b (VUE CLIENT superadmin + rôle read_only) on the preview URL. All 8 requested scenarios PASS. Superadmin login → /admin (8 tenants, 'Voir ce client' button on every card); acting-tenant view of 'Compte pilote' shows the indigo banner 'Vue client : Compte pilote — lecture + écriture', real client data (12 véhicules, KPIs 4/2/6/7, 10 660 CHF), Échéances + Alertes load, vehicle drawer + Documents tab load folders/files with ZERO 4xx responses (file-token carries the client tenant, list thumbnails render). 'Revenir à la console' returns to /admin, banner gone, superadmin business pages empty again (0 véhicule). READ_ONLY user created on client-test-e2e via the new role select (shown as 'rôle read_only'); its login reads all pages, shows the '· lecture seule' badge in the user menu, no Administration tab, POST /api/vehicles returns 403 with an error toast and no crash; self password change (RoTest-2026x → RoTest-2026y) works and re-login succeeds. admin@logitrak.ch (client default): no Administration tab, no banner, 12 véhicules, direct /admin redirects to /.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Pages métier en rôle read_only", "issues": ["Tous les CTA d'écriture restent visibles et actifs (+ Véhicule, Ajouter un document, Synchroniser, boutons Modifier/Enregistrer) alors que l'API renvoie systématiquement 403 — devraient être masqués ou désactivés avec un tooltip 'lecture seule'"]},
+      {"screen": "NewVehicleDialog (read_only)", "issues": ["Le 403 est affiché comme toast générique 'Erreur lors de la création' (NewVehicleDialog.jsx l.55-56 ignore la réponse) et le dialog reste ouvert — afficher le detail backend (ex. 'Accès en lecture seule')"]},
+      {"screen": "Page Véhicules", "issues": ["La ligne du tableau n'est pas cliquable : seuls le lien plaque (vehicle-plate-link-*) et le chevron (open-vehicle-*) ouvrent le drawer — cohérent avec le libellé 'cliquez sur une plaque' mais divergent du scénario 'clic sur une ligne'"]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Optionnel/UX : masquer ou désactiver les actions d'écriture pour le rôle read_only",
+    "Optionnel : propager le message d'erreur backend (403 lecture seule) dans les toasts d'écriture (NewVehicleDialog et autres onglets)"
+  ],
+  "critical_code_review_comments": [
+    "Layout.jsx ActingTenantBanner lit getActingTenant() au rendu (non réactif) — fonctionne uniquement grâce au window.location.assign complet ; toute future navigation SPA après setActingTenant n'actualiserait pas le bandeau",
+    "NewVehicleDialog.jsx utilise catch{} sans exploiter err.response.data.detail → messages d'erreur non exploitables (403 read_only affiché comme erreur générique)"
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (frontend-only request)", "frontend": "100% (8/8 scénarios)"},
+  "seed_data_creation": "Utilisateur read_only créé : ro-e2e@client-test.ch (tenant client-test-e2e). Mot de passe FINAL après test 7 : RoTest-2026y. Aucun véhicule créé (403 attendu). Aucun changement sur le tenant default ni sur admin@logitrak.ch / superadmin@logitrak.ch. Module Documents de client-test-e2e vérifié = activé.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "superadmin@logitrak.ch / 8129413106bcdc0b11dcfa1c7dc9b5e5 · admin@logitrak.ch / 3a9218d1606b52e003383e52d7aea3d6 · ro-e2e@client-test.ch / RoTest-2026y (nouveau, read_only)",
+  "context_for_next_testing_agent": "Lot 4b frontend validé 8/8 (it.25). Sélecteurs utiles : admin-view-client-btn-{tenant}, acting-tenant-banner, acting-tenant-exit-btn, admin-user-role-select, user-menu-email, vehicle-plate-link-{plaque sans espaces} (la <tr> vehicle-row-* n'est PAS cliquable), tab-documents / tab-etat-des-lieux dans vehicle-drawer, add-vehicle-btn + nv-plaque + nv-submit. La vue client fait un rechargement complet (window.location.assign) : prévoir ~4 s d'attente. Le mot de passe de ro-e2e@client-test.ch est maintenant RoTest-2026y.",
+  "rca_of_the_issue": "Aucun défaut fonctionnel constaté. Seules remarques UX : les contrôles d'écriture ne sont pas conditionnés au rôle côté UI (l'application s'appuie uniquement sur le 403 serveur) et les toasts d'erreur n'exploitent pas le detail renvoyé par l'API."
+}

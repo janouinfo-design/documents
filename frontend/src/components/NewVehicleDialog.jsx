@@ -52,8 +52,8 @@ export default function NewVehicleDialog({ open, onOpenChange }) {
       toast.success("Véhicule créé");
       setForm(EMPTY);
       onOpenChange(false);
-    } catch {
-      toast.error("Erreur lors de la création");
+    } catch (err) {
+      toast.error(String(err?.response?.data?.detail || "Erreur lors de la création"));
     } finally {
       setSaving(false);
     }
