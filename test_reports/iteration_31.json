@@ -1,0 +1,36 @@
+{
+  "summary": "Frontend-only E2E (Playwright, admin@logitrak.ch) des 2 lots : KPIs cliquables (Dashboard 11 cartes, Échéances 4 toggles, Alertes 4 toggles) + nouvelle page Coûts et onglet Coûts fiche véhicule. 11/11 navigations KPI Dashboard OK (URL + filtre pré-appliqué vérifiés), 8/8 toggles Échéances (filtre + anneau + re-clic), 4/4 Alertes, page Coûts complète (KPIs, graphique 7 barres, bloc par véhicule, tableau 23 lignes, 2 filtres, drawer véhicule), anti-doublon validé (document Leasing 400 CHF/mensuel créé via la fiche document → 4 800 CHF/an et disparition de la ligne legacy 12 480 CHF pour EX 30 08, puis montant remis à null → données restaurées). Aucune erreur console sur les 7 pages. 1 BUG de cohérence des totaux trouvé (années de couverture des primes annuelles).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/costs, GET /api/vehicles/{id}/costs (collect_costs/_cost_years)", "issue": "Les postes récurrents ANNUELS sans date_debut (primes assurance legacy) ne sont rattachés qu'à l'année de leur échéance : _cost_years(None, '2027-01-01', True) → [2027]. Conséquence UI : KPI 'Coût annuel 2026' = 137 230 CHF alors que la somme des 23 lignes affichées dans costs-table = 147 144 CHF ; 'Postes actifs' = 17 vs 23 lignes ; bloc 'Coût annuel par véhicule' n'affiche que 11 véhicules sur 12 (1-Enyaq 01 Bern, prime due 2027-06-01, absent). Cas le plus visible : onglet Coûts de EX 30 08 affiche 'Coût annuel 4 800 CHF / Postes actifs 1' alors que la liste contient 2 postes (4 800 + 1 450 = 6 250 CHF). Attendu : un poste annuel récurrent doit couvrir l'année courante (start = min(annee_echeance, annee_courante) ou couverture glissante)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Page Coûts / onglet Coûts fiche véhicule", "issue": "Incohérence visible entre les KPIs (totaux calculés sur les items 'actifs' de l'année) et le tableau/liste qui affiche TOUS les items sans distinction : rien n'indique à l'utilisateur quelles lignes ne sont pas comptées dans le total (137 230 vs 147 144 ; 17 vs 23). Soit filtrer/marquer les lignes hors année, soit corriger _cost_years (cf. issue backend).", "affected_selectors": ["costs-kpi-annuel", "costs-kpi-postes", "costs-table", "costs-by-vehicle", "costs-tab"]}
+    ],
+    "design_issues": [
+      {"screen": "Page Coûts — tableau détail", "issues": ["Badge 'FICHE VÉHICULE' en text-slate-400 10px sous le libellé : contraste faible (~2.6:1) et lisibilité limitée ; envisager slate-500 + fond léger."]}
+    ]
+  },
+  "test_report_links": ["/app/test_reports/seed_cost_doc.py"],
+  "action_items": [
+    "Corriger _cost_years (server.py ~1585) pour que les postes récurrents annuels sans date_debut couvrent l'année courante → aligne KPI 'Coût annuel', 'Postes actifs', bloc par véhicule et onglet Coûts sur les lignes affichées",
+    "Aligner l'affichage : marquer/filtrer dans costs-table et vehicle-costs-list les postes non comptés dans l'année du KPI (ou compter tous les postes affichés)",
+    "Améliorer le contraste du badge 'FICHE VÉHICULE'"
+  ],
+  "critical_code_review_comments": [
+    "collect_costs : totaux/by_vehicle/by_category calculés sur `actifs` (année courante) mais `items` renvoie tout → toute UI qui somme les items divergera du KPI. Exposer un flag `actif_annee` par item pour rendre l'écart explicite.",
+    "CostsTab/CostsPage n'ont pas d'état d'erreur (isError) sur getVehicleCosts (CostsTab) — seulement isLoading ; ajouter un QueryErrorState comme sur CostsPage."
+  ],
+  "updated_files": ["/app/test_reports/seed_cost_doc.py (script utilitaire de vérification/restauration)"],
+  "success_rate": {"backend": "N/A (skipped)", "frontend": "93% (26/28 vérifications ; échecs = cohérence totaux page Coûts + onglet Coûts)"},
+  "seed_data_creation": "Document existant 'permis.jpg' (EX 30 08, Leasing, id aaebe0e2-...) temporairement modifié montant=400/mensuel pour valider dedup + annualisation ×12, puis REMIS à montant=null/frequence=null (état d'origine restauré, vérifié via API). Aucune suppression, aucun seuil ni montant legacy modifié.",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "admin@logitrak.ch / 3a9218d1606b52e003383e52d7aea3d6 (fichier /app/memory/test_credentials.md OK)",
+  "context_for_next_testing_agent": "Tous les data-testid attendus existent. Chiffres actuels tenant default : /api/costs → totals.annuel 137 230 CHF, postes_actifs 17, items 23, by_vehicle 11 (12 véhicules), somme des cout_annuel affichés 147 144 CHF (≠ KPI → bug _cost_years). Cas non testable : vehicle-costs-empty (aucun véhicule sans montant sur ce tenant) — créer un véhicule sans leasing/assurance pour couvrir ce cas. Non vérifié : colonne coût ajoutée à l'export CSV (téléchargement fichier).",
+  "rca_of_the_issue": "_cost_years(date_debut=None, date_expiration=2027-xx, recurrent=True) → start=end=2027, l'année courante 2026 est exclue. Les primes d'assurance legacy n'ont pas de date_debut, donc celles échéant en 2027/2028 sortent des agrégats 2026 (totals, by_vehicle, by_category) alors que la liste `items` les affiche → KPI < somme affichée et véhicule manquant dans le bloc par véhicule. Repro : /couts puis comparer costs-kpi-annuel (137 230) à la somme de la colonne 'Coût annuel' (147 144) ; ou ouvrir la fiche EX 30 08 → onglet Coûts (total 4 800 vs 2 postes = 6 250)."
+}

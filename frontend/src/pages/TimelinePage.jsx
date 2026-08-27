@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { CalendarClock, CalendarDays, FileClock, FileX, Loader2, Settings2 } from "lucide-react";
 import { getDeadlines, getDocCategories, getVehicles } from "@/lib/api";
 import { dateFr } from "@/lib/format";
@@ -32,11 +33,13 @@ export default function TimelinePage() {
   const { user } = useAuth();
   const { openVehicle } = useVehicleDrawer();
   const isAdmin = ["admin", "superadmin"].includes(user?.role);
-  const [vehicle, setVehicle] = useState(ALL);
-  const [category, setCategory] = useState(ALL);
-  const [statut, setStatut] = useState(ALL);
-  const [period, setPeriod] = useState(ALL);
+  const [searchParams] = useSearchParams();
+  const [vehicle, setVehicle] = useState(searchParams.get("vehicle_id") || ALL);
+  const [category, setCategory] = useState(searchParams.get("category") || ALL);
+  const [statut, setStatut] = useState(searchParams.get("statut") || ALL);
+  const [period, setPeriod] = useState(searchParams.get("days") || ALL);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const toggleStatut = (s) => () => setStatut((cur) => (cur === s ? ALL : s));
 
   const params = useMemo(() => ({
     ...(vehicle !== ALL && { vehicle_id: vehicle }),
@@ -84,13 +87,13 @@ export default function TimelinePage() {
       {/* Résumé (moteur central, compte entier) */}
       <div className="space-y-1.5">
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <KpiCard testId="deadlines-kpi-expired" label="Expirés" value={!summary ? "—" : summary.expired} accent="red" icon={FileX} />
-          <KpiCard testId="deadlines-kpi-urgent" label={`Urgents (≤ ${th.urgent_days} j)`} value={!summary ? "—" : summary.urgent} accent="amber" icon={FileClock} />
-          <KpiCard testId="deadlines-kpi-warning" label={`À planifier (${th.urgent_days + 1}–${th.warning_days} j)`} value={!summary ? "—" : summary.warning} accent="sky" icon={CalendarClock} />
-          <KpiCard testId="deadlines-kpi-nodate" label="Sans échéance" value={!summary ? "—" : summary.no_date + (summary.invalid_date || 0)} accent="slate" icon={CalendarDays} />
+          <KpiCard testId="deadlines-kpi-expired" label="Expirés" value={!summary ? "—" : summary.expired} accent="red" icon={FileX} onClick={toggleStatut("EXPIRE")} active={statut === "EXPIRE"} />
+          <KpiCard testId="deadlines-kpi-urgent" label={`Urgents (≤ ${th.urgent_days} j)`} value={!summary ? "—" : summary.urgent} accent="amber" icon={FileClock} onClick={toggleStatut("URGENT")} active={statut === "URGENT"} />
+          <KpiCard testId="deadlines-kpi-warning" label={`À planifier (${th.urgent_days + 1}–${th.warning_days} j)`} value={!summary ? "—" : summary.warning} accent="sky" icon={CalendarClock} onClick={toggleStatut("A_PLANIFIER")} active={statut === "A_PLANIFIER"} />
+          <KpiCard testId="deadlines-kpi-nodate" label="Sans échéance" value={!summary ? "—" : summary.no_date + (summary.invalid_date || 0)} accent="slate" icon={CalendarDays} onClick={toggleStatut("SANS_ECHEANCE")} active={statut === "SANS_ECHEANCE"} />
         </div>
         <p className="text-[11px] text-slate-400" data-testid="deadlines-kpi-note">
-          Résumé de la flotte entière — indépendant des filtres ci-dessous.
+          Résumé de la flotte entière — cliquez sur une carte pour filtrer le tableau (re-cliquez pour annuler).
         </p>
       </div>
 
@@ -180,7 +183,7 @@ export default function TimelinePage() {
                   <TableCell>
                     <p className="max-w-[220px] truncate text-sm text-slate-700">{e.label}</p>
                     {e.source === "legacy" && (
-                      <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400">Fiche véhicule</span>
+                      <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Fiche véhicule</span>
                     )}
                   </TableCell>
                   <TableCell>

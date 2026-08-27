@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import {
   FileWarning,
@@ -29,6 +30,8 @@ const tabForType = (t) =>
 
 export default function Dashboard() {
   const { openVehicle } = useVehicleDrawer();
+  const navigate = useNavigate();
+  const go = (path) => () => navigate(path);
   const { data: kpi, isLoading, isError, error } = useQuery({ queryKey: ["dashboard"], queryFn: getDashboard });
   const { data: dl } = useQuery({ queryKey: ["deadlines"], queryFn: () => getDeadlines() });
 
@@ -60,22 +63,22 @@ export default function Dashboard() {
 
       {/* KPI grid */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard testId="kpi-leasing-expired" label="Leasing expirés" value={!kpi ? "—" : kpi.leasing_expired} accent="red" icon={FileWarning} sub="Contrats échus" />
-        <KpiCard testId="kpi-leasing-soon" label="Leasing bientôt expirés" value={!kpi ? "—" : kpi.leasing_soon} accent="amber" icon={CalendarClock} sub="≤ 90 jours" />
-        <KpiCard testId="kpi-assurance-renew" label="Assurances à renouveler" value={!kpi ? "—" : kpi.assurance_renew} accent="sky" icon={ShieldCheck} sub="Renouvellement proche" />
-        <KpiCard testId="kpi-controle-upcoming" label="Contrôles techniques à venir" value={!kpi ? "—" : kpi.controle_upcoming} accent="amber" icon={ClipboardCheck} sub="Expertise programmée" />
-        <KpiCard testId="kpi-documents-missing" label="Véhicules · docs manquants" value={!kpi ? "—" : kpi.documents_missing} accent="red" icon={FileStack} sub="Documents requis absents" />
-        <KpiCard testId="kpi-cout-leasing" label="Coût leasing mensuel" value={!kpi ? "—" : chf(kpi.cout_leasing_mensuel)} accent="slate" icon={Wallet} sub="Total flotte / mois" />
-        <KpiCard testId="kpi-cout-assurance" label="Coût assurance annuel" value={!kpi ? "—" : chf(kpi.cout_assurance_annuel)} accent="slate" icon={Banknote} sub="Total flotte / an" />
-        <KpiCard testId="kpi-conformes" label="Véhicules conformes" value={!kpi ? "—" : `${kpi.vehicles_conformes}/${kpi.total_vehicles}`} accent="emerald" icon={CheckCircle2} sub="Aucune alerte active" />
+        <KpiCard testId="kpi-leasing-expired" label="Leasing expirés" value={!kpi ? "—" : kpi.leasing_expired} accent="red" icon={FileWarning} sub="Contrats échus" onClick={go("/timeline?category=Leasing&statut=EXPIRE")} />
+        <KpiCard testId="kpi-leasing-soon" label="Leasing bientôt expirés" value={!kpi ? "—" : kpi.leasing_soon} accent="amber" icon={CalendarClock} sub={`≤ ${th.warning_days} jours`} onClick={go("/timeline?category=Leasing")} />
+        <KpiCard testId="kpi-assurance-renew" label="Assurances à renouveler" value={!kpi ? "—" : kpi.assurance_renew} accent="sky" icon={ShieldCheck} sub="Renouvellement proche" onClick={go("/timeline?category=Assurance")} />
+        <KpiCard testId="kpi-controle-upcoming" label="Contrôles techniques à venir" value={!kpi ? "—" : kpi.controle_upcoming} accent="amber" icon={ClipboardCheck} sub="Expertise programmée" onClick={go(`/timeline?category=${encodeURIComponent("Contrôle technique")}`)} />
+        <KpiCard testId="kpi-documents-missing" label="Véhicules · docs manquants" value={!kpi ? "—" : kpi.documents_missing} accent="red" icon={FileStack} sub="Documents requis absents" onClick={go("/integrite")} />
+        <KpiCard testId="kpi-cout-leasing" label="Coût leasing mensuel" value={!kpi ? "—" : chf(kpi.cout_leasing_mensuel)} accent="slate" icon={Wallet} sub="Total flotte / mois" onClick={go("/couts")} />
+        <KpiCard testId="kpi-cout-assurance" label="Coût assurance annuel" value={!kpi ? "—" : chf(kpi.cout_assurance_annuel)} accent="slate" icon={Banknote} sub="Total flotte / an" onClick={go("/couts")} />
+        <KpiCard testId="kpi-conformes" label="Véhicules conformes" value={!kpi ? "—" : `${kpi.vehicles_conformes}/${kpi.total_vehicles}`} accent="emerald" icon={CheckCircle2} sub="Aucune alerte active" onClick={go("/integrite")} />
       </div>
 
       {/* KPI documents */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard testId="kpi-docs-expires" label="Échéances expirées" value={!kpi ? "—" : kpi.docs_expires ?? 0} accent="red" icon={FileX} sub="Documents & contrats" />
-        <KpiCard testId="kpi-docs-expire-30" label={`Expirent ≤ ${th.urgent_days} jours`} value={!kpi ? "—" : kpi.docs_expire_30 ?? 0} accent="amber" icon={FileClock} sub="Documents & contrats" />
-        <KpiCard testId="kpi-docs-expire-90" label={`Expirent ${th.urgent_days + 1}–${th.warning_days} jours`} value={!kpi ? "—" : kpi.docs_expire_31_90 ?? 0} accent="sky" icon={CalendarClock} sub="À planifier" />
-        <KpiCard testId="kpi-docs-a-verifier" label="Documents à vérifier" value={!kpi ? "—" : kpi.docs_a_verifier ?? 0} accent="slate" icon={FileSearch} sub="Validation en attente" />
+        <KpiCard testId="kpi-docs-expires" label="Échéances expirées" value={!kpi ? "—" : kpi.docs_expires ?? 0} accent="red" icon={FileX} sub="Documents & contrats" onClick={go("/timeline?statut=EXPIRE")} />
+        <KpiCard testId="kpi-docs-expire-30" label={`Expirent ≤ ${th.urgent_days} jours`} value={!kpi ? "—" : kpi.docs_expire_30 ?? 0} accent="amber" icon={FileClock} sub="Documents & contrats" onClick={go("/timeline?statut=URGENT")} />
+        <KpiCard testId="kpi-docs-expire-90" label={`Expirent ${th.urgent_days + 1}–${th.warning_days} jours`} value={!kpi ? "—" : kpi.docs_expire_31_90 ?? 0} accent="sky" icon={CalendarClock} sub="À planifier" onClick={go("/timeline?statut=A_PLANIFIER")} />
+        <KpiCard testId="kpi-docs-a-verifier" label="Documents à vérifier" value={!kpi ? "—" : kpi.docs_a_verifier ?? 0} accent="slate" icon={FileSearch} sub="Validation en attente" onClick={go("/documents?statut=A_VERIFIER")} />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

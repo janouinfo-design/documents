@@ -9,7 +9,7 @@ const ACCENTS = {
   sky: { border: "border-l-sky-500", icon: "bg-sky-50 text-sky-600" },
 };
 
-export default function KpiCard({ label, value, sub, icon: Icon, accent = "slate", onClick, testId }) {
+export default function KpiCard({ label, value, sub, icon: Icon, accent = "slate", onClick, testId, active }) {
   const a = ACCENTS[accent] || ACCENTS.slate;
   const Comp = onClick ? "button" : "div";
   return (
@@ -19,7 +19,8 @@ export default function KpiCard({ label, value, sub, icon: Icon, accent = "slate
       className={cn(
         "group flex flex-col justify-between gap-4 rounded-xl border border-slate-200 border-l-4 bg-white p-5 text-left shadow-sm transition-all duration-200",
         a.border,
-        onClick && "cursor-pointer hover:-translate-y-0.5 hover:shadow-md"
+        onClick && "cursor-pointer hover:-translate-y-0.5 hover:shadow-md",
+        active && "shadow-md ring-2 ring-slate-900/20"
       )}
     >
       <div className="flex items-start justify-between">

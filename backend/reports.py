@@ -210,15 +210,16 @@ def _n(x):
     return int(f) if f == int(f) else round(f, 2)
 
 
-def build_costs_csv(vehicles: list) -> str:
+def build_costs_csv(vehicles: list, engine_totals: dict = None) -> str:
     """CSV des coûts flotte — séparateur ';' (Excel FR/CH), dates JJ.MM.AAAA."""
+    engine_totals = engine_totals or {}
     buf = io.StringIO()
     w = csv.writer(buf, delimiter=";", lineterminator="\r\n")
     w.writerow(["Plaque", "Marque", "Modèle", "Base", "Groupe", "Statut",
                 "Société leasing", "Fin de leasing", "Mensualité CHF", "Mois restants", "Coût restant CHF",
                 "Compagnie assurance", "Échéance assurance", "Prime annuelle CHF",
-                "Prochain contrôle"])
-    tot_mens = tot_rest = tot_prime = 0.0
+                "Prochain contrôle", "Coût annuel tous postes CHF"])
+    tot_mens = tot_rest = tot_prime = tot_engine = 0.0
     for v in vehicles:
         m = v.get("metrics") or {}
         ml = m.get("leasing") or {}
@@ -227,9 +228,11 @@ def build_costs_csv(vehicles: list) -> str:
         mens = leasing.get("mensualite_chf") or leasing.get("cout_mensuel") or 0
         rest = ml.get("cost_remaining") or 0
         prime = assurance.get("prime_annuelle") or 0
+        engine = engine_totals.get(v.get("id")) or 0
         tot_mens += float(mens or 0)
         tot_rest += float(rest or 0)
         tot_prime += float(prime or 0)
+        tot_engine += float(engine or 0)
         w.writerow([
             v.get("plaque") or "", v.get("marque") or "", v.get("modele") or "",
             v.get("base") or "", v.get("groupe") or "", LEVELS_FR.get(m.get("overall"), ""),
@@ -240,8 +243,9 @@ def build_costs_csv(vehicles: list) -> str:
             _date_fr(assurance.get("date_echeance")) if assurance.get("date_echeance") else "",
             _n(prime),
             _date_fr(controle.get("date_prochain")) if controle.get("date_prochain") else "",
+            _n(engine),
         ])
-    w.writerow(["TOTAL", "", "", "", "", "", "", "", _n(tot_mens), "", _n(tot_rest), "", "", _n(tot_prime), ""])
+    w.writerow(["TOTAL", "", "", "", "", "", "", "", _n(tot_mens), "", _n(tot_rest), "", "", _n(tot_prime), "", _n(tot_engine)])
     return buf.getvalue()
 
 

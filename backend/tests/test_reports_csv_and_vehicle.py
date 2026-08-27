@@ -22,6 +22,7 @@ EXPECTED_HEADER = [
     "Plaque", "Marque", "Modèle", "Base", "Groupe", "Statut",
     "Société leasing", "Fin de leasing", "Mensualité CHF", "Mois restants", "Coût restant CHF",
     "Compagnie assurance", "Échéance assurance", "Prime annuelle CHF", "Prochain contrôle",
+    "Coût annuel tous postes CHF",
 ]
 
 

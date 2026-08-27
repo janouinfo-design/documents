@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { Search, FolderCog, ListChecks, Pencil, Download, FolderOpen, Loader2 } from "lucide-react";
 import { getAllDocuments, getDocCategories, getDeadlineSettings, getVehicles, fileUrl } from "@/lib/api";
 import { dateFr } from "@/lib/format";
@@ -22,12 +23,13 @@ export default function DocumentsPage() {
   const { user } = useAuth();
   const { openVehicle } = useVehicleDrawer();
   const isAdmin = ["admin", "superadmin"].includes(user?.role);
+  const [searchParams] = useSearchParams();
   const [q, setQ] = useState("");
   const [qDebounced, setQDebounced] = useState("");
-  const [vehicle, setVehicle] = useState(ALL);
-  const [folder, setFolder] = useState(ALL);
-  const [statut, setStatut] = useState(ALL);
-  const [echeance, setEcheance] = useState(ALL);
+  const [vehicle, setVehicle] = useState(searchParams.get("vehicle_id") || ALL);
+  const [folder, setFolder] = useState(searchParams.get("folder") || ALL);
+  const [statut, setStatut] = useState(searchParams.get("statut") || ALL);
+  const [echeance, setEcheance] = useState(searchParams.get("echeance") || ALL);
   const [editDoc, setEditDoc] = useState(null);
   const [catsOpen, setCatsOpen] = useState(false);
   const [reqsOpen, setReqsOpen] = useState(false);

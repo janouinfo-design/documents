@@ -36,6 +36,9 @@ export default function AlertsPage() {
   const stats = data?.stats || { total: 0, expired: 0, critical: 0, warning: 0 };
   const emailOn = data?.email_enabled;
   const th = data?.thresholds || { urgent_days: 30, warning_days: 90 };
+  const [levelFilter, setLevelFilter] = useState("all");
+  const visibleItems = levelFilter === "all" ? items : items.filter((i) => i.level === levelFilter);
+  const toggleLevel = (l) => () => setLevelFilter((cur) => (cur === l ? "all" : l));
 
   const onRun = async () => {
     setRunning(true);
@@ -92,10 +95,10 @@ export default function AlertsPage() {
 
       {/* KPI */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard testId="alert-kpi-total" label="Alertes actives" value={isLoading ? "—" : stats.total} accent="slate" icon={BellRing} />
-        <KpiCard testId="alert-kpi-expired" label="Échues" value={isLoading ? "—" : stats.expired} accent="red" icon={ShieldAlert} />
-        <KpiCard testId="alert-kpi-critical" label={`Urgentes (≤ ${th.urgent_days} j)`} value={isLoading ? "—" : stats.critical} accent="red" icon={AlertTriangle} />
-        <KpiCard testId="alert-kpi-warning" label={`À surveiller (≤ ${th.warning_days} j)`} value={isLoading ? "—" : stats.warning} accent="amber" icon={Bell} />
+        <KpiCard testId="alert-kpi-total" label="Alertes actives" value={isLoading ? "—" : stats.total} accent="slate" icon={BellRing} onClick={toggleLevel("all")} active={levelFilter === "all"} />
+        <KpiCard testId="alert-kpi-expired" label="Échues" value={isLoading ? "—" : stats.expired} accent="red" icon={ShieldAlert} onClick={toggleLevel("expired")} active={levelFilter === "expired"} />
+        <KpiCard testId="alert-kpi-critical" label={`Urgentes (≤ ${th.urgent_days} j)`} value={isLoading ? "—" : stats.critical} accent="red" icon={AlertTriangle} onClick={toggleLevel("critical")} active={levelFilter === "critical"} />
+        <KpiCard testId="alert-kpi-warning" label={`À surveiller (≤ ${th.warning_days} j)`} value={isLoading ? "—" : stats.warning} accent="amber" icon={Bell} onClick={toggleLevel("warning")} active={levelFilter === "warning"} />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -105,14 +108,18 @@ export default function AlertsPage() {
             <h3 className="font-display text-lg font-semibold tracking-tight text-slate-900">Alertes actives</h3>
           </div>
           <div className="divide-y divide-slate-100">
-            {items.length === 0 && (
+            {visibleItems.length === 0 && (
               <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
                 <CheckCircle2 className="h-8 w-8 text-emerald-500" />
-                <p className="text-sm font-medium text-slate-700">Aucune alerte active</p>
-                <p className="text-xs text-slate-400">Toutes les échéances sont à jour.</p>
+                <p className="text-sm font-medium text-slate-700">
+                  {items.length === 0 ? "Aucune alerte active" : "Aucune alerte pour ce niveau"}
+                </p>
+                <p className="text-xs text-slate-400">
+                  {items.length === 0 ? "Toutes les échéances sont à jour." : "Re-cliquez sur la carte pour annuler le filtre."}
+                </p>
               </div>
             )}
-            {items.map((a, i) => {
+            {visibleItems.map((a, i) => {
               const t = EVENT_TYPES[a.type] || EVENT_TYPES.document || {};
               return (
                 <button

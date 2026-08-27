@@ -1572,6 +1572,157 @@ async def put_deadline_settings(payload: DeadlineSettingsUpdate, request: Reques
     return await deadline_settings(t)
 
 
+# ---------------------------------------------------------------------------
+# Coûts : moteur central des coûts DÉRIVÉS des documents V2 (montant/devise/
+# fréquence) avec dual-read legacy (mensualité leasing, prime assurance) —
+# même règle anti-doublon que les échéances. Aucune collection ni migration :
+# tout est recalculé à la volée, l'évolution annuelle dérive des périodes
+# date_debut → date_expiration.
+# ---------------------------------------------------------------------------
+COST_FREQ_FACTOR = {"mensuel": 12, "trimestriel": 4, "semestriel": 2, "annuel": 1}
+
+
+def _cost_years(date_debut, date_expiration, recurrent: bool) -> list:
+    cur = date.today().year
+
+    def yr(s):
+        try:
+            return int(str(s)[:4])
+        except (TypeError, ValueError):
+            return None
+
+    y1, y2 = yr(date_debut), yr(date_expiration)
+    if not recurrent:
+        return [y1 or y2 or cur]
+    # Récurrent sans date de début connue : couvre au moins l'année courante
+    start = y1 or min(y2 or cur, cur)
+    end = y2 or max(start, cur)
+    if end < start:
+        start, end = end, start
+    start, end = max(start, cur - 5), min(end, cur + 5)
+    return list(range(start, end + 1)) or [cur]
+
+
+async def collect_costs(tenant_id: str) -> dict:
+    """Moteur central des coûts : items V2 + legacy dédoublonnés + agrégats annuels."""
+    vehicles = await db.vehicles.find(
+        {"tenant_id": tenant_id},
+        {"_id": 0, "id": 1, "plaque": 1, "marque": 1, "modele": 1,
+         "leasing": 1, "assurance": 1}).to_list(None)
+    docs = await db.documents.find(
+        {"tenant_id": tenant_id, "is_deleted": False, "archived": {"$ne": True},
+         "montant": {"$gt": 0}},
+        {"_id": 0, "id": 1, "vehicle_id": 1, "folder": 1, "label": 1, "original_filename": 1,
+         "montant": 1, "devise": 1, "frequence": 1, "date_debut": 1, "date_expiration": 1}
+    ).to_list(None)
+    vmap = {v["id"]: v for v in vehicles}
+    items, covered = [], set()
+
+    for d in docs:
+        v = vmap.get(d.get("vehicle_id")) or {}
+        freq = d.get("frequence") or "unique"
+        factor = COST_FREQ_FACTOR.get(freq, 0)
+        recurrent = factor > 0
+        annuel = round(float(d["montant"]) * (factor or 1), 2)
+        # Équivalent V2 avec montant : masque la source de coût legacy de la catégorie
+        covered.add((d.get("vehicle_id"), d.get("folder")))
+        items.append({
+            "key": f"doc:{d['id']}", "source": "document", "document_id": d["id"],
+            "vehicle_id": d.get("vehicle_id"), "plaque": v.get("plaque"),
+            "marque": v.get("marque"), "modele": v.get("modele"),
+            "category": d.get("folder"),
+            "label": d.get("label") or d.get("original_filename") or "Document",
+            "montant": round(float(d["montant"]), 2), "devise": d.get("devise") or "CHF",
+            "frequence": freq, "recurrent": recurrent, "cout_annuel": annuel,
+            "date_debut": str(d["date_debut"])[:10] if d.get("date_debut") else None,
+            "date_expiration": str(d["date_expiration"])[:10] if d.get("date_expiration") else None,
+            "years": _cost_years(d.get("date_debut"), d.get("date_expiration"), recurrent),
+        })
+
+    for v in vehicles:
+        leasing = v.get("leasing") or {}
+        mens = leasing.get("mensualite_chf") or leasing.get("cout_mensuel") or 0
+        if mens and (v["id"], "Leasing") not in covered:
+            items.append({
+                "key": f"legacy:{v['id']}:leasing", "source": "legacy", "document_id": None,
+                "vehicle_id": v["id"], "plaque": v.get("plaque"),
+                "marque": v.get("marque"), "modele": v.get("modele"),
+                "category": "Leasing", "label": "Mensualité leasing",
+                "montant": round(float(mens), 2), "devise": "CHF",
+                "frequence": "mensuel", "recurrent": True,
+                "cout_annuel": round(float(mens) * 12, 2),
+                "date_debut": str(leasing["date_debut"])[:10] if leasing.get("date_debut") else None,
+                "date_expiration": str(leasing["date_fin"])[:10] if leasing.get("date_fin") else None,
+                "years": _cost_years(leasing.get("date_debut"), leasing.get("date_fin"), True),
+            })
+        assurance = v.get("assurance") or {}
+        prime = assurance.get("prime_annuelle") or 0
+        if prime and (v["id"], "Assurance") not in covered:
+            items.append({
+                "key": f"legacy:{v['id']}:assurance", "source": "legacy", "document_id": None,
+                "vehicle_id": v["id"], "plaque": v.get("plaque"),
+                "marque": v.get("marque"), "modele": v.get("modele"),
+                "category": "Assurance", "label": "Prime annuelle assurance",
+                "montant": round(float(prime), 2), "devise": "CHF",
+                "frequence": "annuel", "recurrent": True,
+                "cout_annuel": round(float(prime), 2),
+                "date_debut": None,
+                "date_expiration": str(assurance["date_echeance"])[:10] if assurance.get("date_echeance") else None,
+                "years": _cost_years(None, assurance.get("date_echeance"), True),
+            })
+
+    cur = date.today().year
+    for i in items:
+        i["actif"] = cur in i["years"]
+    actifs = [i for i in items if i["actif"]]
+    by_vehicle, by_category = {}, {}
+    for i in actifs:
+        bv = by_vehicle.setdefault(i["vehicle_id"], {
+            "vehicle_id": i["vehicle_id"], "plaque": i["plaque"], "marque": i["marque"],
+            "modele": i["modele"], "total_annuel": 0.0, "by_category": {}})
+        bv["total_annuel"] = round(bv["total_annuel"] + i["cout_annuel"], 2)
+        bv["by_category"][i["category"]] = round(
+            bv["by_category"].get(i["category"], 0) + i["cout_annuel"], 2)
+        by_category[i["category"]] = round(
+            by_category.get(i["category"], 0) + i["cout_annuel"], 2)
+    years_all = sorted({y for i in items for y in i["years"]})
+    series = [{"year": y,
+               "total": round(sum(i["cout_annuel"] for i in items if y in i["years"]), 2)}
+              for y in years_all]
+    total_annuel = round(sum(i["cout_annuel"] for i in actifs), 2)
+    items.sort(key=lambda i: (-i["cout_annuel"], i.get("plaque") or ""))
+    return {
+        "items": items,
+        "by_vehicle": sorted(by_vehicle.values(), key=lambda x: -x["total_annuel"]),
+        "by_category": [{"category": k, "total_annuel": v}
+                        for k, v in sorted(by_category.items(), key=lambda kv: -kv[1])],
+        "series": series,
+        "totals": {"annuel": total_annuel, "mensuel": round(total_annuel / 12, 2),
+                   "postes_actifs": len(actifs)},
+        "year": cur,
+    }
+
+
+@api_router.get("/costs")
+async def list_costs(request: Request, vehicle_id: Optional[str] = None):
+    data = await collect_costs(tid(request))
+    if vehicle_id:
+        data["items"] = [i for i in data["items"] if i["vehicle_id"] == vehicle_id]
+    return data
+
+
+@api_router.get("/vehicles/{vehicle_id}/costs")
+async def vehicle_costs(vehicle_id: str, request: Request):
+    await find_tenant_vehicle(request, vehicle_id, {"_id": 1})
+    data = await collect_costs(tid(request))
+    items = [i for i in data["items"] if i["vehicle_id"] == vehicle_id]
+    cur = data["year"]
+    actifs = [i for i in items if cur in i["years"]]
+    return {"items": items, "year": cur,
+            "totals": {"annuel": round(sum(i["cout_annuel"] for i in actifs), 2),
+                       "postes_actifs": len(actifs)}}
+
+
 class DocumentUpdate(BaseModel):
     label: Optional[str] = None
     folder: Optional[str] = None
@@ -2650,7 +2801,9 @@ async def costs_csv_report(request: Request):
     th = await th_for(request)
     for v in vehicles:
         v["metrics"] = compute_metrics(v, th)
-    csv_text = build_costs_csv(vehicles)
+    engine = await collect_costs(tid(request))
+    engine_totals = {b["vehicle_id"]: b["total_annuel"] for b in engine["by_vehicle"]}
+    csv_text = build_costs_csv(vehicles, engine_totals)
     await audit("download", "report", request, "couts_csv", None,
                 f"Export CSV des coûts flotte ({len(vehicles)} véhicules)")
     return Response(content="\ufeff" + csv_text, media_type="text/csv; charset=utf-8",

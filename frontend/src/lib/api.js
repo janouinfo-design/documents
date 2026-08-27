@@ -136,6 +136,10 @@ export const getDeadlines = (params = {}) => http.get("/deadlines", { params }).
 export const getDeadlineSettings = () => http.get("/settings/deadlines").then((r) => r.data);
 export const putDeadlineSettings = (data) => http.put("/settings/deadlines", data).then((r) => r.data);
 
+// Coûts — moteur central dérivé des documents V2 + legacy (dual-read)
+export const getCosts = (params = {}) => http.get("/costs", { params }).then((r) => r.data);
+export const getVehicleCosts = (id) => http.get(`/vehicles/${id}/costs`).then((r) => r.data);
+
 // Synchronisation télématique
 export const getNavixyStatus = () => http.get("/navixy/status").then((r) => r.data);
 export const navixySync = () => http.post("/navixy/sync").then((r) => r.data);
