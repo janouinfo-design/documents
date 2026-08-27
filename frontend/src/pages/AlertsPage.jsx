@@ -16,6 +16,8 @@ import QueryErrorState from "@/components/QueryErrorState";
 import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
 
 const STATUS_LABEL = { mocked: "Simulé", sent: "Envoyé", failed: "Échec", skipped: "Ignoré" };
+const tabForType = (t) =>
+  ["leasing", "assurance", "controle"].includes(t) ? t : t === "document" ? "documents" : "general";
 const STATUS_CLS = {
   mocked: "bg-slate-100 text-slate-600",
   sent: "bg-emerald-50 text-emerald-700",
@@ -33,6 +35,7 @@ export default function AlertsPage() {
   const items = data?.items || [];
   const stats = data?.stats || { total: 0, expired: 0, critical: 0, warning: 0 };
   const emailOn = data?.email_enabled;
+  const th = data?.thresholds || { urgent_days: 30, warning_days: 90 };
 
   const onRun = async () => {
     setRunning(true);
@@ -52,7 +55,9 @@ export default function AlertsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="font-display text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">Alertes d'échéances</h2>
-          <p className="mt-1 text-sm text-slate-500">Leasing (180/90/30 j) · Assurance (90/60/30 j) · Contrôle technique (90/60/30/7 j)</p>
+          <p className="mt-1 text-sm text-slate-500">
+            Moteur central d'échéances — documents (seuils ≤ {th.urgent_days} j / ≤ {th.warning_days} j) · contrats hérités : Leasing 180/90/30 · Assurance 90/60/30 · Contrôle 90/60/30/7 j
+          </p>
         </div>
         <Button onClick={onRun} disabled={running} data-testid="alerts-run-btn" className="gap-2 bg-slate-900 hover:bg-slate-800">
           {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
@@ -89,8 +94,8 @@ export default function AlertsPage() {
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard testId="alert-kpi-total" label="Alertes actives" value={isLoading ? "—" : stats.total} accent="slate" icon={BellRing} />
         <KpiCard testId="alert-kpi-expired" label="Échues" value={isLoading ? "—" : stats.expired} accent="red" icon={ShieldAlert} />
-        <KpiCard testId="alert-kpi-critical" label="Urgentes (< 30 j)" value={isLoading ? "—" : stats.critical} accent="red" icon={AlertTriangle} />
-        <KpiCard testId="alert-kpi-warning" label="À surveiller (< 90 j)" value={isLoading ? "—" : stats.warning} accent="amber" icon={Bell} />
+        <KpiCard testId="alert-kpi-critical" label={`Urgentes (≤ ${th.urgent_days} j)`} value={isLoading ? "—" : stats.critical} accent="red" icon={AlertTriangle} />
+        <KpiCard testId="alert-kpi-warning" label={`À surveiller (≤ ${th.warning_days} j)`} value={isLoading ? "—" : stats.warning} accent="amber" icon={Bell} />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -108,11 +113,11 @@ export default function AlertsPage() {
               </div>
             )}
             {items.map((a, i) => {
-              const t = EVENT_TYPES[a.type] || {};
+              const t = EVENT_TYPES[a.type] || EVENT_TYPES.document || {};
               return (
                 <button
-                  key={`${a.vehicle_id}-${a.type}-${i}`}
-                  onClick={() => openVehicle(a.vehicle_id, a.type)}
+                  key={a.document_id ? `doc-${a.document_id}` : `${a.vehicle_id}-${a.type}-${i}`}
+                  onClick={() => openVehicle(a.vehicle_id, tabForType(a.type))}
                   data-testid={`alert-row-${i}`}
                   className="flex w-full items-center gap-4 px-6 py-3.5 text-left transition-colors hover:bg-slate-50"
                 >
@@ -122,7 +127,11 @@ export default function AlertsPage() {
                       <span className="font-semibold text-slate-900">{a.plaque}</span>
                       <span className="truncate text-xs text-slate-400">{a.marque} {a.modele}</span>
                     </div>
-                    <p className="text-xs text-slate-500"><span className={cn("font-medium", t.text)}>{a.label}</span> · {dateFr(a.due_date)}</p>
+                    <p className="text-xs text-slate-500">
+                      <span className={cn("font-medium", t.text)}>{a.label}</span>
+                      {a.category ? ` · ${a.category}` : ""} · {dateFr(a.due_date)}
+                      {a.responsable ? ` · ${a.responsable}` : ""}
+                    </p>
                   </div>
                   <StatusBadge level={a.level} days={a.days_remaining} showDays />
                   <ArrowRight className="h-4 w-4 text-slate-300" />

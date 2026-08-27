@@ -131,6 +131,11 @@ export const deleteInspection = (insId) => http.delete(`/inspections/${insId}`).
 export const getDashboard = () => http.get("/dashboard").then((r) => r.data);
 export const getTimeline = () => http.get("/timeline").then((r) => r.data);
 
+// Échéances — moteur central V2 (étape 4) + seuils par client
+export const getDeadlines = (params = {}) => http.get("/deadlines", { params }).then((r) => r.data);
+export const getDeadlineSettings = () => http.get("/settings/deadlines").then((r) => r.data);
+export const putDeadlineSettings = (data) => http.put("/settings/deadlines", data).then((r) => r.data);
+
 // Synchronisation télématique
 export const getNavixyStatus = () => http.get("/navixy/status").then((r) => r.data);
 export const navixySync = () => http.post("/navixy/sync").then((r) => r.data);

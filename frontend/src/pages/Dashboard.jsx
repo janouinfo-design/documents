@@ -15,7 +15,7 @@ import {
   FileClock,
   FileSearch,
 } from "lucide-react";
-import { getDashboard, getTimeline } from "@/lib/api";
+import { getDashboard, getDeadlines } from "@/lib/api";
 import { chf, dateFr, daysLabel } from "@/lib/format";
 import { lvl, EVENT_TYPES } from "@/lib/status";
 import { cn } from "@/lib/utils";
@@ -24,17 +24,19 @@ import StatusBadge from "@/components/StatusBadge";
 import QueryErrorState from "@/components/QueryErrorState";
 import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
 
-const tabForType = (t) => (["leasing", "assurance", "controle"].includes(t) ? t : "general");
+const tabForType = (t) =>
+  ["leasing", "assurance", "controle"].includes(t) ? t : t === "document" ? "documents" : "general";
 
 export default function Dashboard() {
   const { openVehicle } = useVehicleDrawer();
   const { data: kpi, isLoading, isError, error } = useQuery({ queryKey: ["dashboard"], queryFn: getDashboard });
-  const { data: events = [] } = useQuery({ queryKey: ["timeline"], queryFn: getTimeline });
+  const { data: dl } = useQuery({ queryKey: ["deadlines"], queryFn: () => getDeadlines() });
 
-  const upcoming = events
-    .filter((e) => e.days_remaining !== null && e.days_remaining <= 90)
-    .sort((a, b) => (a.days_remaining ?? 0) - (b.days_remaining ?? 0))
-    .slice(0, 8);
+  const th = kpi?.deadline_thresholds || { urgent_days: 30, warning_days: 90 };
+  // Moteur central : items déjà triés urgence d'abord puis chronologique
+  const dated = (dl?.items || [])
+    .filter((e) => e.days_remaining !== null && e.days_remaining !== undefined && e.days_remaining <= th.warning_days);
+  const upcoming = dated.slice(0, 8);
 
   const total = kpi?.total_vehicles || 0;
   const conformes = kpi?.vehicles_conformes || 0;
@@ -70,9 +72,9 @@ export default function Dashboard() {
 
       {/* KPI documents */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard testId="kpi-docs-expires" label="Documents expirés" value={!kpi ? "—" : kpi.docs_expires ?? 0} accent="red" icon={FileX} sub="À remplacer" />
-        <KpiCard testId="kpi-docs-expire-30" label="Expirent ≤ 30 jours" value={!kpi ? "—" : kpi.docs_expire_30 ?? 0} accent="amber" icon={FileClock} sub="Échéance imminente" />
-        <KpiCard testId="kpi-docs-expire-90" label="Expirent 31–90 jours" value={!kpi ? "—" : kpi.docs_expire_31_90 ?? 0} accent="sky" icon={CalendarClock} sub="À planifier" />
+        <KpiCard testId="kpi-docs-expires" label="Échéances expirées" value={!kpi ? "—" : kpi.docs_expires ?? 0} accent="red" icon={FileX} sub="Documents & contrats" />
+        <KpiCard testId="kpi-docs-expire-30" label={`Expirent ≤ ${th.urgent_days} jours`} value={!kpi ? "—" : kpi.docs_expire_30 ?? 0} accent="amber" icon={FileClock} sub="Documents & contrats" />
+        <KpiCard testId="kpi-docs-expire-90" label={`Expirent ${th.urgent_days + 1}–${th.warning_days} jours`} value={!kpi ? "—" : kpi.docs_expire_31_90 ?? 0} accent="sky" icon={CalendarClock} sub="À planifier" />
         <KpiCard testId="kpi-docs-a-verifier" label="Documents à vérifier" value={!kpi ? "—" : kpi.docs_a_verifier ?? 0} accent="slate" icon={FileSearch} sub="Validation en attente" />
       </div>
 
@@ -81,10 +83,10 @@ export default function Dashboard() {
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm lg:col-span-2" data-testid="upcoming-deadlines">
           <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
             <h3 className="font-display text-lg font-semibold tracking-tight text-slate-900">
-              Échéances à venir
+              Prochaines échéances
             </h3>
             <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
-              {upcoming.length} dans 90 jours
+              {dated.length} dans {th.warning_days} jours
             </span>
           </div>
           <div className="divide-y divide-slate-100">
@@ -92,15 +94,15 @@ export default function Dashboard() {
               <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
                 <CheckCircle2 className="h-8 w-8 text-emerald-500" />
                 <p className="text-sm font-medium text-slate-700">Aucune échéance imminente</p>
-                <p className="text-xs text-slate-400">Toute la flotte est à jour sur 90 jours.</p>
+                <p className="text-xs text-slate-400">Toute la flotte est à jour sur {th.warning_days} jours.</p>
               </div>
             )}
             {upcoming.map((e, i) => {
-              const t = EVENT_TYPES[e.type] || {};
+              const t = EVENT_TYPES[e.type] || EVENT_TYPES.document || {};
               const s = lvl(e.level);
               return (
                 <button
-                  key={`${e.vehicle_id}-${e.type}-${i}`}
+                  key={e.key || `${e.vehicle_id}-${e.type}-${i}`}
                   onClick={() => openVehicle(e.vehicle_id, tabForType(e.type))}
                   data-testid={`deadline-row-${i}`}
                   className="flex w-full items-center gap-4 px-6 py-3.5 text-left transition-colors hover:bg-slate-50"
@@ -114,7 +116,8 @@ export default function Dashboard() {
                       </span>
                     </div>
                     <p className="text-xs text-slate-500">
-                      <span className={cn("font-medium", t.text)}>{e.label}</span> · {dateFr(e.date)}
+                      <span className={cn("font-medium", t.text)}>{e.label}</span>
+                      {e.category ? ` · ${e.category}` : ""} · {dateFr(e.date)}
                     </p>
                   </div>
                   <StatusBadge level={e.level} days={e.days_remaining} showDays />

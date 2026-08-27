@@ -733,14 +733,14 @@ def days_until(date_str: Optional[str]) -> Optional[int]:
     return (d - date.today()).days
 
 
-def level_from_days(days: Optional[int]) -> str:
+def level_from_days(days: Optional[int], urgent: int = 30, warning: int = 90) -> str:
     if days is None:
         return "unknown"
     if days < 0:
         return "expired"
-    if days <= 30:
+    if days <= urgent:
         return "critical"
-    if days <= 90:
+    if days <= warning:
         return "warning"
     return "ok"
 
@@ -756,13 +756,15 @@ def months_between(start: Optional[str], end: Optional[str]) -> Optional[int]:
     return max(0, (e.year - s.year) * 12 + (e.month - s.month))
 
 
-def compute_metrics(v: dict) -> dict:
+def compute_metrics(v: dict, th: dict = None) -> dict:
+    urgent = (th or {}).get("urgent_days", 30)
+    warning = (th or {}).get("warning_days", 90)
     leasing = v.get("leasing") or {}
     assurance = v.get("assurance") or {}
     controle = v.get("controle_technique") or {}
 
     l_days = days_until(leasing.get("date_fin"))
-    l_level = level_from_days(l_days)
+    l_level = level_from_days(l_days, urgent, warning)
     total_months = leasing.get("duree_mois") or months_between(
         leasing.get("date_debut"), leasing.get("date_fin")) or 0
     months_remaining = None
@@ -780,8 +782,8 @@ def compute_metrics(v: dict) -> dict:
     a_days = days_until(assurance.get("date_echeance"))
     c_days = days_until(controle.get("date_prochain"))
 
-    a_level = level_from_days(a_days)
-    c_level = level_from_days(c_days)
+    a_level = level_from_days(a_days, urgent, warning)
+    c_level = level_from_days(c_days, urgent, warning)
 
     overall = "ok"
     levels = [l_level, a_level, c_level]
@@ -902,9 +904,10 @@ async def root():
 
 @api_router.get("/vehicles")
 async def list_vehicles(request: Request):
+    th = await th_for(request)
     vehicles = await db.vehicles.find({"tenant_id": tid(request)}, {"_id": 0}).to_list(None)
     for v in vehicles:
-        v["metrics"] = compute_metrics(v)
+        v["metrics"] = compute_metrics(v, th)
     vehicles.sort(key=lambda x: x.get("plaque", ""))
     return vehicles
 
@@ -932,7 +935,7 @@ async def create_vehicle(payload: VehicleCreate, request: Request):
     doc["updated_at"] = now
     await db.vehicles.insert_one(dict(doc))
     doc = clean(doc)
-    doc["metrics"] = compute_metrics(doc)
+    doc["metrics"] = compute_metrics(doc, await th_for(request))
     return doc
 
 
@@ -1046,7 +1049,7 @@ async def get_vehicle_core(vehicle_id: str, request: Request):
 async def get_vehicle(vehicle_id: str, request: Request):
     v = await find_tenant_vehicle(request, vehicle_id)
     v["vin_check"] = vin_check(v.get("vin"))
-    v["metrics"] = compute_metrics(v)
+    v["metrics"] = compute_metrics(v, await th_for(request))
     return v
 
 
@@ -1077,7 +1080,7 @@ async def update_vehicle(vehicle_id: str, payload: VehicleUpdate, request: Reque
     v = await db.vehicles.find_one({"id": vehicle_id, "tenant_id": tid(request)}, {"_id": 0})
     if NAVIXY_PUSH_KEYS & set(flat.keys()):
         v["navixy_push"] = await push_vehicle_to_navixy(v, request)
-    v["metrics"] = compute_metrics(v)
+    v["metrics"] = compute_metrics(v, await th_for(request))
     return v
 
 
@@ -1188,7 +1191,7 @@ DEFAULT_DOC_REQUIREMENTS = {
 }
 
 
-def doc_statut(d: dict) -> str:
+def doc_statut(d: dict, default_preavis: int = None) -> str:
     if d.get("archived"):
         return "ARCHIVE"
     if d.get("en_renouvellement"):
@@ -1199,13 +1202,13 @@ def doc_statut(d: dict) -> str:
     if days is not None:
         if days < 0:
             return "EXPIRE"
-        if days <= (d.get("preavis_jours") or DEFAULT_DOC_PREAVIS_JOURS):
+        if days <= (d.get("preavis_jours") or default_preavis or DEFAULT_DOC_PREAVIS_JOURS):
             return "EXPIRE_BIENTOT"
     return "VALIDE"
 
 
-def with_statut(d: dict) -> dict:
-    d["statut"] = doc_statut(d)
+def with_statut(d: dict, default_preavis: int = None) -> dict:
+    d["statut"] = doc_statut(d, default_preavis)
     return d
 
 
@@ -1392,6 +1395,183 @@ async def vehicle_doc_conformity(vehicle_id: str, request: Request):
             "conforme": not manquants and not expires}
 
 
+# ---------------------------------------------------------------------------
+# Documents V2 — Étape 4 : moteur central UNIQUE d'échéances documentaires.
+# Source de vérité commune : Dashboard, page Échéances, fiche véhicule, alertes.
+# Dual-read : document V2 daté prioritaire ; legacy uniquement sans équivalent V2.
+# Clés canoniques anti-doublon : doc:{document_id} / legacy:{vehicle_id}:{type}.
+# ---------------------------------------------------------------------------
+DEFAULT_DEADLINE_SETTINGS = {"urgent_days": 30, "warning_days": 90}
+DEADLINE_STATUTS = ["EXPIRE", "URGENT", "A_PLANIFIER", "OK", "DATE_INVALIDE", "SANS_ECHEANCE"]
+_DL_RANK = {s: i for i, s in enumerate(DEADLINE_STATUTS)}
+DEADLINE_LEVEL = {"EXPIRE": "expired", "URGENT": "critical", "A_PLANIFIER": "warning",
+                  "OK": "ok", "SANS_ECHEANCE": "unknown", "DATE_INVALIDE": "unknown"}
+# Sources legacy (sous-objets véhicule) → catégorie documentaire équivalente
+LEGACY_DEADLINE_SOURCES = [
+    ("leasing", "leasing", "date_fin", "Fin de leasing", "Leasing", True),
+    ("assurance", "assurance", "date_echeance", "Renouvellement assurance", "Assurance", True),
+    ("controle", "controle_technique", "date_prochain", "Contrôle technique", "Contrôle technique", True),
+]
+LEGACY_ROOT_DEADLINES = [
+    ("expertise", "prochaine_expertise", "Expertise", "Expertise"),
+    ("maintenance", "prochaine_maintenance", "Maintenance", "Maintenance"),
+]
+_DEADLINE_CATEGORY_TYPE = {"Leasing": "leasing", "Assurance": "assurance",
+                           "Contrôle technique": "controle"}
+
+
+async def deadline_settings(tenant_id: str) -> dict:
+    s = await db.tenant_settings.find_one({"tenant_id": tenant_id}, {"_id": 0}) or {}
+    return {"urgent_days": s.get("deadline_urgent_days") or DEFAULT_DEADLINE_SETTINGS["urgent_days"],
+            "warning_days": s.get("deadline_warning_days") or DEFAULT_DEADLINE_SETTINGS["warning_days"]}
+
+
+async def th_for(request: Request) -> dict:
+    return await deadline_settings(tid(request))
+
+
+def deadline_statut(date_str, days: Optional[int], th: dict) -> str:
+    if not date_str:
+        return "SANS_ECHEANCE"
+    if days is None:
+        return "DATE_INVALIDE"
+    if days < 0:
+        return "EXPIRE"
+    if days <= th["urgent_days"]:
+        return "URGENT"
+    if days <= th["warning_days"]:
+        return "A_PLANIFIER"
+    return "OK"
+
+
+def _dl_summary(items: list) -> dict:
+    keys = {"EXPIRE": "expired", "URGENT": "urgent", "A_PLANIFIER": "warning", "OK": "ok",
+            "SANS_ECHEANCE": "no_date", "DATE_INVALIDE": "invalid_date"}
+    out = {k: 0 for k in keys.values()}
+    docs = {"expired": 0, "urgent": 0, "warning": 0}
+    for i in items:
+        k = keys[i["statut"]]
+        out[k] += 1
+        if i.get("is_document_deadline") and k in docs:
+            docs[k] += 1
+    out["total"] = len(items)
+    out["documents"] = docs
+    return out
+
+
+async def collect_deadlines(tenant_id: str, th: dict = None) -> dict:
+    """Moteur central : TOUTES les échéances du tenant (V2 + legacy dédoublonnées)."""
+    th = th or await deadline_settings(tenant_id)
+    vehicles = await db.vehicles.find(
+        {"tenant_id": tenant_id},
+        {"_id": 0, "id": 1, "plaque": 1, "marque": 1, "modele": 1, "leasing": 1,
+         "assurance": 1, "controle_technique": 1, "prochaine_expertise": 1,
+         "prochaine_maintenance": 1}).to_list(None)
+    docs = await db.documents.find(
+        {"tenant_id": tenant_id, "is_deleted": False, "archived": {"$ne": True}},
+        {"_id": 0, "id": 1, "vehicle_id": 1, "folder": 1, "label": 1,
+         "original_filename": 1, "date_expiration": 1, "responsable": 1}).to_list(None)
+    vmap = {v["id"]: v for v in vehicles}
+    items, covered = [], set()
+
+    def push(it):
+        it["statut"] = deadline_statut(it.get("date"), it.get("days_remaining"), th)
+        it["level"] = DEADLINE_LEVEL[it["statut"]]
+        items.append(it)
+
+    for d in docs:
+        v = vmap.get(d.get("vehicle_id")) or {}
+        exp = d.get("date_expiration")
+        days = days_until(exp)
+        if exp and days is not None:
+            # Équivalent V2 daté valide : masque la source legacy de cette catégorie
+            covered.add((d.get("vehicle_id"), d.get("folder")))
+        push({"key": f"doc:{d['id']}", "source": "document", "is_document_deadline": True,
+              "document_id": d["id"], "vehicle_id": d.get("vehicle_id"),
+              "plaque": v.get("plaque"), "marque": v.get("marque"), "modele": v.get("modele"),
+              "type": _DEADLINE_CATEGORY_TYPE.get(d.get("folder"), "document"),
+              "category": d.get("folder"),
+              "label": d.get("label") or d.get("original_filename") or "Document",
+              "date": str(exp)[:10] if exp else None,
+              "days_remaining": days,
+              "responsable": (d.get("responsable") or "").strip() or None})
+
+    for v in vehicles:
+        for type_, coll, datef, label, cat, isdoc in LEGACY_DEADLINE_SOURCES:
+            due = (v.get(coll) or {}).get(datef)
+            if not due or (v["id"], cat) in covered:
+                continue
+            push({"key": f"legacy:{v['id']}:{type_}", "source": "legacy",
+                  "is_document_deadline": isdoc, "document_id": None, "vehicle_id": v["id"],
+                  "plaque": v.get("plaque"), "marque": v.get("marque"), "modele": v.get("modele"),
+                  "type": type_, "category": cat, "label": label,
+                  "date": str(due)[:10], "days_remaining": days_until(due), "responsable": None})
+        for type_, field, label, cat in LEGACY_ROOT_DEADLINES:
+            due = v.get(field)
+            if not due or (v["id"], cat) in covered:
+                continue
+            push({"key": f"legacy:{v['id']}:{type_}", "source": "legacy",
+                  "is_document_deadline": False, "document_id": None, "vehicle_id": v["id"],
+                  "plaque": v.get("plaque"), "marque": v.get("marque"), "modele": v.get("modele"),
+                  "type": type_, "category": cat, "label": label,
+                  "date": str(due)[:10], "days_remaining": days_until(due), "responsable": None})
+
+    # Urgent d'abord, puis chronologique
+    items.sort(key=lambda i: (_DL_RANK[i["statut"]], i.get("date") or "9999-12-31",
+                              i.get("plaque") or ""))
+    return {"items": items, "summary": _dl_summary(items), "thresholds": th}
+
+
+@api_router.get("/deadlines")
+async def list_deadlines(request: Request,
+                         vehicle_id: Optional[str] = None,
+                         category: Optional[str] = None,
+                         statut: Optional[str] = None,
+                         days: Optional[int] = None):
+    data = await collect_deadlines(tid(request))
+    items = data["items"]
+    if vehicle_id:
+        items = [i for i in items if i["vehicle_id"] == vehicle_id]
+    if category:
+        items = [i for i in items if i["category"] == category]
+    if statut:
+        wanted = {s.strip() for s in statut.split(",") if s.strip()}
+        items = [i for i in items if i["statut"] in wanted]
+    if days is not None:
+        items = [i for i in items if i["days_remaining"] is not None and i["days_remaining"] <= days]
+    return {"items": items, "count": len(items),
+            "summary": data["summary"], "thresholds": data["thresholds"]}
+
+
+class DeadlineSettingsUpdate(BaseModel):
+    urgent_days: int
+    warning_days: int
+
+
+@api_router.get("/settings/deadlines")
+async def get_deadline_settings_endpoint(request: Request):
+    return {**await th_for(request), "defaults": DEFAULT_DEADLINE_SETTINGS}
+
+
+@api_router.put("/settings/deadlines")
+async def put_deadline_settings(payload: DeadlineSettingsUpdate, request: Request):
+    _require_admin_role(request)
+    if not (1 <= payload.urgent_days < payload.warning_days <= 730):
+        raise HTTPException(status_code=422,
+                            detail="Seuils invalides : 1 ≤ urgent < à planifier ≤ 730 jours")
+    t = tid(request)
+    await db.tenant_settings.update_one(
+        {"tenant_id": t},
+        {"$set": {"deadline_urgent_days": payload.urgent_days,
+                  "deadline_warning_days": payload.warning_days,
+                  "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True)
+    await audit("modify", "deadline_settings", request, t, None,
+                f"Seuils d'échéances : urgent ≤ {payload.urgent_days} j, "
+                f"à planifier ≤ {payload.warning_days} j")
+    return await deadline_settings(t)
+
+
 class DocumentUpdate(BaseModel):
     label: Optional[str] = None
     folder: Optional[str] = None
@@ -1437,14 +1617,15 @@ async def update_document(doc_id: str, payload: DocumentUpdate, request: Request
         raise HTTPException(status_code=422, detail="Fréquence inconnue")
     if updates.get("tags") is not None:
         updates["tags"] = [s.strip() for s in updates["tags"] if s and s.strip()][:20]
+    preavis = (await deadline_settings(t))["urgent_days"]
     if not updates:
-        return with_statut(doc)
+        return with_statut(doc, preavis)
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.documents.update_one({"id": doc_id, "tenant_id": t}, {"$set": updates})
     await audit("modify", "document", request, doc_id, doc.get("vehicle_id"),
                 "Fiche document mise à jour ("
                 + ", ".join(k for k in updates if k != "updated_at") + ")")
-    return with_statut({**doc, **updates})
+    return with_statut({**doc, **updates}, preavis)
 
 
 @api_router.get("/documents")
@@ -1456,6 +1637,7 @@ async def list_all_documents(request: Request,
                              echeance: Optional[str] = None,
                              limit: int = 500):
     t = tid(request)
+    th = await deadline_settings(t)
     query = {"tenant_id": t, "is_deleted": False}
     if vehicle_id:
         query["vehicle_id"] = vehicle_id
@@ -1467,7 +1649,7 @@ async def list_all_documents(request: Request,
     term = (q or "").strip().lower()
     out = []
     for d in docs:
-        with_statut(d)
+        with_statut(d, th["urgent_days"])
         v = vmap.get(d["vehicle_id"]) or {}
         d["plaque"] = v.get("plaque")
         d["vehicule_label"] = " ".join(x for x in [v.get("marque"), v.get("modele")] if x)
@@ -1482,9 +1664,9 @@ async def list_all_documents(request: Request,
             days = days_until(d.get("date_expiration"))
             if echeance == "expired" and not (days is not None and days < 0):
                 continue
-            if echeance == "30" and not (days is not None and 0 <= days <= 30):
+            if echeance == "30" and not (days is not None and 0 <= days <= th["urgent_days"]):
                 continue
-            if echeance == "90" and not (days is not None and 31 <= days <= 90):
+            if echeance == "90" and not (days is not None and th["urgent_days"] < days <= th["warning_days"]):
                 continue
         out.append(d)
     out.sort(key=lambda d: (d.get("date_expiration") or "9999-12-31", d.get("created_at") or ""))
@@ -1494,11 +1676,12 @@ async def list_all_documents(request: Request,
 @api_router.get("/vehicles/{vehicle_id}/documents")
 async def list_documents(vehicle_id: str, request: Request):
     await find_tenant_vehicle(request, vehicle_id, {"_id": 1})
+    preavis = (await th_for(request))["urgent_days"]
     docs = await db.documents.find(
         {"vehicle_id": vehicle_id, "is_deleted": False}, {"_id": 0}
     ).to_list(None)
     docs.sort(key=lambda d: d.get("created_at", ""), reverse=True)
-    return [with_statut(d) for d in docs]
+    return [with_statut(d, preavis) for d in docs]
 
 
 @api_router.post("/vehicles/{vehicle_id}/documents")
@@ -1529,7 +1712,7 @@ async def add_document(vehicle_id: str, request: Request, file: UploadFile = Fil
     await db.documents.insert_one(dict(record))
     await audit("create", "document", request, record["id"], vehicle_id,
                 f"Téléversement document « {file.filename} » — dossier {record['folder']}")
-    return with_statut(clean(record))
+    return with_statut(clean(record), (await th_for(request))["urgent_days"])
 
 
 @api_router.delete("/documents/{doc_id}")
@@ -1583,30 +1766,27 @@ async def delete_inspection(inspection_id: str, request: Request):
 # ---------------------------------------------------------------------------
 @api_router.get("/dashboard")
 async def dashboard(request: Request):
-    vehicles = await db.vehicles.find({"tenant_id": tid(request)}, {"_id": 0}).to_list(None)
+    t = tid(request)
+    th = await deadline_settings(t)
+    vehicles = await db.vehicles.find({"tenant_id": t}, {"_id": 0}).to_list(None)
     documents = await db.documents.find(
-        {"is_deleted": False, "tenant_id": tid(request)},
+        {"is_deleted": False, "tenant_id": t},
         {"_id": 0, "vehicle_id": 1, "folder": 1, "date_expiration": 1,
          "preavis_jours": 1, "a_verifier": 1, "en_renouvellement": 1, "archived": 1}
     ).to_list(None)
-    reqs = await tenant_requirements(tid(request))
+    reqs = await tenant_requirements(t)
+    # KPIs échéances documentaires : moteur central UNIQUEMENT
+    # (dual-read V2 + legacy, zéro double comptage — jamais de calcul inline ici)
+    dl_docs = (await collect_deadlines(t, th))["summary"]["documents"]
 
     docs_by_vehicle: dict = {}
-    docs_expires = docs_expire_30 = docs_expire_31_90 = docs_a_verifier = 0
+    docs_a_verifier = 0
     for d in documents:
         if d.get("archived"):
             continue
         docs_by_vehicle.setdefault(d["vehicle_id"], []).append(d)
-        if doc_statut(d) == "A_VERIFIER":
+        if doc_statut(d, th["urgent_days"]) == "A_VERIFIER":
             docs_a_verifier += 1
-        days = days_until(d.get("date_expiration"))
-        if days is not None:
-            if days < 0:
-                docs_expires += 1
-            elif days <= 30:
-                docs_expire_30 += 1
-            elif days <= 90:
-                docs_expire_31_90 += 1
 
     leasing_expired = leasing_soon = 0
     assurance_renew = controle_upcoming = 0
@@ -1617,7 +1797,7 @@ async def dashboard(request: Request):
     vehicles_conformes = 0
 
     for v in vehicles:
-        m = compute_metrics(v)
+        m = compute_metrics(v, th)
         if m["leasing"]["level"] == "expired":
             leasing_expired += 1
         elif m["leasing"]["level"] in ("critical", "warning"):
@@ -1635,7 +1815,7 @@ async def dashboard(request: Request):
         required = required_categories_for(v, reqs)
         by_cat: dict = {}
         for d in docs_by_vehicle.get(v["id"], []):
-            by_cat.setdefault(d["folder"], []).append(doc_statut(d))
+            by_cat.setdefault(d["folder"], []).append(doc_statut(d, th["urgent_days"]))
         manquant = any(c not in by_cat for c in required)
         expire_cat = any(c in by_cat and all(s == "EXPIRE" for s in by_cat[c]) for c in required)
         if manquant:
@@ -1653,45 +1833,20 @@ async def dashboard(request: Request):
         "cout_leasing_mensuel": round(cout_leasing_mensuel),
         "cout_assurance_annuel": round(cout_assurance_annuel),
         "vehicles_conformes": vehicles_conformes,
-        "docs_expires": docs_expires,
-        "docs_expire_30": docs_expire_30,
-        "docs_expire_31_90": docs_expire_31_90,
+        "docs_expires": dl_docs["expired"],
+        "docs_expire_30": dl_docs["urgent"],
+        "docs_expire_31_90": dl_docs["warning"],
         "docs_a_verifier": docs_a_verifier,
         "vehicles_docs_conformes": vehicles_docs_conformes,
+        "deadline_thresholds": th,
     }
 
 
 @api_router.get("/timeline")
 async def timeline(request: Request):
-    vehicles = await db.vehicles.find({"tenant_id": tid(request)}, {"_id": 0}).to_list(None)
-    events = []
-
-    def add(v, type_, label, date_str):
-        if not date_str:
-            return
-        days = days_until(date_str)
-        events.append({
-            "vehicle_id": v["id"],
-            "plaque": v.get("plaque"),
-            "marque": v.get("marque"),
-            "modele": v.get("modele"),
-            "type": type_,
-            "label": label,
-            "date": date_str[:10],
-            "days_remaining": days,
-            "level": level_from_days(days),
-        })
-
-    for v in vehicles:
-        leasing = v.get("leasing") or {}
-        assurance = v.get("assurance") or {}
-        controle = v.get("controle_technique") or {}
-        add(v, "leasing", "Fin de leasing", leasing.get("date_fin"))
-        add(v, "assurance", "Renouvellement assurance", assurance.get("date_echeance"))
-        add(v, "controle", "Contrôle technique", controle.get("date_prochain"))
-        add(v, "expertise", "Expertise", v.get("prochaine_expertise"))
-        add(v, "maintenance", "Maintenance", v.get("prochaine_maintenance"))
-
+    """Adaptateur rétro-compatible : les événements proviennent du moteur central d'échéances."""
+    data = await collect_deadlines(tid(request))
+    events = [i for i in data["items"] if i.get("date") and i.get("days_remaining") is not None]
     events.sort(key=lambda e: e["date"])
     return events
 
@@ -1961,50 +2116,61 @@ async def vehicle_live(vehicle_id: str, request: Request):
 # Deadline alerts engine + OCR
 # ---------------------------------------------------------------------------
 async def run_alerts(tenant_id: Optional[str] = None) -> dict:
-    tenant_filter = {"tenant_id": tenant_id} if tenant_id else {}
-    vehicles = await db.vehicles.find(tenant_filter, {"_id": 0}).to_list(None)
+    """Alertes déterministes et idempotentes, alimentées par le moteur central d'échéances.
+    Legacy : seuils historiques ALERT_THRESHOLDS + clé de dédup inchangée.
+    Documents V2 : seuils du tenant + clé canonique (vehicle, document, catégorie, seuil, date)."""
+    if tenant_id:
+        tenant_ids = [tenant_id]
+    else:
+        tenant_ids = sorted({t or "default" for t in await db.vehicles.distinct("tenant_id")})
     now = datetime.now(timezone.utc).isoformat()
     created = 0
     emails_sent = 0
     upcoming = []
 
-    for v in vehicles:
-        for type_, (coll, datef, label) in ALERT_FIELDS.items():
-            sub = v.get(coll) or {}
-            due = sub.get(datef)
-            if not due:
+    for t_id in tenant_ids:
+        th = await deadline_settings(t_id)
+        data = await collect_deadlines(t_id, th)
+        doc_thresholds = sorted({th["urgent_days"], th["warning_days"]})
+        for i in data["items"]:
+            if not i["is_document_deadline"] or i["days_remaining"] is None:
                 continue
-            days = days_until(due)
-            if days is None:
-                continue
-            level = level_from_days(days)
+            days = i["days_remaining"]
+            due = i["date"]
+            label = i["label"]
             if days <= 180:
-                upcoming.append({"plaque": v.get("plaque"), "type": type_, "label": label,
-                                 "due": due[:10], "days": days, "level": level,
-                                 "tenant_id": v.get("tenant_id") or "default"})
+                upcoming.append({"plaque": i.get("plaque"), "type": i["type"], "label": label,
+                                 "due": due, "days": days, "level": i["level"],
+                                 "tenant_id": t_id})
 
-            thresholds = ALERT_THRESHOLDS[type_]
-            crossed = [t for t in thresholds if 0 <= days <= t]
+            if i["source"] == "legacy":
+                thresholds = ALERT_THRESHOLDS[i["type"]]
+                key = {"vehicle_id": i["vehicle_id"], "type": i["type"], "due_date": due}
+            else:
+                thresholds = doc_thresholds
+                key = {"vehicle_id": i["vehicle_id"], "type": "document",
+                       "document_id": i["document_id"], "category": i["category"],
+                       "due_date": due}
+            crossed = [x for x in thresholds if 0 <= days <= x]
             if days < 0:
-                crossed_threshold = 0
+                key["threshold"] = 0
             elif crossed:
-                crossed_threshold = min(crossed)
+                key["threshold"] = min(crossed)
             else:
                 continue
-
-            key = {"vehicle_id": v["id"], "type": type_, "threshold": crossed_threshold, "due_date": due[:10]}
             if await db.alerts.find_one(key):
                 continue
 
-            msg = f"{v.get('plaque')} · {label} le {due[:10]} " + ("(ÉCHU)" if days < 0 else f"(dans {days} j)")
-            subject = f"[LogiTrak] Échéance {label} — {v.get('plaque')}"
+            cat = f" ({i['category']})" if i["source"] == "document" else ""
+            msg = f"{i.get('plaque')} · {label}{cat} le {due} " + ("(ÉCHU)" if days < 0 else f"(dans {days} j)")
+            subject = f"[LogiTrak] Échéance {label} — {i.get('plaque')}"
             status = await asyncio.to_thread(send_email_sync, ALERT_RECIPIENTS, subject, f"<p>{msg}</p>")
             if status == "sent":
                 emails_sent += 1
             rec = {
-                **key, "id": str(uuid.uuid4()), "plaque": v.get("plaque"), "label": label,
-                "tenant_id": v.get("tenant_id") or "default",
-                "days_remaining": days, "level": level, "message": msg, "kind": "threshold",
+                **key, "id": str(uuid.uuid4()), "plaque": i.get("plaque"), "label": label,
+                "tenant_id": t_id, "source": i["source"],
+                "days_remaining": days, "level": i["level"], "message": msg, "kind": "threshold",
                 "channel": "email", "status": status, "recipients": ALERT_RECIPIENTS, "created_at": now,
             }
             await db.alerts.insert_one(dict(rec))
@@ -2035,29 +2201,23 @@ async def run_alerts(tenant_id: Optional[str] = None) -> dict:
 
 @api_router.get("/alerts")
 async def list_alerts(request: Request):
-    vehicles = await db.vehicles.find({"tenant_id": tid(request)}, {"_id": 0}).to_list(None)
-    items = []
-    for v in vehicles:
-        m = compute_metrics(v)
-        for type_, (coll, datef, label) in ALERT_FIELDS.items():
-            sub = v.get(coll) or {}
-            due = sub.get(datef)
-            mk = m.get(ALERT_METRIC_KEY[type_], {})
-            level = mk.get("level")
-            if due and level in ("expired", "critical", "warning"):
-                items.append({
-                    "vehicle_id": v["id"], "plaque": v.get("plaque"), "marque": v.get("marque"),
-                    "modele": v.get("modele"), "type": type_, "label": label, "due_date": due[:10],
-                    "days_remaining": mk.get("days_remaining"), "level": level,
-                })
-    items.sort(key=lambda x: x["days_remaining"] if x["days_remaining"] is not None else 9999)
+    th = await th_for(request)
+    data = await collect_deadlines(tid(request), th)
+    items = [{"vehicle_id": i["vehicle_id"], "plaque": i["plaque"], "marque": i.get("marque"),
+              "modele": i.get("modele"), "type": i["type"], "label": i["label"],
+              "category": i["category"], "source": i["source"], "document_id": i["document_id"],
+              "statut": i["statut"], "responsable": i["responsable"],
+              "due_date": i["date"], "days_remaining": i["days_remaining"], "level": i["level"]}
+             for i in data["items"]
+             if i["is_document_deadline"] and i["statut"] in ("EXPIRE", "URGENT", "A_PLANIFIER")]
     stats = {
         "total": len(items),
         "expired": sum(1 for i in items if i["level"] == "expired"),
         "critical": sum(1 for i in items if i["level"] == "critical"),
         "warning": sum(1 for i in items if i["level"] == "warning"),
     }
-    return {"items": items, "stats": stats, "email_enabled": email_enabled(), "recipients": ALERT_RECIPIENTS}
+    return {"items": items, "stats": stats, "email_enabled": email_enabled(),
+            "recipients": ALERT_RECIPIENTS, "thresholds": th}
 
 
 @api_router.get("/alerts/log")
@@ -2378,7 +2538,7 @@ async def validate_scanned_document(doc_id: str, payload: DocumentValidate, requ
     push_keys = {(k if fd["target"] == "root" else f"{fd['target']}.{k}") for k, fd, _, _ in applied}
     if NAVIXY_PUSH_KEYS & push_keys:
         navixy_push = await push_vehicle_to_navixy(fresh, request)
-    fresh["metrics"] = compute_metrics(fresh)
+    fresh["metrics"] = compute_metrics(fresh, await th_for(request))
     return {"ok": True, "applied": len(applied) + len(doc_data), "document_id": doc_id,
             "vehicle": fresh, "navixy_push": navixy_push}
 
@@ -2473,8 +2633,9 @@ async def astra_search(homologation: Optional[str] = None,
 @api_router.get("/reports/conformite.pdf")
 async def conformity_report(request: Request):
     vehicles = await db.vehicles.find({"tenant_id": tid(request)}, {"_id": 0}).sort("plaque", 1).to_list(None)
+    th = await th_for(request)
     for v in vehicles:
-        v["metrics"] = compute_metrics(v)
+        v["metrics"] = compute_metrics(v, th)
     pdf_bytes = build_conformity_pdf(vehicles)
     await audit("download", "report", request, "conformite", None,
                 f"Export PDF du rapport de conformité flotte ({len(vehicles)} véhicules)")
@@ -2486,8 +2647,9 @@ async def conformity_report(request: Request):
 @api_router.get("/reports/couts.csv")
 async def costs_csv_report(request: Request):
     vehicles = await db.vehicles.find({"tenant_id": tid(request)}, {"_id": 0}).sort("plaque", 1).to_list(None)
+    th = await th_for(request)
     for v in vehicles:
-        v["metrics"] = compute_metrics(v)
+        v["metrics"] = compute_metrics(v, th)
     csv_text = build_costs_csv(vehicles)
     await audit("download", "report", request, "couts_csv", None,
                 f"Export CSV des coûts flotte ({len(vehicles)} véhicules)")
@@ -2499,7 +2661,7 @@ async def costs_csv_report(request: Request):
 @api_router.get("/reports/vehicule/{vehicle_id}.pdf")
 async def vehicle_report(vehicle_id: str, request: Request):
     vehicle = await find_tenant_vehicle(request, vehicle_id)
-    vehicle["metrics"] = compute_metrics(vehicle)
+    vehicle["metrics"] = compute_metrics(vehicle, await th_for(request))
     history = await db.audit_logs.find(
         {"vehicle_id": vehicle_id}, {"_id": 0}).sort("created_at", -1).to_list(30)
     documents = await db.documents.find(
@@ -2594,7 +2756,7 @@ async def apply_technical_enrichment(vehicle_id: str, payload: TechnicalApply, r
                     f"{fd['label']}: {old_txt} → {new} (source: Base officielle ASTRA/OFROU)")
 
     fresh = await db.vehicles.find_one({"id": vehicle["id"]}, {"_id": 0})
-    fresh["metrics"] = compute_metrics(fresh)
+    fresh["metrics"] = compute_metrics(fresh, await th_for(request))
     return {"ok": True, "applied": len(applied), "vehicle": fresh}
 
 
@@ -2630,7 +2792,7 @@ async def revert_technical_field(vehicle_id: str, payload: TechnicalRevert, requ
     await audit("modify", "vehicle", request, vehicle_id, vehicle_id,
                 f"{fd['label']}: {cur_txt} → {prev_txt} (retour à la valeur précédant l'enrichissement ASTRA)")
     fresh = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
-    fresh["metrics"] = compute_metrics(fresh)
+    fresh["metrics"] = compute_metrics(fresh, await th_for(request))
     return {"ok": True, "vehicle": fresh}
 
 
@@ -3519,6 +3681,9 @@ async def startup():
         await db.vehicles.create_index([("tenant_id", 1), ("navixy_tracker_id", 1)])
         await db.documents.create_index([("tenant_id", 1), ("vehicle_id", 1)])
         await db.tenant_integrations.create_index([("tenant_id", 1), ("provider", 1)], unique=True)
+        await db.tenant_settings.create_index("tenant_id", unique=True)
+        await db.alerts.create_index([("vehicle_id", 1), ("type", 1), ("document_id", 1),
+                                      ("threshold", 1), ("due_date", 1)])
         if NAVIXY_HASH:
             await db.tenant_integrations.update_one(
                 {"tenant_id": "default", "provider": "navixy"},

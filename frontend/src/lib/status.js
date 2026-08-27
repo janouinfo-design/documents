@@ -60,4 +60,15 @@ export const EVENT_TYPES = {
   controle: { label: "Contrôle technique", color: "#f59e0b", bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200" },
   expertise: { label: "Expertise", color: "#8b5cf6", bg: "bg-violet-50", text: "text-violet-700", border: "border-violet-200" },
   maintenance: { label: "Maintenance", color: "#10b981", bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
+  document: { label: "Document", color: "#64748b", bg: "bg-slate-100", text: "text-slate-700", border: "border-slate-200" },
+};
+
+// Statuts du moteur central d'échéances (étape 4)
+export const DEADLINE_STATUT_META = {
+  EXPIRE: { label: "Expiré" },
+  URGENT: { label: "Urgent" },
+  A_PLANIFIER: { label: "À planifier" },
+  OK: { label: "OK" },
+  SANS_ECHEANCE: { label: "Sans échéance" },
+  DATE_INVALIDE: { label: "Date à vérifier" },
 };

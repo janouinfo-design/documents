@@ -1,140 +1,223 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarClock, CalendarDays } from "lucide-react";
-import { getTimeline } from "@/lib/api";
-import { dateFr, daysLabel } from "@/lib/format";
-import { EVENT_TYPES, lvl } from "@/lib/status";
+import { CalendarClock, CalendarDays, FileClock, FileX, Loader2, Settings2 } from "lucide-react";
+import { getDeadlines, getDocCategories, getVehicles } from "@/lib/api";
+import { dateFr } from "@/lib/format";
+import { EVENT_TYPES, DEADLINE_STATUT_META } from "@/lib/status";
 import StatusBadge from "@/components/StatusBadge";
+import KpiCard from "@/components/KpiCard";
 import QueryErrorState from "@/components/QueryErrorState";
+import DeadlineSettingsDialog from "@/components/deadlines/DeadlineSettingsDialog";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/context/AuthContext";
 import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
 
-const VIEWS = [
-  { key: "month", label: "Mois", months: 1 },
-  { key: "quarter", label: "Trimestre", months: 3 },
-  { key: "year", label: "Année", months: 12 },
+const ALL = "__all__";
+const DATED = "EXPIRE,URGENT,A_PLANIFIER,OK";
+const tabForType = (t) =>
+  ["leasing", "assurance", "controle"].includes(t) ? t : t === "document" ? "documents" : "general";
+
+const PERIODS = [
+  [ALL, "Toutes périodes"],
+  ["30", "≤ 30 jours"],
+  ["90", "≤ 90 jours"],
+  ["180", "≤ 180 jours"],
+  ["365", "≤ 365 jours"],
 ];
 
-const tabForType = (t) => (t === "leasing" ? "leasing" : t === "assurance" ? "assurance" : t === "controle" ? "controle" : "general");
-
 export default function TimelinePage() {
+  const { user } = useAuth();
   const { openVehicle } = useVehicleDrawer();
-  const [view, setView] = useState("quarter");
-  const { data: events = [], isLoading, isError, error } = useQuery({ queryKey: ["timeline"], queryFn: getTimeline });
+  const isAdmin = ["admin", "superadmin"].includes(user?.role);
+  const [vehicle, setVehicle] = useState(ALL);
+  const [category, setCategory] = useState(ALL);
+  const [statut, setStatut] = useState(ALL);
+  const [period, setPeriod] = useState(ALL);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const months = VIEWS.find((v) => v.key === view).months;
-  const horizon = new Date();
-  horizon.setMonth(horizon.getMonth() + months);
+  const params = useMemo(() => ({
+    ...(vehicle !== ALL && { vehicle_id: vehicle }),
+    ...(category !== ALL && { category }),
+    statut: statut === ALL ? DATED : statut,
+    ...(period !== ALL && { days: Number(period) }),
+  }), [vehicle, category, statut, period]);
 
-  const visible = events.filter((e) => new Date(e.date) <= horizon);
-
-  // group by year-month
-  const groups = {};
-  visible.forEach((e) => {
-    const d = new Date(e.date);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const label = d.toLocaleDateString("fr-CH", { month: "long", year: "numeric" });
-    if (!groups[key]) groups[key] = { label, items: [], overdue: new Date(e.date) < new Date() };
-    groups[key].items.push(e);
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ["deadlines", params],
+    queryFn: () => getDeadlines(params),
   });
-  const sortedKeys = Object.keys(groups).sort();
+  const { data: categories = [] } = useQuery({ queryKey: ["doc-categories"], queryFn: getDocCategories });
+  const { data: vehicles = [] } = useQuery({ queryKey: ["vehicles"], queryFn: getVehicles });
+
+  const items = data?.items || [];
+  const summary = data?.summary;
+  const th = data?.thresholds || { urgent_days: 30, warning_days: 90 };
+
+  const categoryOptions = useMemo(() => {
+    const names = categories.map((c) => c.name);
+    ["Expertise", "Maintenance"].forEach((n) => !names.includes(n) && names.push(n));
+    return names;
+  }, [categories]);
 
   return (
     <div className="space-y-6 animate-fade-in" data-testid="timeline-page">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="font-display text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-            Timeline des échéances
+            Échéances
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            Fin de leasing, assurance, expertise, contrôle technique et maintenance.
+            Toutes les échéances documentaires de la flotte — documents et contrats, source unique.
           </p>
         </div>
-        <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1" data-testid="timeline-view-toggle">
-          {VIEWS.map((v) => (
-            <button
-              key={v.key}
-              onClick={() => setView(v.key)}
-              data-testid={`view-${v.key}`}
-              className={cn(
-                "rounded-md px-4 py-1.5 text-sm font-medium transition-all",
-                view === v.key ? "bg-slate-900 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100"
-              )}
-            >
-              {v.label}
-            </button>
-          ))}
-        </div>
+        {isAdmin && (
+          <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}
+                  data-testid="deadline-settings-btn" className="gap-1.5">
+            <Settings2 className="h-4 w-4" /> Seuils ({th.urgent_days}/{th.warning_days} j)
+          </Button>
+        )}
       </div>
 
-      {/* Legend */}
-      <div className="flex flex-wrap gap-3">
-        {Object.entries(EVENT_TYPES).map(([k, t]) => (
-          <span key={k} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">
-            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: t.color }} />
-            {t.label}
-          </span>
-        ))}
+      {/* Résumé (moteur central, compte entier) */}
+      <div className="space-y-1.5">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <KpiCard testId="deadlines-kpi-expired" label="Expirés" value={!summary ? "—" : summary.expired} accent="red" icon={FileX} />
+          <KpiCard testId="deadlines-kpi-urgent" label={`Urgents (≤ ${th.urgent_days} j)`} value={!summary ? "—" : summary.urgent} accent="amber" icon={FileClock} />
+          <KpiCard testId="deadlines-kpi-warning" label={`À planifier (${th.urgent_days + 1}–${th.warning_days} j)`} value={!summary ? "—" : summary.warning} accent="sky" icon={CalendarClock} />
+          <KpiCard testId="deadlines-kpi-nodate" label="Sans échéance" value={!summary ? "—" : summary.no_date + (summary.invalid_date || 0)} accent="slate" icon={CalendarDays} />
+        </div>
+        <p className="text-[11px] text-slate-400" data-testid="deadlines-kpi-note">
+          Résumé de la flotte entière — indépendant des filtres ci-dessous.
+        </p>
+      </div>
+
+      {/* Filtres */}
+      <div className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-4">
+        <Select value={vehicle} onValueChange={setVehicle}>
+          <SelectTrigger data-testid="deadlines-filter-vehicle"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Tous les véhicules</SelectItem>
+            {vehicles.map((v) => <SelectItem key={v.id} value={v.id}>{v.plaque || v.id}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={category} onValueChange={setCategory}>
+          <SelectTrigger data-testid="deadlines-filter-category"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Toutes catégories</SelectItem>
+            {categoryOptions.map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={statut} onValueChange={setStatut}>
+          <SelectTrigger data-testid="deadlines-filter-statut"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Toutes (avec date)</SelectItem>
+            <SelectItem value="EXPIRE">Expirés</SelectItem>
+            <SelectItem value="URGENT">{`Urgents (≤ ${th.urgent_days} j)`}</SelectItem>
+            <SelectItem value="A_PLANIFIER">{`À planifier (${th.urgent_days + 1}–${th.warning_days} j)`}</SelectItem>
+            <SelectItem value="OK">{`OK (> ${th.warning_days} j)`}</SelectItem>
+            <SelectItem value="SANS_ECHEANCE">Sans échéance</SelectItem>
+            <SelectItem value="DATE_INVALIDE">Date à vérifier</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={period} onValueChange={setPeriod}>
+          <SelectTrigger data-testid="deadlines-filter-period"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {PERIODS.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+          </SelectContent>
+        </Select>
       </div>
 
       {isError && <QueryErrorState error={error} testId="timeline-error" />}
 
-      {isLoading && <p className="text-sm text-slate-400">Chargement…</p>}
-
-      {!isLoading && sortedKeys.length === 0 && (
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
-          <CalendarDays className="h-8 w-8 text-slate-300" />
-          <p className="text-sm font-medium text-slate-600">Aucune échéance sur cette période</p>
-        </div>
-      )}
-
-      <div className="space-y-8">
-        {sortedKeys.map((key) => {
-          const g = groups[key];
-          return (
-            <div key={key} data-testid={`timeline-month-${key}`}>
-              <div className="mb-3 flex items-center gap-3">
-                <CalendarClock className="h-4 w-4 text-slate-400" />
-                <h3 className="font-display text-lg font-semibold capitalize tracking-tight text-slate-900">
-                  {g.label}
-                </h3>
-                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">
-                  {g.items.length}
-                </span>
-              </div>
-              <div className="relative space-y-3 border-l-2 border-slate-100 pl-5">
-                {g.items.sort((a, b) => new Date(a.date) - new Date(b.date)).map((e, i) => {
-                  const t = EVENT_TYPES[e.type] || {};
-                  return (
-                    <button
-                      key={`${e.vehicle_id}-${e.type}-${i}`}
-                      onClick={() => openVehicle(e.vehicle_id, tabForType(e.type))}
-                      data-testid={`timeline-event-${key}-${i}`}
-                      className="group relative flex w-full items-center gap-4 rounded-xl border border-slate-200 bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-md"
-                    >
-                      <span
-                        className="absolute -left-[27px] top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-white ring-2"
-                        style={{ backgroundColor: t.color, boxShadow: `0 0 0 2px ${t.color}33` }}
-                      />
-                      <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-xs font-bold", t.bg, t.text)}>
-                        {new Date(e.date).getDate()}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-slate-900">{e.plaque}</span>
-                          <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", t.bg, t.text)}>{t.label}</span>
-                        </div>
-                        <p className="text-xs text-slate-500">{e.label} · {dateFr(e.date)} · {e.marque} {e.modele}</p>
-                      </div>
-                      <StatusBadge level={e.level} days={e.days_remaining} showDays />
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <Table data-testid="deadlines-table">
+          <TableHeader>
+            <TableRow className="bg-slate-50">
+              <TableHead>Véhicule</TableHead>
+              <TableHead>Échéance / document</TableHead>
+              <TableHead>Catégorie</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead>Jours restants</TableHead>
+              <TableHead>Statut</TableHead>
+              <TableHead>Responsable</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading && (
+              <TableRow>
+                <TableCell colSpan={7}>
+                  <div className="flex items-center justify-center gap-2 py-10 text-sm text-slate-400" data-testid="deadlines-loading">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Chargement des échéances…
+                  </div>
+                </TableCell>
+              </TableRow>
+            )}
+            {!isLoading && items.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={7}>
+                  <div className="flex flex-col items-center gap-2 py-12 text-center" data-testid="deadlines-empty">
+                    <CalendarDays className="h-8 w-8 text-slate-300" />
+                    <p className="text-sm font-medium text-slate-600">Aucune échéance ne correspond aux filtres</p>
+                  </div>
+                </TableCell>
+              </TableRow>
+            )}
+            {items.map((e) => {
+              const t = EVENT_TYPES[e.type] || EVENT_TYPES.document;
+              return (
+                <TableRow key={e.key} data-testid={`deadline-row-${e.key}`} className="hover:bg-slate-50">
+                  <TableCell>
+                    <button onClick={() => openVehicle(e.vehicle_id, tabForType(e.type))}
+                            data-testid={`deadline-open-vehicle-${e.key}`}
+                            className="text-sm font-semibold text-slate-800 underline-offset-2 hover:underline">
+                      {e.plaque || "—"}
                     </button>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
+                    <p className="text-xs text-slate-400">{[e.marque, e.modele].filter(Boolean).join(" ")}</p>
+                  </TableCell>
+                  <TableCell>
+                    <p className="max-w-[220px] truncate text-sm text-slate-700">{e.label}</p>
+                    {e.source === "legacy" && (
+                      <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400">Fiche véhicule</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", t.bg, t.text)}>
+                      {e.category || t.label}
+                    </span>
+                  </TableCell>
+                  <TableCell className={cn("text-sm", e.statut === "EXPIRE" ? "font-semibold text-red-600" : "text-slate-600")}>
+                    {e.date ? dateFr(e.date) : "—"}
+                  </TableCell>
+                  <TableCell className="text-sm text-slate-600">
+                    {e.days_remaining === null || e.days_remaining === undefined
+                      ? "—"
+                      : e.days_remaining < 0
+                        ? `Échu depuis ${-e.days_remaining} j`
+                        : `${e.days_remaining} j`}
+                  </TableCell>
+                  <TableCell>
+                    {["SANS_ECHEANCE", "DATE_INVALIDE"].includes(e.statut) ? (
+                      <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                        {DEADLINE_STATUT_META[e.statut]?.label}
+                      </span>
+                    ) : (
+                      <StatusBadge level={e.level} days={e.days_remaining} showDays />
+                    )}
+                  </TableCell>
+                  <TableCell className={cn("text-sm", e.responsable ? "text-slate-700" : "text-slate-400")}>
+                    {e.responsable || "Non attribué"}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
       </div>
+
+      <DeadlineSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} thresholds={th} />
     </div>
   );
 }

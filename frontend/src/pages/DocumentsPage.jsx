@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, FolderCog, ListChecks, Pencil, Download, FolderOpen, Loader2 } from "lucide-react";
-import { getAllDocuments, getDocCategories, getVehicles, fileUrl } from "@/lib/api";
+import { getAllDocuments, getDocCategories, getDeadlineSettings, getVehicles, fileUrl } from "@/lib/api";
 import { dateFr } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,6 @@ import { useAuth } from "@/context/AuthContext";
 import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
 
 const ALL = "__all__";
-const ECHEANCES = [[ALL, "Toutes échéances"], ["expired", "Expirés"], ["30", "≤ 30 jours"], ["90", "31–90 jours"]];
 
 export default function DocumentsPage() {
   const { user } = useAuth();
@@ -52,6 +51,16 @@ export default function DocumentsPage() {
   });
   const { data: categories = [] } = useQuery({ queryKey: ["doc-categories"], queryFn: getDocCategories });
   const { data: vehicles = [] } = useQuery({ queryKey: ["vehicles"], queryFn: getVehicles });
+  const { data: dlSettings } = useQuery({ queryKey: ["deadline-settings"], queryFn: getDeadlineSettings });
+
+  const uDays = dlSettings?.urgent_days ?? 30;
+  const wDays = dlSettings?.warning_days ?? 90;
+  const ECHEANCES = [
+    [ALL, "Toutes échéances"],
+    ["expired", "Expirés"],
+    ["30", `≤ ${uDays} jours`],
+    ["90", `${uDays + 1}–${wDays} jours`],
+  ];
 
   return (
     <div className="space-y-6 animate-fade-in" data-testid="documents-page">
