@@ -397,6 +397,12 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - RESTE : confirmation formelle « OUI » du test réel, Save to GitHub, GO DEPLOY explicite, puis déploiement + smoke test prod + éventuelle promotion admin du compte SSO logitrak@logitrak.ch (read_only actuellement, décision utilisateur).
 - HORS PÉRIMÈTRE respecté : LOGITAG #52, Livre de bord #18619, Éco-conduite, Energy, V2 — rien touché.
 
+## Audit Documents & conformité — état réel avant V2 (2026-08-26 soir) — LECTURE SEULE
+- Audit code actuel (SHA 2b9d3a4) livré avec tableau preuve par fonction. RÉALISÉ : OCR 8 types + validation humaine + provenance, Échéances 5 types, alertes + job, rapports, audit trail, sécurité complète. PARTIEL : bibliothèque docs (liée véhicule, sans statuts/métadonnées), docs requis (4 dossiers fixes), conformité (basée champs legacy véhicule), dashboard, connexion coûts. NON RÉALISÉ : catégories configurables, sous-catégories, statuts documentaires (7 états), profils par type véhicule, page centrale Documents + filtres, historisation coûts, tags/responsable/préavis/renouvellement auto.
+- Dette clé : source de vérité = sous-objets legacy vehicles.leasing/assurance/controle_technique ; constantes en dur (FOLDERS, REQUIRED_FOLDERS, ALERT_THRESHOLDS) ; données démo legacy prod.
+- Ordre V2 recommandé (validé à confirmer par user) : 1) modèle document V2 dual-read + catégories configurables 2) docs requis/profils → conformité réelle 3) page centrale Documents + filtres 4) échéances/alertes généralisées 5) coûts historisés 6) migration assistée legacy.
+- EN ATTENTE UTILISATEUR (prod SSO) : correction client doublon « logitrak » (commande fournie) → re-test SSO hub → promotion admin → rapport final production.
+
 ## Backlog (prioritized)
 - Phase 2 nav (à valider): sous-onglets contextuels (ex. Véhicules: Liste/Échéances), en-tête module avec fil d'Ariane + recherche globale.
 - Phase 3+ (gros chantiers, à cadrer 1 par 1): modules Contrats & renouvellements, Conducteurs, Clients, Modèles, Corbeille/Favoris/Partagés ; permissions/rôles + auth ; multi-tenant.
