@@ -1,0 +1,41 @@
+{
+  "summary": "Frontend-only E2E validation of LOGITRAK Documents V2 (steps 1-3) via Playwright on the public preview URL. All 7 requested parcours executed and PASSED: central Documents page + 5 filters, generic document sheet (edit/persist/restore), configurable categories (create/rename/propagation/delete), document requirements profiles (defaults/toggle/persist/restore), 4 new dashboard KPIs + old KPI non-regression, read_only permission gating, and vehicle Documents tab non-regression (dynamic accordions + upload/delete). All test data was restored to its initial state. Backend was not re-tested per request.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Documents page (/documents)",
+        "issues": [
+          "No pagination / virtualisation: all rows are rendered at once (63 docs today, 50 for a single vehicle). Will degrade with a larger tenant.",
+          "No visible loading state while the documents query is in flight (isLoading only suppresses the empty-state row; the table body is simply blank).",
+          "Search input has no debounce: every keystroke triggers a new /api/documents request (react-query key changes per character)."
+        ]
+      },
+      {
+        "screen": "Documents requis dialog",
+        "issues": [
+          "Save issues 6 sequential PUT /api/doc-requirements calls (one per profile) even when a single checkbox changed - works, but slow (~2-3 s) and not atomic (a mid-loop failure leaves partial state)."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Optional (non-blocking): add pagination/virtualisation + a loading skeleton to DocumentsPage, debounce docs-filter-search (~300 ms), and make DocRequirementsDialog save only the modified profiles (or a single bulk endpoint)."
+  ],
+  "critical_code_review_comments": [
+    "DocumentsPage.jsx: react-query key includes the raw search string -> one HTTP request per keystroke; debounce the `q` state.",
+    "DocRequirementsDialog.save(): non-atomic for-loop of 6 PUTs; a failure on profile #4 leaves profiles 1-3 saved while the toast reports an error.",
+    "DocumentsPage.jsx: `isLoading` is only used to hide the empty-state row; no spinner/skeleton is shown, so the table looks 'empty' during refetch after each filter change."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "not tested (per request)", "frontend": "100% (7/7 parcours)" },
+  "seed_data_creation": "Temporary and fully reverted: (1) document test_permis.jpg (bb0bde52-...) edited with fournisseur 'AXA Test', expiration J+10, montant 250, tag 'test-v2' then cleared back to empty/Valide; (2) category 'Test QA' -> renamed 'Test QA 2' -> deleted (9 default categories restored); (3) requirement base/Vignette checked then unchecked (final state = base: Assurance, Carte grise, Contrôle technique; leasing: Leasing); (4) throwaway read_only user ro-v2test-qa1@logitrak-test.ch created in tenant 'default' and DISABLED at the end (sessions revoked); (5) one file uploaded in vehicle BE 579928 / Divers then deleted.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "Read from /app/memory/test_credentials.md (admin default + superadmin platform). No secret printed.",
+  "context_for_next_testing_agent": "Verified working: nav-documents -> documents-page (63 docs, 7 columns); filters docs-filter-search / -vehicle / -category / -statut / -echeance all return correctly narrowed server-side result sets (category=Carte grise -> 26 rows, all 'Carte grise'; statut=Valide -> 62 rows all doc-statut-valide; echeance=Expirés -> 0 rows, consistent with dashboard kpi-docs-expires=0). doc-open-vehicle-<id> opens the vehicle drawer directly on the Documents tab. doc-page-edit-<id> -> doc-edit-dialog: save gives toast 'Fiche document enregistrée', row updates to fournisseur + badge doc-statut-expire_bientot, values persist on reopen. Categories dialog: 9 defaults incl. Vignette; create/rename/delete all OK and propagate to docs-filter-category AND to the vehicle Documents tab accordions (folder-test-qa-2 appeared). Requirements dialog: 6 profiles req-profil-{base,achete,leasing,thermique,electrique,hybride}, defaults = base:{Assurance, Carte grise, Contrôle technique} + leasing:{Leasing}; toggle+save persists (toast 'Documents requis enregistrés'). Dashboard: kpi-docs-expires=0, kpi-docs-expire-30=0, kpi-docs-expire-90=0, kpi-docs-a-verifier=1 (numeric, no '—'), and the 8 legacy KPIs are still present. read_only: 63 rows + 63 download buttons visible, 0 manage-categories-btn / 0 manage-requirements-btn / 0 doc-page-edit-* (correct gating). Vehicle tab: folders loaded dynamically (leasing, assurance, carte-grise, contrôle-technique, vignette, factures, états-des-lieux, contrats, divers); upload via dropzone-divers input[type=file] and doc-delete-<id> both work. No JS console errors observed during any run. Note: current tenant data has almost no expiration dates, so EXPIRE/EXPIRE_BIENTOT paths could only be validated by setting a date manually (done in parcours 2).",
+  "rca_of_the_issue": "No functional defect found; nothing to root-cause. The only findings are scalability/UX nits listed under design_issues."
+}

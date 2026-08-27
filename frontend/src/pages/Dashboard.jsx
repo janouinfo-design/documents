@@ -11,6 +11,9 @@ import {
   CheckCircle2,
   ArrowRight,
   AlertTriangle,
+  FileX,
+  FileClock,
+  FileSearch,
 } from "lucide-react";
 import { getDashboard, getTimeline } from "@/lib/api";
 import { chf, dateFr, daysLabel } from "@/lib/format";
@@ -63,6 +66,14 @@ export default function Dashboard() {
         <KpiCard testId="kpi-cout-leasing" label="Coût leasing mensuel" value={!kpi ? "—" : chf(kpi.cout_leasing_mensuel)} accent="slate" icon={Wallet} sub="Total flotte / mois" />
         <KpiCard testId="kpi-cout-assurance" label="Coût assurance annuel" value={!kpi ? "—" : chf(kpi.cout_assurance_annuel)} accent="slate" icon={Banknote} sub="Total flotte / an" />
         <KpiCard testId="kpi-conformes" label="Véhicules conformes" value={!kpi ? "—" : `${kpi.vehicles_conformes}/${kpi.total_vehicles}`} accent="emerald" icon={CheckCircle2} sub="Aucune alerte active" />
+      </div>
+
+      {/* KPI documents */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiCard testId="kpi-docs-expires" label="Documents expirés" value={!kpi ? "—" : kpi.docs_expires ?? 0} accent="red" icon={FileX} sub="À remplacer" />
+        <KpiCard testId="kpi-docs-expire-30" label="Expirent ≤ 30 jours" value={!kpi ? "—" : kpi.docs_expire_30 ?? 0} accent="amber" icon={FileClock} sub="Échéance imminente" />
+        <KpiCard testId="kpi-docs-expire-90" label="Expirent 31–90 jours" value={!kpi ? "—" : kpi.docs_expire_31_90 ?? 0} accent="sky" icon={CalendarClock} sub="À planifier" />
+        <KpiCard testId="kpi-docs-a-verifier" label="Documents à vérifier" value={!kpi ? "—" : kpi.docs_a_verifier ?? 0} accent="slate" icon={FileSearch} sub="Validation en attente" />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

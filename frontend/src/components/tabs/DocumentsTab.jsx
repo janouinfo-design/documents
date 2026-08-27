@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   FileText, ShieldCheck, ScrollText, ClipboardCheck, Receipt, Images,
   FileSignature, FolderArchive, Plus, Search, Ticket,
@@ -9,19 +10,14 @@ import { Input } from "@/components/ui/input";
 import { SectionCard } from "@/components/Field";
 import DocFolderSection from "@/components/DocFolderSection";
 import ScanDocumentDialog from "@/components/ScanDocumentDialog";
+import { getDocCategories } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
-const FOLDERS = [
-  { name: "Leasing", icon: FileText },
-  { name: "Assurance", icon: ShieldCheck },
-  { name: "Carte grise", icon: ScrollText },
-  { name: "Contrôle technique", icon: ClipboardCheck },
-  { name: "Vignette", icon: Ticket },
-  { name: "Factures", icon: Receipt },
-  { name: "États des lieux", icon: Images },
-  { name: "Contrats", icon: FileSignature },
-  { name: "Divers", icon: FolderArchive },
-];
+const FOLDER_ICONS = {
+  Leasing: FileText, Assurance: ShieldCheck, "Carte grise": ScrollText,
+  "Contrôle technique": ClipboardCheck, Vignette: Ticket, Factures: Receipt,
+  "États des lieux": Images, Contrats: FileSignature, Divers: FolderArchive,
+};
 
 export default function DocumentsTab({ vehicle, onSaved, docs, refetchDocs }) {
   const { user } = useAuth();
@@ -30,9 +26,12 @@ export default function DocumentsTab({ vehicle, onSaved, docs, refetchDocs }) {
   const [search, setSearch] = useState("");
   const [openFolders, setOpenFolders] = useState(["Leasing"]);
   const onChange = () => { refetchDocs?.(); onSaved?.(); };
+  const { data: categories = [] } = useQuery({ queryKey: ["doc-categories"], queryFn: getDocCategories });
+  const folders = categories.map((c) => ({ name: c.name, icon: FOLDER_ICONS[c.name] || FolderArchive }));
 
   useEffect(() => {
-    if (search.trim()) setOpenFolders(FOLDERS.map((f) => f.name));
+    if (search.trim()) setOpenFolders(folders.map((f) => f.name));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
   const term = search.trim().toLowerCase();
@@ -66,7 +65,7 @@ export default function DocumentsTab({ vehicle, onSaved, docs, refetchDocs }) {
           />
         </div>
         <Accordion type="multiple" value={openFolders} onValueChange={setOpenFolders} className="space-y-2">
-          {FOLDERS.map(({ name, icon: Icon }) => (
+          {folders.map(({ name, icon: Icon }) => (
             <AccordionItem key={name} value={name} className="overflow-hidden rounded-xl border border-slate-200 bg-white px-0">
               <AccordionTrigger className="px-4 py-3 hover:no-underline" data-testid={`folder-${name.replace(/\s/g, "-").toLowerCase()}`}>
                 <div className="flex flex-1 items-center justify-between pr-3">

@@ -1170,9 +1170,325 @@ async def serve_file(path: str, request: Request, download: bool = False, filena
 # ---------------------------------------------------------------------------
 # Documents (arborescence)
 # ---------------------------------------------------------------------------
-FOLDERS = ["Leasing", "Assurance", "Carte grise", "Contrôle technique",
+FOLDERS = ["Leasing", "Assurance", "Carte grise", "Contrôle technique", "Vignette",
            "Factures", "États des lieux", "Contrats", "Divers"]
 REQUIRED_FOLDERS = ["Carte grise", "Leasing", "Assurance", "Contrôle technique"]
+
+# ---------------------------------------------------------------------------
+# Documents V2 — statuts, catégories configurables, profils & conformité
+# ---------------------------------------------------------------------------
+DOC_STATUTS = ["VALIDE", "EXPIRE_BIENTOT", "EXPIRE", "A_VERIFIER", "EN_RENOUVELLEMENT", "ARCHIVE"]
+DOC_FREQUENCES = ["unique", "mensuel", "trimestriel", "semestriel", "annuel"]
+DEFAULT_DOC_PREAVIS_JOURS = 30
+DOC_PROFILS = ["base", "achete", "leasing", "thermique", "electrique", "hybride"]
+DEFAULT_DOC_REQUIREMENTS = {
+    "base": ["Carte grise", "Assurance", "Contrôle technique"],
+    "leasing": ["Leasing"], "achete": [],
+    "thermique": [], "electrique": [], "hybride": [],
+}
+
+
+def doc_statut(d: dict) -> str:
+    if d.get("archived"):
+        return "ARCHIVE"
+    if d.get("en_renouvellement"):
+        return "EN_RENOUVELLEMENT"
+    if d.get("a_verifier"):
+        return "A_VERIFIER"
+    days = days_until(d.get("date_expiration"))
+    if days is not None:
+        if days < 0:
+            return "EXPIRE"
+        if days <= (d.get("preavis_jours") or DEFAULT_DOC_PREAVIS_JOURS):
+            return "EXPIRE_BIENTOT"
+    return "VALIDE"
+
+
+def with_statut(d: dict) -> dict:
+    d["statut"] = doc_statut(d)
+    return d
+
+
+def _default_categories(tenant_id: str):
+    return [{"id": f"builtin-{i}", "tenant_id": tenant_id, "name": n,
+             "sub_categories": [], "ordre": i, "builtin": True}
+            for i, n in enumerate(FOLDERS)]
+
+
+async def tenant_categories(tenant_id: str):
+    cats = await db.doc_categories.find({"tenant_id": tenant_id}, {"_id": 0}).sort("ordre", 1).to_list(None)
+    return cats or _default_categories(tenant_id)
+
+
+async def _seed_categories(tenant_id: str):
+    if not await db.doc_categories.find_one({"tenant_id": tenant_id}, {"_id": 1}):
+        now = datetime.now(timezone.utc).isoformat()
+        await db.doc_categories.insert_many(
+            [{"id": str(uuid.uuid4()), "tenant_id": tenant_id, "name": n,
+              "sub_categories": [], "ordre": i, "created_at": now}
+             for i, n in enumerate(FOLDERS)])
+
+
+async def _category_names(tenant_id: str) -> set:
+    return {c["name"] for c in await tenant_categories(tenant_id)} | set(FOLDERS)
+
+
+def _require_admin_role(request: Request):
+    role = (getattr(request.state, "user", None) or {}).get("role")
+    if role not in ("admin", "superadmin"):
+        raise HTTPException(status_code=403, detail="Réservé aux administrateurs")
+
+
+class CategoryCreate(BaseModel):
+    name: str
+    sub_categories: Optional[List[str]] = None
+
+
+class CategoryUpdate(BaseModel):
+    name: Optional[str] = None
+    sub_categories: Optional[List[str]] = None
+    ordre: Optional[int] = None
+
+
+@api_router.get("/doc-categories")
+async def list_doc_categories(request: Request):
+    return await tenant_categories(tid(request))
+
+
+@api_router.post("/doc-categories")
+async def create_doc_category(payload: CategoryCreate, request: Request):
+    _require_admin_role(request)
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Nom de catégorie requis")
+    t = tid(request)
+    await _seed_categories(t)
+    if await db.doc_categories.find_one({"tenant_id": t, "name": name}, {"_id": 1}):
+        raise HTTPException(status_code=409, detail="Cette catégorie existe déjà")
+    rec = {"id": str(uuid.uuid4()), "tenant_id": t, "name": name,
+           "sub_categories": [s.strip() for s in (payload.sub_categories or []) if s.strip()],
+           "ordre": await db.doc_categories.count_documents({"tenant_id": t}),
+           "created_at": datetime.now(timezone.utc).isoformat()}
+    await db.doc_categories.insert_one(dict(rec))
+    await audit("create", "doc_category", request, rec["id"], None, f"Catégorie créée : {name}")
+    return clean(rec)
+
+
+@api_router.put("/doc-categories/{cat_id}")
+async def update_doc_category(cat_id: str, payload: CategoryUpdate, request: Request):
+    _require_admin_role(request)
+    t = tid(request)
+    await _seed_categories(t)
+    cat = await db.doc_categories.find_one({"id": cat_id, "tenant_id": t}, {"_id": 0})
+    if not cat:
+        raise HTTPException(status_code=404, detail="Catégorie introuvable")
+    updates = {}
+    if payload.name is not None and payload.name.strip() and payload.name.strip() != cat["name"]:
+        new_name = payload.name.strip()
+        if await db.doc_categories.find_one({"tenant_id": t, "name": new_name}, {"_id": 1}):
+            raise HTTPException(status_code=409, detail="Cette catégorie existe déjà")
+        updates["name"] = new_name
+    if payload.sub_categories is not None:
+        updates["sub_categories"] = [s.strip() for s in payload.sub_categories if s.strip()]
+    if payload.ordre is not None:
+        updates["ordre"] = payload.ordre
+    if updates:
+        await db.doc_categories.update_one({"id": cat_id}, {"$set": updates})
+        if "name" in updates:
+            await db.documents.update_many({"tenant_id": t, "folder": cat["name"]},
+                                           {"$set": {"folder": updates["name"]}})
+        await audit("modify", "doc_category", request, cat_id, None,
+                    f"Catégorie modifiée : {cat['name']}"
+                    + (f" → {updates['name']}" if updates.get("name") else ""))
+    return {**cat, **updates}
+
+
+@api_router.delete("/doc-categories/{cat_id}")
+async def delete_doc_category(cat_id: str, request: Request):
+    _require_admin_role(request)
+    t = tid(request)
+    cat = await db.doc_categories.find_one({"id": cat_id, "tenant_id": t}, {"_id": 0})
+    if not cat:
+        raise HTTPException(status_code=404, detail="Catégorie introuvable")
+    used = await db.documents.count_documents({"tenant_id": t, "folder": cat["name"], "is_deleted": False})
+    if used:
+        raise HTTPException(status_code=409,
+                            detail=f"{used} document(s) utilisent cette catégorie — déplacez-les d'abord")
+    await db.doc_categories.delete_one({"id": cat_id})
+    await audit("delete", "doc_category", request, cat_id, None, f"Catégorie supprimée : {cat['name']}")
+    return {"ok": True}
+
+
+def vehicle_profils(v: dict) -> List[str]:
+    leasing = v.get("leasing") or {}
+    propriete = "leasing" if (leasing.get("date_fin") or leasing.get("societe")
+                              or leasing.get("numero_contrat")) else "achete"
+    carb = (v.get("type_carburant") or "").lower()
+    energie = "electrique" if "lectr" in carb else ("hybride" if "hybrid" in carb else "thermique")
+    return ["base", propriete, energie]
+
+
+async def tenant_requirements(tenant_id: str) -> dict:
+    reqs = {k: list(v) for k, v in DEFAULT_DOC_REQUIREMENTS.items()}
+    async for r in db.doc_requirements.find({"tenant_id": tenant_id}, {"_id": 0}):
+        if r.get("profil") in DOC_PROFILS:
+            reqs[r["profil"]] = r.get("categories") or []
+    return reqs
+
+
+def required_categories_for(v: dict, reqs: dict) -> List[str]:
+    cats: List[str] = []
+    for p in vehicle_profils(v):
+        for c in reqs.get(p, []):
+            if c not in cats:
+                cats.append(c)
+    return cats
+
+
+class RequirementsUpdate(BaseModel):
+    profil: str
+    categories: List[str]
+
+
+@api_router.get("/doc-requirements")
+async def get_doc_requirements(request: Request):
+    return {"profils": DOC_PROFILS, "requirements": await tenant_requirements(tid(request))}
+
+
+@api_router.put("/doc-requirements")
+async def put_doc_requirements(payload: RequirementsUpdate, request: Request):
+    _require_admin_role(request)
+    if payload.profil not in DOC_PROFILS:
+        raise HTTPException(status_code=422, detail="Profil inconnu")
+    t = tid(request)
+    cats = [c.strip() for c in payload.categories if c and c.strip()]
+    await db.doc_requirements.update_one(
+        {"tenant_id": t, "profil": payload.profil},
+        {"$set": {"categories": cats, "updated_at": datetime.now(timezone.utc).isoformat()},
+         "$setOnInsert": {"id": str(uuid.uuid4()), "tenant_id": t, "profil": payload.profil}},
+        upsert=True)
+    await audit("modify", "doc_requirements", request, payload.profil, None,
+                f"Documents requis ({payload.profil}) : {', '.join(cats) or 'aucun'}")
+    return {"profil": payload.profil, "categories": cats}
+
+
+@api_router.get("/vehicles/{vehicle_id}/conformite-documents")
+async def vehicle_doc_conformity(vehicle_id: str, request: Request):
+    v = await find_tenant_vehicle(request, vehicle_id)
+    reqs = await tenant_requirements(tid(request))
+    required = required_categories_for(v, reqs)
+    docs = await db.documents.find(
+        {"tenant_id": tid(request), "vehicle_id": vehicle_id,
+         "is_deleted": False, "archived": {"$ne": True}},
+        {"_id": 0, "folder": 1, "date_expiration": 1, "preavis_jours": 1,
+         "a_verifier": 1, "en_renouvellement": 1}).to_list(None)
+    by_cat: dict = {}
+    for d in docs:
+        by_cat.setdefault(d["folder"], []).append(doc_statut(d))
+    manquants = [c for c in required if c not in by_cat]
+    expires = [c for c in required if c in by_cat and all(s == "EXPIRE" for s in by_cat[c])]
+    return {"vehicle_id": vehicle_id, "profils": vehicle_profils(v), "required": required,
+            "manquants": manquants, "expires": expires,
+            "conforme": not manquants and not expires}
+
+
+class DocumentUpdate(BaseModel):
+    label: Optional[str] = None
+    folder: Optional[str] = None
+    sub_category: Optional[str] = None
+    fournisseur: Optional[str] = None
+    numero: Optional[str] = None
+    date_debut: Optional[str] = None
+    date_expiration: Optional[str] = None
+    renouvellement_auto: Optional[bool] = None
+    preavis_jours: Optional[int] = None
+    montant: Optional[float] = None
+    devise: Optional[str] = None
+    frequence: Optional[str] = None
+    notes: Optional[str] = None
+    tags: Optional[List[str]] = None
+    responsable: Optional[str] = None
+    archived: Optional[bool] = None
+    en_renouvellement: Optional[bool] = None
+    a_verifier: Optional[bool] = None
+
+
+@api_router.patch("/documents/{doc_id}")
+async def update_document(doc_id: str, payload: DocumentUpdate, request: Request):
+    t = tid(request)
+    doc = await db.documents.find_one({"id": doc_id, "tenant_id": t, "is_deleted": False},
+                                      {"_id": 0, "pages": 0, "extracted_fields": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    updates = payload.model_dump(exclude_unset=True)
+    for f in ("date_debut", "date_expiration"):
+        if updates.get(f):
+            try:
+                date.fromisoformat(str(updates[f])[:10])
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=422, detail=f"Date invalide : {f}")
+    if updates.get("folder") and updates["folder"] not in await _category_names(t):
+        raise HTTPException(status_code=422, detail="Catégorie inconnue")
+    if updates.get("preavis_jours") is not None and not (0 <= updates["preavis_jours"] <= 730):
+        raise HTTPException(status_code=422, detail="Préavis : 0 à 730 jours")
+    if updates.get("montant") is not None and updates["montant"] < 0:
+        raise HTTPException(status_code=422, detail="Montant invalide")
+    if updates.get("frequence") and updates["frequence"] not in DOC_FREQUENCES:
+        raise HTTPException(status_code=422, detail="Fréquence inconnue")
+    if updates.get("tags") is not None:
+        updates["tags"] = [s.strip() for s in updates["tags"] if s and s.strip()][:20]
+    if not updates:
+        return with_statut(doc)
+    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.documents.update_one({"id": doc_id, "tenant_id": t}, {"$set": updates})
+    await audit("modify", "document", request, doc_id, doc.get("vehicle_id"),
+                "Fiche document mise à jour ("
+                + ", ".join(k for k in updates if k != "updated_at") + ")")
+    return with_statut({**doc, **updates})
+
+
+@api_router.get("/documents")
+async def list_all_documents(request: Request,
+                             vehicle_id: Optional[str] = None,
+                             folder: Optional[str] = None,
+                             statut: Optional[str] = None,
+                             q: Optional[str] = None,
+                             echeance: Optional[str] = None,
+                             limit: int = 500):
+    t = tid(request)
+    query = {"tenant_id": t, "is_deleted": False}
+    if vehicle_id:
+        query["vehicle_id"] = vehicle_id
+    if folder:
+        query["folder"] = folder
+    docs = await db.documents.find(query, {"_id": 0, "pages": 0, "extracted_fields": 0}).to_list(None)
+    vmap = {v["id"]: v for v in await db.vehicles.find(
+        {"tenant_id": t}, {"_id": 0, "id": 1, "plaque": 1, "marque": 1, "modele": 1}).to_list(None)}
+    term = (q or "").strip().lower()
+    out = []
+    for d in docs:
+        with_statut(d)
+        v = vmap.get(d["vehicle_id"]) or {}
+        d["plaque"] = v.get("plaque")
+        d["vehicule_label"] = " ".join(x for x in [v.get("marque"), v.get("modele")] if x)
+        if statut and d["statut"] != statut:
+            continue
+        if term:
+            haystack = " ".join(str(d.get(k) or "") for k in (
+                "label", "original_filename", "fournisseur", "numero", "responsable", "plaque")).lower()
+            if term not in haystack and not any(term in (tg or "").lower() for tg in d.get("tags") or []):
+                continue
+        if echeance:
+            days = days_until(d.get("date_expiration"))
+            if echeance == "expired" and not (days is not None and days < 0):
+                continue
+            if echeance == "30" and not (days is not None and 0 <= days <= 30):
+                continue
+            if echeance == "90" and not (days is not None and 31 <= days <= 90):
+                continue
+        out.append(d)
+    out.sort(key=lambda d: (d.get("date_expiration") or "9999-12-31", d.get("created_at") or ""))
+    return out[:max(1, min(limit, 1000))]
 
 
 @api_router.get("/vehicles/{vehicle_id}/documents")
@@ -1182,7 +1498,7 @@ async def list_documents(vehicle_id: str, request: Request):
         {"vehicle_id": vehicle_id, "is_deleted": False}, {"_id": 0}
     ).to_list(None)
     docs.sort(key=lambda d: d.get("created_at", ""), reverse=True)
-    return docs
+    return [with_statut(d) for d in docs]
 
 
 @api_router.post("/vehicles/{vehicle_id}/documents")
@@ -1202,7 +1518,7 @@ async def add_document(vehicle_id: str, request: Request, file: UploadFile = Fil
         "id": str(uuid.uuid4()),
         "vehicle_id": vehicle_id,
         "tenant_id": tid(request),
-        "folder": folder if folder in FOLDERS else "Divers",
+        "folder": folder if folder in await _category_names(tid(request)) else "Divers",
         "original_filename": file.filename,
         "storage_path": result["path"],
         "content_type": content_type,
@@ -1213,7 +1529,7 @@ async def add_document(vehicle_id: str, request: Request, file: UploadFile = Fil
     await db.documents.insert_one(dict(record))
     await audit("create", "document", request, record["id"], vehicle_id,
                 f"Téléversement document « {file.filename} » — dossier {record['folder']}")
-    return clean(record)
+    return with_statut(clean(record))
 
 
 @api_router.delete("/documents/{doc_id}")
@@ -1269,16 +1585,33 @@ async def delete_inspection(inspection_id: str, request: Request):
 async def dashboard(request: Request):
     vehicles = await db.vehicles.find({"tenant_id": tid(request)}, {"_id": 0}).to_list(None)
     documents = await db.documents.find(
-        {"is_deleted": False, "tenant_id": tid(request)}, {"_id": 0, "vehicle_id": 1, "folder": 1}
+        {"is_deleted": False, "tenant_id": tid(request)},
+        {"_id": 0, "vehicle_id": 1, "folder": 1, "date_expiration": 1,
+         "preavis_jours": 1, "a_verifier": 1, "en_renouvellement": 1, "archived": 1}
     ).to_list(None)
+    reqs = await tenant_requirements(tid(request))
 
-    folders_by_vehicle: dict = {}
+    docs_by_vehicle: dict = {}
+    docs_expires = docs_expire_30 = docs_expire_31_90 = docs_a_verifier = 0
     for d in documents:
-        folders_by_vehicle.setdefault(d["vehicle_id"], set()).add(d["folder"])
+        if d.get("archived"):
+            continue
+        docs_by_vehicle.setdefault(d["vehicle_id"], []).append(d)
+        if doc_statut(d) == "A_VERIFIER":
+            docs_a_verifier += 1
+        days = days_until(d.get("date_expiration"))
+        if days is not None:
+            if days < 0:
+                docs_expires += 1
+            elif days <= 30:
+                docs_expire_30 += 1
+            elif days <= 90:
+                docs_expire_31_90 += 1
 
     leasing_expired = leasing_soon = 0
     assurance_renew = controle_upcoming = 0
     vehicles_missing_docs = 0
+    vehicles_docs_conformes = 0
     cout_leasing_mensuel = 0.0
     cout_assurance_annuel = 0.0
     vehicles_conformes = 0
@@ -1299,9 +1632,16 @@ async def dashboard(request: Request):
         assurance = v.get("assurance") or {}
         cout_leasing_mensuel += leasing.get("mensualite_chf") or leasing.get("cout_mensuel") or 0
         cout_assurance_annuel += assurance.get("prime_annuelle") or 0
-        present = folders_by_vehicle.get(v["id"], set())
-        if any(f not in present for f in REQUIRED_FOLDERS):
+        required = required_categories_for(v, reqs)
+        by_cat: dict = {}
+        for d in docs_by_vehicle.get(v["id"], []):
+            by_cat.setdefault(d["folder"], []).append(doc_statut(d))
+        manquant = any(c not in by_cat for c in required)
+        expire_cat = any(c in by_cat and all(s == "EXPIRE" for s in by_cat[c]) for c in required)
+        if manquant:
             vehicles_missing_docs += 1
+        if not manquant and not expire_cat:
+            vehicles_docs_conformes += 1
 
     return {
         "total_vehicles": len(vehicles),
@@ -1313,6 +1653,11 @@ async def dashboard(request: Request):
         "cout_leasing_mensuel": round(cout_leasing_mensuel),
         "cout_assurance_annuel": round(cout_assurance_annuel),
         "vehicles_conformes": vehicles_conformes,
+        "docs_expires": docs_expires,
+        "docs_expire_30": docs_expire_30,
+        "docs_expire_31_90": docs_expire_31_90,
+        "docs_a_verifier": docs_a_verifier,
+        "vehicles_docs_conformes": vehicles_docs_conformes,
     }
 
 
@@ -1902,6 +2247,7 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
             "content_type": pages[0]["content_type"],
             "size": total_size, "pages": pages,
             "document_type": document_type, "extraction_status": "processing",
+            "a_verifier": True,
             "source": "scan", "imported_by": "utilisateur", "is_deleted": False,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -2022,7 +2368,7 @@ async def validate_scanned_document(doc_id: str, payload: DocumentValidate, requ
     await db.documents.update_one({"id": doc_id}, {"$set": {
         "document_type": dtype, "folder": DOC_TYPES[dtype]["folder"],
         "validated_at": now, "validated_by": "utilisateur", "validated_fields": payload.fields,
-        "document_data": doc_data, "extraction_status": "validated",
+        "document_data": doc_data, "extraction_status": "validated", "a_verifier": False,
     }})
     await audit("validate", "document", request, doc_id, vehicle["id"],
                 f"Validation {type_label} — {len(applied) + len(doc_data)} champ(s) appliqué(s)")

@@ -198,4 +198,17 @@ export const adminGetIntegration = (tid) => http.get(`/admin/tenants/${tid}/inte
 export const adminUpdateIntegration = (tid, data) =>
   http.put(`/admin/tenants/${tid}/integration`, data).then((r) => r.data);
 
+// Documents V2 — page centrale, fiche, catégories, profils
+export const getAllDocuments = (params = {}) => http.get("/documents", { params }).then((r) => r.data);
+export const updateDocument = (docId, data) => http.patch(`/documents/${docId}`, data).then((r) => r.data);
+export const getDocCategories = () => http.get("/doc-categories").then((r) => r.data);
+export const createDocCategory = (data) => http.post("/doc-categories", data).then((r) => r.data);
+export const updateDocCategory = (id, data) => http.put(`/doc-categories/${id}`, data).then((r) => r.data);
+export const deleteDocCategory = (id) => http.delete(`/doc-categories/${id}`).then((r) => r.data);
+export const getDocRequirements = () => http.get("/doc-requirements").then((r) => r.data);
+export const putDocRequirements = (profil, categories) =>
+  http.put("/doc-requirements", { profil, categories }).then((r) => r.data);
+export const getVehicleDocConformity = (id) =>
+  http.get(`/vehicles/${id}/conformite-documents`).then((r) => r.data);
+
 export default http;

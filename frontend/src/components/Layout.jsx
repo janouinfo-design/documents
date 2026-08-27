@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Truck, CalendarClock, Bell, Layers3, UserCircle2, KeyRound, LogOut, ShieldCheck, Building2, Eye } from "lucide-react";
+import { LayoutDashboard, Truck, CalendarClock, Bell, Layers3, UserCircle2, KeyRound, LogOut, ShieldCheck, Building2, Eye, FolderOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getActingTenant, setActingTenant } from "@/lib/api";
 import {
@@ -13,6 +13,7 @@ import ChangePasswordDialog from "@/components/ChangePasswordDialog";
 const NAV = [
   { to: "/", label: "Tableau de bord", icon: LayoutDashboard, testId: "nav-dashboard" },
   { to: "/vehicules", label: "Véhicules", icon: Truck, testId: "nav-vehicles" },
+  { to: "/documents", label: "Documents", icon: FolderOpen, testId: "nav-documents" },
   { to: "/timeline", label: "Échéances", icon: CalendarClock, testId: "nav-timeline" },
   { to: "/alertes", label: "Alertes", icon: Bell, testId: "nav-alerts" },
   { to: "/integrite", label: "Intégrité", icon: ShieldCheck, testId: "nav-integrity" },

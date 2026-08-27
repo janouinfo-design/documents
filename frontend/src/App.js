@@ -13,6 +13,7 @@ import AlertsPage from "@/pages/AlertsPage";
 import Login from "@/pages/Login";
 import IntegrityPage from "@/pages/IntegrityPage";
 import AdminPage from "@/pages/AdminPage";
+import DocumentsPage from "@/pages/DocumentsPage";
 import SsoNotConfigured from "@/pages/SsoNotConfigured";
 
 function Protected({ children }) {
@@ -46,6 +47,7 @@ function App() {
                         <Routes>
                           <Route path="/" element={<Dashboard />} />
                           <Route path="/vehicules" element={<Vehicles />} />
+                          <Route path="/documents" element={<DocumentsPage />} />
                           <Route path="/timeline" element={<TimelinePage />} />
                           <Route path="/alertes" element={<AlertsPage />} />
                           <Route path="/integrite" element={<IntegrityPage />} />
