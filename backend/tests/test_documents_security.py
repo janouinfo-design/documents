@@ -201,19 +201,19 @@ class TestFileEdgeCases:
 
 class TestLocalStorageUnit:
     def test_local_path_traversal_guard(self, tmp_path, monkeypatch):
-        import server as server_mod
+        import storage as storage_mod
         from fastapi import HTTPException
-        monkeypatch.setattr(server_mod, "LOCAL_STORAGE_DIR", str(tmp_path))
+        monkeypatch.setattr(storage_mod, "LOCAL_STORAGE_DIR", str(tmp_path))
         with pytest.raises(HTTPException) as exc:
-            server_mod._local_path("../../etc/passwd")
+            storage_mod._local_path("../../etc/passwd")
         assert exc.value.status_code == 400
 
     def test_local_put_get_roundtrip_persists_on_disk(self, tmp_path, monkeypatch):
-        import server as server_mod
-        monkeypatch.setattr(server_mod, "STORAGE_BACKEND", "local")
-        monkeypatch.setattr(server_mod, "LOCAL_STORAGE_DIR", str(tmp_path))
+        import storage as storage_mod
+        monkeypatch.setattr(storage_mod, "STORAGE_BACKEND", "local")
+        monkeypatch.setattr(storage_mod, "LOCAL_STORAGE_DIR", str(tmp_path))
         rel = f"t/{_RUN}/sample.pdf"
-        server_mod.put_object(rel, b"%PDF-1.4 test", "application/pdf")
+        storage_mod.put_object(rel, b"%PDF-1.4 test", "application/pdf")
         assert (tmp_path / "t" / _RUN / "sample.pdf").exists()
-        data, ctype = server_mod.get_object(rel)
+        data, ctype = storage_mod.get_object(rel)
         assert data == b"%PDF-1.4 test" and ctype == "application/pdf"

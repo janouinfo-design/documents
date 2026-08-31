@@ -27,6 +27,7 @@ from auth import (authenticate_request, check_lockout, clear_failures, create_ac
                   create_file_token,
                   hash_password, record_failure, seed_admin, seed_superadmin, verify_password,
                   create_sso_token, SSO_TOKEN_TTL_MINUTES)
+from storage import get_object, guess_mime, init_storage, put_object
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -253,96 +254,18 @@ async def auth_logout(user: dict = Depends(require_auth)):
 # ---------------------------------------------------------------------------
 # Object storage helpers (Emergent object storage)
 # ---------------------------------------------------------------------------
-STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
 EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_API_KEY")
 APP_NAME = "logitrak-fleet"
 extraction_provider = get_provider(EMERGENT_KEY, ANTHROPIC_KEY)
-storage_key = None
-STORAGE_BACKEND = (os.environ.get("STORAGE_BACKEND") or "emergent").lower()
-LOCAL_STORAGE_DIR = os.environ.get("ADMIN_DOCS_STORAGE_PATH") or os.environ.get("LOCAL_STORAGE_DIR") or "/data/storage"
 MAX_FILE_SIZE_MB = int(os.environ.get("ADMIN_DOCS_MAX_FILE_SIZE_MB", "25"))
 MAX_FILE_SIZE = MAX_FILE_SIZE_MB * 1024 * 1024
 _DEFAULT_DOC_TYPES = "pdf,jpg,jpeg,png,webp,docx,doc,xls,xlsx,zip,csv"
 ALLOWED_DOC_EXTS = {e.strip().lower().lstrip(".") for e in (os.environ.get("ADMIN_DOCS_ALLOWED_TYPES") or _DEFAULT_DOC_TYPES).split(",") if e.strip()}
 ALLOWED_MEDIA_EXTS = ALLOWED_DOC_EXTS | {"jpg", "jpeg", "png", "webp", "gif", "mp4", "mov", "webm"}
 
-EXT_MIME = {
-    "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
-    "gif": "image/gif", "webp": "image/webp", "pdf": "application/pdf",
-    "doc": "application/msword",
-    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "xls": "application/vnd.ms-excel",
-    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "zip": "application/zip", "csv": "text/csv", "txt": "text/plain",
-    "mp4": "video/mp4", "mov": "video/quicktime", "webm": "video/webm",
-}
-
-
-def _local_path(path: str) -> str:
-    base = os.path.abspath(LOCAL_STORAGE_DIR)
-    full = os.path.abspath(os.path.join(base, path))
-    if full != base and not full.startswith(base + os.sep):
-        raise HTTPException(status_code=400, detail="Chemin invalide")
-    return full
-
-
-def init_storage():
-    global storage_key
-    if STORAGE_BACKEND == "local":
-        os.makedirs(LOCAL_STORAGE_DIR, exist_ok=True)
-        return "local"
-    if storage_key:
-        return storage_key
-    resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
-    resp.raise_for_status()
-    storage_key = resp.json()["storage_key"]
-    return storage_key
-
-
-def put_object(path: str, data: bytes, content_type: str) -> dict:
-    if STORAGE_BACKEND == "local":
-        full = _local_path(path)
-        os.makedirs(os.path.dirname(full), exist_ok=True)
-        with open(full, "wb") as f:
-            f.write(data)
-        with open(full + ".meta", "w") as f:
-            f.write(content_type or "application/octet-stream")
-        return {"path": path, "size": len(data)}
-    key = init_storage()
-    resp = requests.put(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key, "Content-Type": content_type},
-        data=data, timeout=120,
-    )
-    resp.raise_for_status()
-    return resp.json()
-
-
-def get_object(path: str):
-    if STORAGE_BACKEND == "local":
-        full = _local_path(path)
-        if not os.path.exists(full):
-            raise FileNotFoundError(path)
-        with open(full, "rb") as f:
-            data = f.read()
-        ctype = guess_mime(path)
-        if os.path.exists(full + ".meta"):
-            with open(full + ".meta") as f:
-                ctype = f.read().strip() or ctype
-        return data, ctype
-    key = init_storage()
-    resp = requests.get(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key}, timeout=60,
-    )
-    resp.raise_for_status()
-    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
-
-
-def guess_mime(filename: str, fallback: str = "application/octet-stream") -> str:
-    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    return EXT_MIME.get(ext, fallback)
+# Adaptateur de stockage : voir backend/storage.py (Emergent object storage par défaut,
+# volume persistant /data/storage en mode local — production VPS).
 
 
 def _ext_of(filename: str) -> str:
@@ -1106,7 +1029,7 @@ async def upload_file(request: Request, file: UploadFile = File(...), vehicle_id
     data = await file.read()
     validate_upload(file.filename, len(data), ALLOWED_MEDIA_EXTS)
     ext = _ext_of(file.filename)
-    path = f"{APP_NAME}/uploads/{vehicle_id}/{uuid.uuid4()}.{ext}"
+    path = f"{APP_NAME}/media/{vehicle_id}/{uuid.uuid4()}.{ext}"
     content_type = guess_mime(file.filename)
     try:
         result = put_object(path, data, content_type)
@@ -1841,7 +1764,7 @@ async def add_document(vehicle_id: str, request: Request, file: UploadFile = Fil
     data = await file.read()
     validate_upload(file.filename, len(data), ALLOWED_MEDIA_EXTS)
     ext = _ext_of(file.filename)
-    path = f"{APP_NAME}/uploads/{vehicle_id}/{uuid.uuid4()}.{ext}"
+    path = f"{APP_NAME}/media/{vehicle_id}/{uuid.uuid4()}.{ext}"
     content_type = guess_mime(file.filename)
     try:
         result = put_object(path, data, content_type)
@@ -2540,7 +2463,7 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
                     except Exception:
                         raise HTTPException(status_code=422, detail=f"Image illisible: {f.filename}")
                 content_type = f.content_type or guess_mime(f.filename)
-                path = f"{APP_NAME}/uploads/{vehicle_id}/{uuid.uuid4()}.{ext}"
+                path = f"{APP_NAME}/media/{vehicle_id}/{uuid.uuid4()}.{ext}"
                 try:
                     stored = put_object(path, data, content_type)
                 except Exception as e:
