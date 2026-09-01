@@ -4,12 +4,17 @@ import { toast } from "sonner";
 import { RefreshCw, Loader2 } from "lucide-react";
 import { getNavixyStatus, navixySync } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/context/AuthContext";
 
 export default function SyncButton() {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const readOnly = user?.role === "read_only";
   const [syncing, setSyncing] = useState(false);
-  const { data: st } = useQuery({ queryKey: ["sync-status"], queryFn: getNavixyStatus });
+  const { data: st } = useQuery({ queryKey: ["sync-status"], queryFn: getNavixyStatus, enabled: !readOnly });
   const connected = st?.connected;
+  // Écriture métier : masqué pour les comptes en lecture seule (le backend renvoie 403 de toute façon)
+  if (readOnly) return null;
 
   const onSync = async () => {
     setSyncing(true);

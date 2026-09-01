@@ -462,7 +462,13 @@ Bug d'origine (prod) : document « Analysé » mais fiche véhicule vide. Cause 
 - Comportement assumé : ré-analyser un document validé repasse son statut à « done » (nouvelle analyse ⇒ nouvelle validation requise).
 - ATTENTION environnement preview : le véhicule VD 594 862 (source manual, tenant default) fait échouer `test_navixy.py::test_navixy_sync_imports_fleet` (invariant « flotte 100% navixy »). Le désélectionner (`--deselect`) ou supprimer le véhicule avant une régression complète. Ne PAS affaiblir le test.
 - Cascade de 63 faux échecs observée une fois : token conftest (admin@logitrak.ch) révoqué en cours de run (« Session révoquée ») — non reproduit au run suivant (315 PASS). Si récurrent : identifier qui bump token_version mid-run.
-- NON RÉALISÉ (hors lot, backlog) : masquage boutons write pour read_only sur page Véhicules, route 404 catch-all, déploiement production de ce lot (attente GO utilisateur).
+- NON RÉALISÉ (hors lot, backlog) : route 404 catch-all, déploiement production de ce lot (attente GO utilisateur).
+
+## Implemented — Masquage read_only « + Véhicule » / « Synchroniser » (2026-09-01)
+- [x] `Vehicles.jsx` : bouton « + Véhicule » masqué si role read_only. `SyncButton.jsx` : retourne null si read_only (+ requête sync-status désactivée). Backend inchangé (403 déjà en place).
+- [x] Vérifié : screenshot read_only (0 bouton) + admin (2 boutons), régression ciblée 72 PASS (carte grise OCR, documents security, readonly RBAC, security lot2, multitenant).
+- Reste visible pour read_only (assumé, lecture ou hors scope demandé) : Consommation, Base technique (l'item « Enrichir la flotte » écrit mais backend 403), Exporter.
+- Séquence convenue avec l'utilisateur : validation visuelle preview VD 594 862 → GO DEPLOY lot OCR (backup+probes) → lot suivant : dernière expertise carte grise → moteur central échéances (provenance CARTE_GRISE, sans faux document de contrôle) → Coûts historisés → scan multi-documents (plus tard).
 - Notes : ~~sync auto quotidienne = tenant `default` uniquement~~ **CORRECTION (2026-08-31)** : le `daily_job` synchronise DÉJÀ tous les tenants à intégration Navixy `enabled:true` (commit `2f8c434` du 25/08, en production) — hygie-soins inclus. Seule lacune restante (backlog mineur) : le job n'exclut pas les tenants suspendus (disabled). Backlog inchangé : masquage read_only complet, rappels e-mail réels, budgets par véhicule.
 
 ## Implemented — Conformité lint plateforme : refactor stockage + vendor OpenCV (2026-08-31, fork)

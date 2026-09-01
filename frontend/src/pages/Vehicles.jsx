@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import StatusBadge from "@/components/StatusBadge";
 import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
+import { useAuth } from "@/context/AuthContext";
 import NewVehicleDialog from "@/components/NewVehicleDialog";
 import SyncButton from "@/components/SyncButton";
 import ConfigBanner from "@/components/ConfigBanner";
@@ -22,6 +23,8 @@ import { cn } from "@/lib/utils";
 
 export default function Vehicles() {
   const { openVehicle } = useVehicleDrawer();
+  const { user } = useAuth();
+  const readOnly = user?.role === "read_only";
   const [q, setQ] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [astraOpen, setAstraOpen] = useState(false);
@@ -56,9 +59,11 @@ export default function Vehicles() {
               className="w-full pl-9 sm:w-64"
             />
           </div>
-          <Button data-testid="add-vehicle-btn" onClick={() => setCreateOpen(true)} className="gap-2 bg-slate-900 hover:bg-slate-800">
-            <Plus className="h-4 w-4" /> Véhicule
-          </Button>
+          {!readOnly && (
+            <Button data-testid="add-vehicle-btn" onClick={() => setCreateOpen(true)} className="gap-2 bg-slate-900 hover:bg-slate-800">
+              <Plus className="h-4 w-4" /> Véhicule
+            </Button>
+          )}
           <Button
             data-testid="conso-open-btn"
             variant="outline"
