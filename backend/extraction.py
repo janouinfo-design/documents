@@ -26,20 +26,32 @@ FIELD_DEFS = {
     "permis_circulation": [
         {"key": "plaque", "label": "Immatriculation", "target": "root", "kind": "str"},
         {"key": "vin", "label": "VIN / N° de châssis", "target": "root", "kind": "str"},
+        {"key": "numero_matricule", "label": "N° de matricule", "target": "carte_grise", "kind": "str"},
+        {"key": "numero_homologation", "label": "Réception par type / N° d'homologation", "target": "root", "kind": "str"},
         {"key": "marque", "label": "Marque", "target": "root", "kind": "str"},
         {"key": "modele", "label": "Modèle", "target": "root", "kind": "str"},
         {"key": "variante", "label": "Variante / type", "target": "root", "kind": "str"},
-        {"key": "numero_homologation", "label": "N° d'homologation", "target": "root", "kind": "str"},
+        {"key": "categorie", "label": "Genre de véhicule / catégorie", "target": "root", "kind": "str"},
+        {"key": "carrosserie", "label": "Carrosserie", "target": "carte_grise", "kind": "str"},
+        {"key": "couleur", "label": "Couleur", "target": "carte_grise", "kind": "str"},
         {"key": "date_mise_circulation", "label": "1re mise en circulation", "target": "carte_grise", "kind": "date"},
         {"key": "type_carburant", "label": "Carburant", "target": "root", "kind": "str"},
         {"key": "cylindree_cm3", "label": "Cylindrée (cm³)", "target": "root", "kind": "int"},
         {"key": "puissance_kw", "label": "Puissance (kW)", "target": "root", "kind": "float"},
-        {"key": "poids_vide", "label": "Poids à vide (kg)", "target": "root", "kind": "int"},
-        {"key": "poids_total", "label": "Poids total (kg)", "target": "carte_grise", "kind": "int"},
-        {"key": "categorie", "label": "Catégorie", "target": "root", "kind": "str"},
-        {"key": "couleur", "label": "Couleur", "target": "carte_grise", "kind": "str"},
         {"key": "nombre_places", "label": "Nombre de places", "target": "carte_grise", "kind": "int"},
+        {"key": "poids_vide", "label": "Poids à vide (kg)", "target": "root", "kind": "int"},
+        {"key": "charge_utile", "label": "Charge utile (kg)", "target": "carte_grise", "kind": "int"},
+        {"key": "poids_total", "label": "Poids total (kg)", "target": "carte_grise", "kind": "int"},
+        {"key": "charge_remorquable", "label": "Charge remorquable (kg)", "target": "carte_grise", "kind": "int"},
+        {"key": "charge_toit", "label": "Charge sur le toit (kg)", "target": "carte_grise", "kind": "int"},
+        {"key": "code_emissions", "label": "Code d'émissions", "target": "carte_grise", "kind": "str"},
         {"key": "co2_g_km", "label": "CO₂ (g/km)", "target": "root", "kind": "float"},
+        {"key": "detenteur", "label": "Détenteur", "target": "carte_grise", "kind": "str"},
+        {"key": "adresse_detenteur", "label": "Adresse du détenteur", "target": "carte_grise", "kind": "str"},
+        {"key": "date_emission", "label": "Date d'émission du permis", "target": "carte_grise", "kind": "date"},
+        {"key": "lieu_emission", "label": "Lieu d'émission", "target": "carte_grise", "kind": "str"},
+        {"key": "date_dernier", "label": "Dernière expertise (zone Prüfungen / Expertises)", "target": "controle_technique", "kind": "date"},
+        {"key": "compagnie", "label": "Assureur", "target": "assurance", "kind": "str"},
     ],
     "assurance": [
         {"key": "compagnie", "label": "Compagnie", "target": "assurance", "kind": "str"},
@@ -209,6 +221,9 @@ def build_prompt(document_type: str = None) -> str:
         "- Dates au format YYYY-MM-DD. Nombres en numérique pur, sans unité ni séparateur de milliers.\n"
         "- confidence reflète honnêtement ta certitude de lecture (0 à 1), par champ.\n"
         "- Plaque suisse au format 'GE 123456'. Carburant en français (Diesel, Essence, Électrique, Hybride…).\n"
+        "- VIN en MAJUSCULES, SANS espaces (17 caractères pour un VIN standard) — recopie exacte, "
+        "n'essaie JAMAIS de corriger un caractère douteux (0/O, 1/I, 5/S, 8/B) : baisse la confidence.\n"
+        "- N° de matricule suisse recopié tel qu'imprimé (p.ex. 123.456.789).\n"
         "- Aucun texte hors JSON, aucune balise de code."
     )
 

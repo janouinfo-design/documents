@@ -14,7 +14,12 @@ import DocFolderSection from "@/components/DocFolderSection";
 import DocumentScanCard from "@/components/DocumentScanCard";
 import TechnicalEnrichDialog from "@/components/TechnicalEnrichDialog";
 
-const CG_FIELDS = ["date_mise_circulation", "poids_total", "nombre_places", "couleur"];
+const CG_FIELDS = [
+  "date_mise_circulation", "poids_total", "nombre_places", "couleur",
+  "numero_matricule", "carrosserie", "charge_utile", "charge_remorquable",
+  "charge_toit", "code_emissions", "detenteur", "adresse_detenteur",
+  "date_emission", "lieu_emission",
+];
 const TECH_FIELDS = [
   "type_carburant", "cylindree_cm3", "puissance_kw", "poids_vide", "categorie",
   "co2_g_km", "co2_norme", "conso_officielle_l_100km", "conso_officielle_norme",
@@ -132,6 +137,16 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
           poids_total: Number(form.poids_total) || 0,
           nombre_places: Number(form.nombre_places) || 0,
           couleur: form.couleur || null,
+          numero_matricule: form.numero_matricule || null,
+          carrosserie: form.carrosserie || null,
+          charge_utile: Number(form.charge_utile) || null,
+          charge_remorquable: Number(form.charge_remorquable) || null,
+          charge_toit: Number(form.charge_toit) || null,
+          code_emissions: form.code_emissions || null,
+          detenteur: form.detenteur || null,
+          adresse_detenteur: form.adresse_detenteur || null,
+          date_emission: form.date_emission || null,
+          lieu_emission: form.lieu_emission || null,
         },
       });
       toast.success("Données véhicule enregistrées");
@@ -163,11 +178,21 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
               ["date_mise_circulation", "Mise en circulation", "date"],
               ["poids_vide", "Poids à vide (kg)", "number"],
               ["poids_total", "Poids total (kg)", "number"],
+              ["charge_utile", "Charge utile (kg)", "number"],
+              ["charge_remorquable", "Charge remorquable (kg)", "number"],
+              ["charge_toit", "Charge toit (kg)", "number"],
               ["nombre_places", "Nombre de places", "number"],
               ["couleur", "Couleur"],
-              ["categorie", "Catégorie"],
+              ["categorie", "Genre / catégorie"],
+              ["carrosserie", "Carrosserie"],
               ["variante", "Variante / type"],
-              ["numero_homologation", "N° homologation"],
+              ["numero_homologation", "Réception par type / homologation"],
+              ["numero_matricule", "N° matricule"],
+              ["code_emissions", "Code émissions"],
+              ["detenteur", "Détenteur"],
+              ["adresse_detenteur", "Adresse détenteur"],
+              ["date_emission", "Date d'émission", "date"],
+              ["lieu_emission", "Lieu d'émission"],
             ].map(([k, label, type]) => (
               <FormRow key={k} label={label}>
                 <Input data-testid={`cg-${k}`} type={type || "text"} value={form[k] || ""} onChange={(e) => set(k, e.target.value)} />
@@ -226,7 +251,7 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
         <>
           <SectionCard
             title="Carte grise"
-            description="Données lues sur le permis de circulation"
+            description="Données lues sur le permis de circulation — valeurs canoniques validées uniquement"
             testId="carte-grise-view"
             action={
               <Button variant="outline" size="sm" onClick={() => { setForm(pick(vehicle)); setEdit(true); }} data-testid="cg-edit-btn" className="gap-1.5">
@@ -234,17 +259,41 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
               </Button>
             }
           >
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3" data-testid="cg-group-identification">
               <Stat label="Plaque" value={vehicle.plaque} icon={ScrollText} />
               <Stat label="VIN" value={vehicle.vin} />
-              <Stat label="Mise en circulation" value={dateFr(c.date_mise_circulation)} icon={Calendar} />
-              <Stat label="Poids à vide" value={vehicle.poids_vide ? `${fmtNum(vehicle.poids_vide)} kg` : "—"} icon={Weight} />
-              <Stat label="Poids total" value={c.poids_total ? `${fmtNum(c.poids_total)} kg` : "—"} icon={Weight} />
-              <Stat label="Nombre de places" value={c.nombre_places || "—"} icon={Users} />
+              <Stat label="N° matricule" value={c.numero_matricule || "—"} icon={Hash} />
+              <Stat label="Réception par type / homologation" value={vehicle.numero_homologation || "—"} icon={Hash} />
+            </div>
+            <p className="mb-2 mt-5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Véhicule</p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3" data-testid="cg-group-vehicule">
+              <Stat label="Genre / catégorie" value={vehicle.categorie || "—"} />
+              <Stat label="Carrosserie" value={c.carrosserie || "—"} />
               <Stat label="Couleur" value={c.couleur || "—"} />
-              <Stat label="Catégorie" value={vehicle.categorie || "—"} />
               <Stat label="Variante / type" value={vehicle.variante || "—"} />
-              <Stat label="N° homologation" value={vehicle.numero_homologation || "—"} icon={Hash} />
+              <Stat label="Mise en circulation" value={dateFr(c.date_mise_circulation)} icon={Calendar} />
+            </div>
+            <p className="mb-2 mt-5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Technique</p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3" data-testid="cg-group-technique">
+              <Stat label="Poids à vide" value={vehicle.poids_vide ? `${fmtNum(vehicle.poids_vide)} kg` : "—"} icon={Weight} />
+              <Stat label="Charge utile" value={c.charge_utile ? `${fmtNum(c.charge_utile)} kg` : "—"} icon={Weight} />
+              <Stat label="Poids total" value={c.poids_total ? `${fmtNum(c.poids_total)} kg` : "—"} icon={Weight} />
+              <Stat label="Charge remorquable" value={c.charge_remorquable ? `${fmtNum(c.charge_remorquable)} kg` : "—"} icon={Weight} />
+              <Stat label="Charge sur le toit" value={c.charge_toit ? `${fmtNum(c.charge_toit)} kg` : "—"} icon={Weight} />
+              <Stat label="Nombre de places" value={c.nombre_places || "—"} icon={Users} />
+              <Stat label="Code émissions" value={c.code_emissions || "—"} />
+            </div>
+            <p className="mb-2 mt-5 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Administratif</p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3" data-testid="cg-group-administratif">
+              <Stat label="Détenteur" value={c.detenteur || "—"} />
+              <Stat label="Adresse détenteur" value={c.adresse_detenteur || "—"} />
+              <Stat
+                label="Émission du permis"
+                value={c.date_emission ? `${c.lieu_emission ? `${c.lieu_emission}, ` : ""}${dateFr(c.date_emission)}` : (c.lieu_emission || "—")}
+                icon={Calendar}
+              />
+              <Stat label="Dernière expertise" value={dateFr((vehicle.controle_technique || {}).date_dernier)} icon={Calendar} />
+              <Stat label="Assureur" value={(vehicle.assurance || {}).compagnie || "—"} />
             </div>
           </SectionCard>
 

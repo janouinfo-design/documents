@@ -51,6 +51,18 @@ const rotateImageFile = (file) =>
     img.src = url;
   });
 
+function StatusBadgeField({ status }) {
+  if (status === "uncertain")
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+        <AlertTriangle className="h-3 w-3" /> À vérifier
+      </span>
+    );
+  if (status === "missing")
+    return <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">Non lu</span>;
+  return null;
+}
+
 function ConfidenceBadge({ value }) {
   if (value === null || value === undefined) return null;
   const pct = Math.round(value * 100);
@@ -237,9 +249,10 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
 
   const close = (o) => {
     if (!o) {
-      if (!validatedRef.current) {
-        if (step === "review" && result) deleteDocument(result.document_id).catch(() => {});
-        else if (step === "failed" && failedDocId) deleteDocument(failedDocId).catch(() => {});
+      if (!validatedRef.current && (result || failedDocId)) {
+        // Document et analyse CONSERVÉS — la review reste ré-ouvrable depuis la liste des documents
+        toast.info("Analyse conservée — ouvrez « Analysé · N champs » sur la ligne du document pour valider plus tard.");
+        onValidated?.();
       }
       reset();
     }

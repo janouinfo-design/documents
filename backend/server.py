@@ -533,6 +533,16 @@ class CarteGrise(BaseModel):
     poids_total: Optional[int] = 0
     nombre_places: Optional[int] = 0
     couleur: Optional[str] = None
+    numero_matricule: Optional[str] = None
+    carrosserie: Optional[str] = None
+    charge_utile: Optional[int] = None
+    charge_remorquable: Optional[int] = None
+    charge_toit: Optional[int] = None
+    code_emissions: Optional[str] = None
+    detenteur: Optional[str] = None
+    adresse_detenteur: Optional[str] = None
+    date_emission: Optional[str] = None
+    lieu_emission: Optional[str] = None
 
 
 class ControleTechnique(BaseModel):
@@ -2333,6 +2343,55 @@ def _same_value(a, b) -> bool:
     return na == nb
 
 
+def _field_same(key: str, a, b) -> bool:
+    """Comparaison canonique par champ — VIN/plaque insensibles aux espaces et à la casse."""
+    if key == "vin":
+        return _norm_vin(a) == _norm_vin(b)
+    if key == "plaque":
+        return _norm_plate(a) == _norm_plate(b)
+    return _same_value(a, b)
+
+
+def _review_entry(fd: dict, value, conf, status, vehicle: dict) -> Optional[dict]:
+    """Ligne de review recalculée contre l'état ACTUEL du véhicule (jamais figée)."""
+    key = fd["key"]
+    value = normalize_value(value, fd["kind"])
+    if value is None:
+        return None
+    reason, valid_format = None, None
+    if key == "vin":
+        value = _norm_vin(value)
+        if not value:
+            return None
+        valid_format = len(value) == 17
+        if not valid_format:
+            status = "uncertain"
+            reason = "VIN_INVALID_LENGTH"
+    try:
+        conf = max(0.0, min(1.0, float(conf)))
+    except (TypeError, ValueError):
+        conf = None
+    current = _get_current(vehicle, fd["target"], key)
+    has_current = not _is_empty(current)
+    conflict = has_current and not _field_same(key, current, value)
+    if status not in ("found", "uncertain", "missing"):
+        status = "uncertain" if (conf is not None and conf < 0.6) else "found"
+    if key == "vin" and reason is None:
+        reason = ("VIN_VALUE_CONFLICT" if conflict
+                  else "VIN_MATCH" if has_current else "VIN_MISSING_CURRENT_VALUE")
+    entry = {
+        "field": key, "label": fd["label"], "target": fd["target"], "kind": fd["kind"],
+        "value": value, "confidence": conf, "status": status,
+        "current_value": current if has_current else None,
+        "conflict": conflict,
+    }
+    if reason:
+        entry["reason"] = reason
+    if valid_format is not None:
+        entry["valid_format"] = valid_format
+    return entry
+
+
 def _build_review_fields(vehicle: dict, defs_list: list, raw_fields: dict) -> list:
     defs = {d["key"]: d for d in defs_list}
     out = []
@@ -2340,29 +2399,36 @@ def _build_review_fields(vehicle: dict, defs_list: list, raw_fields: dict) -> li
         fd = defs.get(key)
         if not fd or not isinstance(info, dict):
             continue
-        value = normalize_value(info.get("value"), fd["kind"])
-        if value is None:
-            continue
-        conf = info.get("confidence")
-        try:
-            conf = max(0.0, min(1.0, float(conf)))
-        except (TypeError, ValueError):
-            conf = None
-        current = _get_current(vehicle, fd["target"], key)
-        has_current = not _is_empty(current)
-        conflict = has_current and not _same_value(current, value)
-        status = info.get("status")
-        if status not in ("found", "uncertain", "missing"):
-            status = "uncertain" if (conf is not None and conf < 0.6) else "found"
-        out.append({
-            "field": key, "label": fd["label"], "target": fd["target"], "kind": fd["kind"],
-            "value": value, "confidence": conf, "status": status,
-            "current_value": current if has_current else None,
-            "conflict": conflict,
-        })
+        entry = _review_entry(fd, info.get("value"), info.get("confidence"), info.get("status"), vehicle)
+        if entry:
+            out.append(entry)
     order = [d["key"] for d in defs_list]
     out.sort(key=lambda f: order.index(f["field"]))
     return out
+
+
+async def _vin_other_vehicle(tenant_id: str, vehicle_id: str, vin_norm: str) -> bool:
+    """Le VIN normalisé appartient-il à un AUTRE véhicule du MÊME tenant ?
+    Recherche strictement tenant-scopée — aucune information cross-tenant."""
+    if not vin_norm:
+        return False
+    others = await db.vehicles.find(
+        {"tenant_id": tenant_id, "id": {"$ne": vehicle_id}, "vin": {"$nin": [None, ""]}},
+        {"_id": 0, "vin": 1}).to_list(None)
+    return any(_norm_vin(o.get("vin")) == vin_norm for o in others)
+
+
+async def _apply_vin_guard(fields: list, vehicle: dict, tenant_id: str) -> None:
+    """Garde anti-confusion : VIN détecté appartenant à un autre véhicule du tenant
+    => CONFLIT explicite. Jamais de déplacement/fusion automatique."""
+    for f in fields:
+        if f.get("field") != "vin":
+            continue
+        if f.get("valid_format") and await _vin_other_vehicle(tenant_id, vehicle["id"], f["value"]):
+            f["conflict"] = True
+            f["status"] = "uncertain"
+            f["reason"] = "VIN_BELONGS_TO_ANOTHER_VEHICLE"
+        return
 
 
 @api_router.get("/document-types")
@@ -2517,6 +2583,7 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
                          "detected": detected, "detected_label": DOC_TYPES[detected]["label"],
                          "confidence": result.get("type_confidence")}
     fields = _build_review_fields(vehicle, FIELD_DEFS.get(dtype, []), result.get("fields"))
+    await _apply_vin_guard(fields, vehicle, tid(request))
     defs_labels = {d["key"]: d["label"] for d in FIELD_DEFS.get(dtype, [])}
     missing_fields = [defs_labels[k] for k, v in (result.get("fields") or {}).items()
                       if k in defs_labels and isinstance(v, dict) and v.get("status") == "missing"]
@@ -2538,6 +2605,40 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
             "pages_count": len(images_b64), "fields": fields}
 
 
+@api_router.get("/documents/{doc_id}/extraction")
+async def get_document_extraction(doc_id: str, request: Request):
+    """Résultat d'analyse persisté, RECALCULÉ contre l'état actuel du véhicule.
+    Lecture seule — accessible read_only. Tenant-scopé strict."""
+    doc = await db.documents.find_one(
+        {"id": doc_id, "is_deleted": False, "tenant_id": tid(request)}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    if doc.get("extraction_status") not in ("done", "validated", "failed"):
+        raise HTTPException(status_code=404, detail="Aucun résultat d'analyse pour ce document")
+    vehicle = await find_tenant_vehicle(request, doc["vehicle_id"])
+    dtype = doc.get("document_type") if doc.get("document_type") in DOC_TYPES else "autre"
+    defs = {d["key"]: d for d in FIELD_DEFS.get(dtype, [])}
+    fields = []
+    for f in doc.get("extracted_fields") or []:
+        fd = defs.get(f.get("field"))
+        if not fd:
+            continue
+        entry = _review_entry(fd, f.get("value"), f.get("confidence"), f.get("status"), vehicle)
+        if entry:
+            fields.append(entry)
+    order = [d["key"] for d in FIELD_DEFS.get(dtype, [])]
+    fields.sort(key=lambda x: order.index(x["field"]))
+    await _apply_vin_guard(fields, vehicle, tid(request))
+    return {"document_id": doc_id, "vehicle_id": vehicle["id"],
+            "vehicle_plaque": vehicle.get("plaque"),
+            "document_type": dtype, "document_type_label": DOC_TYPES[dtype]["label"],
+            "extraction_status": doc.get("extraction_status"),
+            "analyzed_at": doc.get("analyzed_at"), "validated_at": doc.get("validated_at"),
+            "type_confidence": doc.get("type_confidence"),
+            "quality_warnings": doc.get("quality_warnings") or [],
+            "fields": fields, "fields_count": len(fields)}
+
+
 class DocumentValidate(BaseModel):
     document_type: str
     fields: dict = Field(default_factory=dict)
@@ -2556,7 +2657,7 @@ async def validate_scanned_document(doc_id: str, payload: DocumentValidate, requ
 
     defs = {d["key"]: d for d in FIELD_DEFS.get(dtype, [])}
     conf_by_field = {f["field"]: f.get("confidence") for f in docrec.get("extracted_fields") or []}
-    root_updates, sub_updates, doc_data, applied = {}, {}, {}, []
+    root_updates, sub_updates, doc_data, applied, skipped = {}, {}, {}, [], []
 
     for key, raw in (payload.fields or {}).items():
         fd = defs.get(key)
@@ -2565,11 +2666,20 @@ async def validate_scanned_document(doc_id: str, payload: DocumentValidate, requ
         value = normalize_value(raw, fd["kind"])
         if value is None:
             continue
+        if key == "vin":
+            value = _norm_vin(value) or None
+            if value is None:
+                continue
+            # Garde anti-confusion : jamais d'écriture d'un VIN appartenant à un autre véhicule
+            if await _vin_other_vehicle(tid(request), vehicle["id"], value):
+                skipped.append({"field": "vin", "reason": "VIN_BELONGS_TO_ANOTHER_VEHICLE",
+                                "detail": "Le VIN détecté correspond à un autre véhicule de votre flotte — non appliqué."})
+                continue
         if fd["target"] == "document":
             doc_data[key] = value
             continue
         current = _get_current(vehicle, fd["target"], key)
-        if not _is_empty(current) and _same_value(current, value):
+        if not _is_empty(current) and _field_same(key, current, value):
             continue
         if fd["target"] == "root":
             root_updates[key] = value
@@ -2614,7 +2724,7 @@ async def validate_scanned_document(doc_id: str, payload: DocumentValidate, requ
         navixy_push = await push_vehicle_to_navixy(fresh, request)
     fresh["metrics"] = compute_metrics(fresh, await th_for(request))
     return {"ok": True, "applied": len(applied) + len(doc_data), "document_id": doc_id,
-            "vehicle": fresh, "navixy_push": navixy_push}
+            "skipped_fields": skipped, "vehicle": fresh, "navixy_push": navixy_push}
 
 
 @api_router.get("/vehicles/{vehicle_id}/field-meta")

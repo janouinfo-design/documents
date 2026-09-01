@@ -1,0 +1,41 @@
+{
+  "summary": "Frontend E2E (Playwright, admin + read_only) of the carte grise OCR review feature. VERIFIED OK: (1) VD 594 862 Carte grise tab shows the 4 groups (cg-group-identification/vehicule/technique/administratif) with all persisted values (VIN WVWZZZ6RZEY063464, matricule 215.768.314, Limousine, 483 kg, 75 kg, Hygie-soins Sarl, Yverdon 22.05.2023, expertise 09.05.2023, AXA Assurances) and they survive reload; (2) clickable badge on the document line opens extraction-review-dialog with 24 fields, correct Correspondance states and VIN in Conflit (OCR WWWZZZ... vs corrected WVWZZZ...); (3) FULL 'Analyser' flow on VD 602 548: drag-drop upload of /app/test_reports/594862.jpeg -> line appears without badge with doc-analyze-{id} -> click -> 'Analyse en cours...' state (analyze button removed, no double click possible) -> real LLM analysis ~40s -> toast 'Analyse terminee - 24 champ(s) detecte(s)' -> review dialog auto-opens with current vs detected values, confidence badges, checkboxes and correction inputs, 9 COMPLETER fields pre-checked, all Conflit fields (incl. VIN) unchecked by default; (4) Fermer without confirming keeps the document with 'Analyse - 24 champs' badge and the review reopens identically; (5) confirming only 4 safe fields (numero_matricule, carrosserie, charge_utile, detenteur) applied exactly those 4 (no leakage of Polo/blanc/AXA/Yverdon/VIN), persisted after reload, badge became 'Valide - 24 champs' and those fields now show 'Correspondance'; (6) read_only RBAC verified at API level (4/4 pytest pass: cross-tenant extraction 403/404, validate 403, vehicle create 403). BLOCKER FOUND: the 'Scan intelligent' dialog (ScanDocumentDialog) crashes with a white-screen ReferenceError 'StatusBadgeField is not defined' as soon as the review step renders, so the legacy scan flow (and therefore the 'fermer le scan conserve le document / toast Analyse conservee' scenario) is unusable in the UI. The document is however created and preserved server-side (extraction_status=done, 24 fields) and can be reviewed/validated afterwards via the document line badge.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/vehicles/{id}/documents/scan (re-analyse with document_id)", "issue": "Re-analysing an already validated document resets extraction_status from 'validated' back to 'done' - the reference doc 594862.jpeg on VD 594 862 now shows badge 'Analyse' instead of 'Valide' although its fields were validated and persisted (all rows show Correspondance)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ScanDocumentDialog.jsx (lines 683 and 763)", "issue": "CRITICAL REGRESSION: <StatusBadgeField status={f.status} /> is used but the component is neither defined nor imported -> React ReferenceError, full white-screen 'Uncaught runtime errors' overlay the moment the scan review step renders. ESLint confirms: 'StatusBadgeField' is not defined (react/jsx-no-undef) x2. Whole 'Scan intelligent - Permis de circulation' flow (cg-scan-import / cg-scan-camera) is broken after analysis; the close-without-delete behaviour and toast 'Analyse conservee' could not be observed because the component crashes before close.", "selector": "[data-testid=\"scan-review\"]", "priority": "CRITICAL"},
+      {"component": "Vehicles page (read_only role)", "issue": "read_only user sees write-action buttons '+ Vehicule' (add-vehicle-btn) and 'Synchroniser'; API correctly returns 403 but the buttons should be hidden/disabled as they are in DocFolderSection.", "selector": "[data-testid=\"add-vehicle-btn\"]", "priority": "MEDIUM"},
+      {"component": "App router", "issue": "Unknown routes (e.g. /echeances instead of /timeline) render a blank page with only the nav bar - no 404 fallback route.", "selector": "-", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Carte grise tab / review dialog", "issues": ["No visual issues found: 4 groups well labelled, contrast fine, state badges (Conflit red / Correspondance green / Completer blue) readable, dialog scrolls correctly at 1920x1080."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_readonly_extraction_rbac.py"],
+  "action_items": [
+    "URGENT: fix ScanDocumentDialog.jsx - define or import StatusBadgeField (used at lines 683 and 763); the scan review step white-screens. Re-run lint (react/jsx-no-undef) after the fix and re-test the scan close/keep-document scenario.",
+    "Preserve 'validated' extraction_status when a document is re-analysed (or expose a distinct label), so a validated document does not fall back to the 'Analyse' badge.",
+    "Hide '+ Vehicule' and 'Synchroniser' buttons for read_only users on the Vehicles page.",
+    "Optional: add a catch-all 404 route.",
+    "Optional: read_only tenant client-test-e2e has 0 vehicles - seed one vehicle + one analysed document there so the read-only review UI (no confirm button, 'lecture seule' note) can be verified end-to-end."
+  ],
+  "critical_code_review_comments": [
+    "ScanDocumentDialog.jsx references an undefined component (StatusBadgeField) - ESLint already flags it; add lint to the pre-commit/verify loop to stop this class of white-screen regression.",
+    "ScanDocumentDialog.jsx is ~800 lines and duplicates a large part of ExtractionReviewDialog's field/conflict rendering - extract a shared field-row component (DRY, and would have avoided this crash).",
+    "ExtractionReviewDialog/DocFolderSection code path is clean: readOnly guard, per-field state derivation and VIN lock are handled correctly."
+  ],
+  "updated_files": ["/app/backend/tests/test_readonly_extraction_rbac.py"],
+  "success_rate": {"backend": "100% (4/4 targeted RBAC tests)", "frontend": "85% (6/7 scenarios pass; scan-dialog non-regression scenario fails)"},
+  "seed_data_creation": "Uploaded /app/test_reports/594862.jpeg to VD 602 548 (kept, status validated, 4 fields applied: matricule 215.768.314, carrosserie Limousine, charge utile 483, detenteur Hygie-soins Sarl). The orphan scan PDF created by the crashed scan test (scan-20260901-131636.pdf) was deleted. VD 594 862 and its document were NOT modified.",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "admin@logitrak.ch / 3a9218d1606b52e003383e52d7aea3d6 ; ro-e2e@client-test.ch / RoTest-2026y",
+  "context_for_next_testing_agent": "Routes: Echeances = /timeline (not /echeances). Vehicle drawer: [data-testid=open-vehicle-VD602548] then [data-testid=tab-carte-grise]. Scan dialog import flow requires clicking 'Valider le recadrage' (DocumentCropper) before scan-analyze-btn. Real LLM analysis takes ~30-60s. VD 602 548 doc 594862.jpeg (doc id 7557f924-1d4a-4ac4-ac8f-da1349d93718) is validated with 24 fields and can be reused for review-dialog tests without re-running the LLM. read_only tenant client-test-e2e still has 0 vehicles.",
+  "rca_of_the_issue": "White-screen on the scan review step: ScanDocumentDialog.jsx renders <StatusBadgeField status={f.status} /> at lines 683 and 763, but no such component exists in the file nor in any import (only components/StatusBadge.jsx exporting default StatusBadge). React throws ReferenceError during render of step 'review' -> CRA error overlay. Repro: vehicle -> Carte grise -> 'Importer un fichier' (cg-scan-import) -> pick an image -> 'Valider le recadrage' -> 'Analyser' -> after the LLM returns, the dialog crashes. Mitigation: define a local StatusBadgeField (or reuse the badge markup from ExtractionReviewDialog) and keep ESLint react/jsx-no-undef green."
+}

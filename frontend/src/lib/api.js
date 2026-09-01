@@ -151,6 +151,9 @@ export const runAlerts = () => http.post("/alerts/run").then((r) => r.data);
 
 // Scan intelligent de documents
 export const getDocumentTypes = () => http.get("/document-types").then((r) => r.data);
+export const getDocumentExtraction = (docId) =>
+  http.get(`/documents/${docId}/extraction`).then((r) => r.data);
+
 export const scanVehicleDocument = (vehicleId, files, { documentType, documentId, asPdf } = {}) => {
   const form = new FormData();
   (files || []).forEach((f) => form.append("files", f));
