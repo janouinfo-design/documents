@@ -383,7 +383,11 @@ def parse_navixy_label(label: str):
 # Read-merge-write obligatoire : vehicle/update remplace l'objet COMPLET.
 # ---------------------------------------------------------------------------
 NAVIXY_WRITE_ENABLED = (os.environ.get("NAVIXY_WRITE_ENABLED", "true").strip().lower() == "true")
-NAVIXY_PUSH_KEYS = {"plaque", "marque", "modele", "vin", "annee", "carte_grise.couleur"}
+NAVIXY_PUSH_KEYS = {"plaque", "marque", "modele", "vin", "annee", "type_carburant",
+                    "capacite_reservoir_l", "carte_grise.couleur",
+                    "carte_grise.charge_utile", "carte_grise.poids_total"}
+# Enum fuel_type Navixy documenté : petrol | diesel | gas. Électrique/hybride : pas d'équivalent sûr => non poussé.
+_NAVIXY_FUEL = {"essence": "petrol", "diesel": "diesel", "gaz": "gas", "gpl": "gas", "gnc": "gas"}
 
 
 def _navixy_merge_payload(remote: dict, vehicle: dict):
@@ -407,6 +411,18 @@ def _navixy_merge_payload(remote: dict, vehicle: dict):
     if vehicle.get("annee"):
         setf("manufacture_year", int(vehicle["annee"]))
     setf("color", ((vehicle.get("carte_grise") or {}).get("couleur") or "").strip())
+    cg = vehicle.get("carte_grise") or {}
+    if cg.get("charge_utile"):
+        setf("payload_weight", int(cg["charge_utile"]))
+    if cg.get("poids_total"):
+        setf("gross_weight", int(cg["poids_total"]))
+    if vehicle.get("capacite_reservoir_l"):
+        setf("fuel_tank_volume", int(round(float(vehicle["capacite_reservoir_l"]))))
+    fuel = (vehicle.get("type_carburant") or "").strip().lower()
+    for prefix, enum_val in _NAVIXY_FUEL.items():
+        if fuel.startswith(prefix):
+            setf("fuel_type", enum_val)
+            break
     return merged, changes
 
 
@@ -2783,6 +2799,15 @@ async def apply_reservoir(vehicle_id: str, payload: ReservoirApply, request: Req
     fresh = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
     fresh["metrics"] = compute_metrics(fresh, await th_for(request))
     return {"ok": True, "vehicle": fresh}
+
+
+@api_router.post("/vehicles/{vehicle_id}/navixy/push")
+async def retry_navixy_push(vehicle_id: str, request: Request):
+    """Relance de la synchronisation véhicule canonique → Navixy.
+    Réutilise le service central (même mapping/whitelist que la confirmation carte grise)."""
+    vehicle = await find_tenant_vehicle(request, vehicle_id)
+    result = await push_vehicle_to_navixy(vehicle, request)
+    return {"vehicle_id": vehicle_id, "navixy_push": result}
 
 
 # ---------------------------------------------------------------------------

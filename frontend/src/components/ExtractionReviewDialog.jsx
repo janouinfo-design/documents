@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { getDocumentExtraction, validateScannedDocument } from "@/lib/api";
+import { notifyNavixyPush } from "@/lib/navixyFeedback";
 import { cn } from "@/lib/utils";
 
 const inputType = (kind) => (kind === "date" ? "date" : kind === "int" || kind === "float" ? "number" : "text");
@@ -81,6 +82,7 @@ export default function ExtractionReviewDialog({ docId, open, onOpenChange, read
       toast.success(res.applied > 0
         ? `${res.applied} champ(s) appliqué(s) sur la fiche véhicule`
         : "Aucun nouveau champ à appliquer — fiche déjà à jour");
+      notifyNavixyPush(res.navixy_push, res.vehicle?.id);
       onValidated?.();
       onOpenChange(false);
     } catch (e) {

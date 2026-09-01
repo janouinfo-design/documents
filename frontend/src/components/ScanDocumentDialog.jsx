@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { scanVehicleDocument, validateScannedDocument, deleteDocument } from "@/lib/api";
+import { notifyNavixyPush } from "@/lib/navixyFeedback";
 import { cn } from "@/lib/utils";
 import { loadDocScanner } from "@/lib/docScanner";
 import DocumentCropper from "@/components/DocumentCropper";
@@ -392,6 +393,7 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
           ? `Document validé · ${res.applied} champ(s) mis à jour sur la fiche véhicule`
           : "Document validé et classé"
       );
+      notifyNavixyPush(res.navixy_push, res.vehicle?.id);
       onValidated?.();
       close(false);
     } catch (e) {
