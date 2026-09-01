@@ -469,6 +469,12 @@ Bug d'origine (prod) : document « Analysé » mais fiche véhicule vide. Cause 
 - [x] Vérifié : screenshot read_only (0 bouton) + admin (2 boutons), régression ciblée 72 PASS (carte grise OCR, documents security, readonly RBAC, security lot2, multitenant).
 - Reste visible pour read_only (assumé, lecture ou hors scope demandé) : Consommation, Base technique (l'item « Enrichir la flotte » écrit mais backend 403), Exporter.
 - Séquence convenue avec l'utilisateur : validation visuelle preview VD 594 862 → GO DEPLOY lot OCR (backup+probes) → lot suivant : dernière expertise carte grise → moteur central échéances (provenance CARTE_GRISE, sans faux document de contrôle) → Coûts historisés → scan multi-documents (plus tard).
+
+## Deployed — Production `635f741` : lot OCR carte grise + masquage read_only (2026-09-01, VPS-command-tested)
+- [x] Pull `28d9749` → `635f741` (17 fichiers), backup Mongo préalable 27 Mo (`logitrak_fleet-20260901-140708.archive.gz`), Dockerfile COPY vérifié avec storage.py, rebuild backend+web, logs propres (`Storage initialized`, startup complete), probes 401/401/401(extraction)/200.
+- [ ] Validation visuelle production par l'utilisateur (VD 594 862 → Carte grise → review → confirmer → F5) : en attente.
+- Production = OCR complet (review ré-ouvrable, bouton Analyser, garde VIN, 4 groupes carte grise) + read_only sans boutons + Véhicule/Synchroniser.
+- Lot suivant approuvé (pas encore codé) : échéance contrôle dérivée `controle_technique.date_dernier + intervalle` (défaut 24 mois, configurable tenant), `source: derived`, provenance CARTE_GRISE, à la volée sans écriture, effacée dès vraie date. Question posée à l'utilisateur : intervalle 24 mois OK ?
 - Notes : ~~sync auto quotidienne = tenant `default` uniquement~~ **CORRECTION (2026-08-31)** : le `daily_job` synchronise DÉJÀ tous les tenants à intégration Navixy `enabled:true` (commit `2f8c434` du 25/08, en production) — hygie-soins inclus. Seule lacune restante (backlog mineur) : le job n'exclut pas les tenants suspendus (disabled). Backlog inchangé : masquage read_only complet, rappels e-mail réels, budgets par véhicule.
 
 ## Implemented — Conformité lint plateforme : refactor stockage + vendor OpenCV (2026-08-31, fork)
