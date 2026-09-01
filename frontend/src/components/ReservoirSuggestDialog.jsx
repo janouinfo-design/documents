@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { suggestReservoir, applyReservoir } from "@/lib/api";
+import { notifyNavixyPush } from "@/lib/navixyFeedback";
 
 export default function ReservoirSuggestDialog({ vehicle, open, onOpenChange, onSaved }) {
   const [loading, setLoading] = useState(false);
@@ -32,8 +33,9 @@ export default function ReservoirSuggestDialog({ vehicle, open, onOpenChange, on
     }
     setApplying(true);
     try {
-      await applyReservoir(vehicle.id, v);
+      const r = await applyReservoir(vehicle.id, v);
       toast.success(`Capacité réservoir enregistrée : ${v} L`);
+      notifyNavixyPush(r?.navixy_push, vehicle.id);
       onSaved?.();
       onOpenChange(false);
     } catch (e) {

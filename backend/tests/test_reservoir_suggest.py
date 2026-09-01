@@ -90,6 +90,11 @@ class TestApply:
                           json={"value_l": 45}, headers=adm(), timeout=30)
         assert r.status_code == 200, r.text
         assert r.json()["vehicle"]["capacite_reservoir_l"] == 45
+        # La validation déclenche la sync Navixy (best effort) : véhicule de test non lié
+        # => statut honnête « not_linked », AUCUNE écriture Navixy, sauvegarde locale intacte
+        push = r.json().get("navixy_push")
+        assert push is not None, "apply doit renvoyer le résultat de la sync Navixy"
+        assert push["status"] in ("not_linked", "integration_absente")
         # Persistence DB
         v = requests.get(f"{_BASE}/api/vehicles/{_S['veh']}", headers=adm(), timeout=30).json()
         assert v["capacite_reservoir_l"] == 45

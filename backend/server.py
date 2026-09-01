@@ -390,6 +390,15 @@ NAVIXY_PUSH_KEYS = {"plaque", "marque", "modele", "vin", "annee", "type_carburan
 _NAVIXY_FUEL = {"essence": "petrol", "diesel": "diesel", "gaz": "gas", "gpl": "gas", "gnc": "gas"}
 
 
+def _sync_link_fields(linked: dict) -> dict:
+    """Lien fiche véhicule Navixy — renvoyé UNIQUEMENT s'il existe côté Navixy.
+    Jamais d'effacement d'un lien existant (liaison manuelle préservée entre syncs)."""
+    if linked.get("id"):
+        return {"navixy_vehicle_id": linked["id"],
+                "integrations.navixy.external_vehicle_id": linked["id"]}
+    return {}
+
+
 def _navixy_merge_payload(remote: dict, vehicle: dict):
     """Fusionne les champs whitelist Documents dans l'objet Navixy COMPLET (lu via vehicle/read).
     Retourne (payload complet, [(champ_navixy, ancien, nouveau), ...]). Jamais de champ vidé."""
@@ -2066,14 +2075,13 @@ async def navixy_sync_internal(tenant_id: str = "default") -> dict:
             "kilometrage": km,
             "tracker_gps": source_obj.get("device_id") or label,
             "navixy_tracker_id": tid,
-            "navixy_vehicle_id": linked.get("id"),
             "integrations.navixy.tracker_id": tid,
-            "integrations.navixy.external_vehicle_id": linked.get("id"),
             "integrations.navixy.sync_status": "ok",
             "integrations.navixy.last_sync_at": now,
             "source": "navixy",
             "updated_at": now,
         }
+        navixy_fields.update(_sync_link_fields(linked))
 
         fuel = {}
         try:
@@ -2797,8 +2805,10 @@ async def apply_reservoir(vehicle_id: str, payload: ReservoirApply, request: Req
     await audit("modify", "vehicle", request, vehicle_id, vehicle_id,
                 f"Capacité réservoir (L): {old if old else '—'} → {value} (source: estimation IA validée)")
     fresh = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
+    # Même service de sync que la confirmation carte grise — best effort, jamais bloquant
+    navixy_push = await push_vehicle_to_navixy(fresh, request)
     fresh["metrics"] = compute_metrics(fresh, await th_for(request))
-    return {"ok": True, "vehicle": fresh}
+    return {"ok": True, "vehicle": fresh, "navixy_push": navixy_push}
 
 
 @api_router.post("/vehicles/{vehicle_id}/navixy/push")

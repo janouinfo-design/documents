@@ -195,3 +195,53 @@ class TestValidateFlowOrder:
         """Champ OCR non coché (non envoyé au validate) => jamais écrit, donc jamais poussé."""
         v = requests.get(f"{_BASE}/api/vehicles/{_S['veh']}", headers=_h(*ADMIN), timeout=30).json()
         assert v["carte_grise"].get("poids_total") in (None, 0)  # jamais validé => absent du canonique
+
+
+class TestSyncLinkPreservation:
+    """La sync quotidienne ne doit JAMAIS effacer un lien fiche véhicule Navixy existant."""
+
+    def test_lien_absent_cote_navixy_aucune_cle(self):
+        import server as srv
+        assert srv._sync_link_fields({}) == {}
+        assert srv._sync_link_fields({"id": None}) == {}
+
+    def test_lien_present_cote_navixy_renvoye(self):
+        import server as srv
+        out = srv._sync_link_fields({"id": 178973})
+        assert out["navixy_vehicle_id"] == 178973
+        assert out["integrations.navixy.external_vehicle_id"] == 178973
+
+    def test_sync_reelle_preserve_lien_manuel(self):
+        """E2E : lien sentinelle posé sur un véhicule tracker-only du tenant default,
+        sync réelle (lectures Navixy uniquement), le lien doit survivre. Restauration garantie."""
+        if not (_ENV.get("NAVIXY_API_HASH") or "").strip():
+            pytest.skip("pas d'intégration Navixy configurée")
+        db = _mongo()
+        v = db.vehicles.find_one({"tenant_id": "default", "navixy_tracker_id": {"$ne": None},
+                                  "navixy_vehicle_id": None}, {"_id": 0, "id": 1})
+        if not v:
+            pytest.skip("aucun véhicule default tracker-only disponible")
+        sentinel = 999999999
+        adm_h = _h(_ENV["ADMIN_EMAIL"], _ENV["ADMIN_PASSWORD"])
+        db.vehicles.update_one({"id": v["id"]}, {"$set": {"navixy_vehicle_id": sentinel}})
+        try:
+            r = requests.post(f"{_BASE}/api/navixy/sync", headers=adm_h, timeout=120)
+            assert r.status_code == 200, r.text
+            after = db.vehicles.find_one({"id": v["id"]}, {"_id": 0, "navixy_vehicle_id": 1})
+            assert after["navixy_vehicle_id"] == sentinel, "la sync a effacé le lien manuel"
+        finally:
+            db.vehicles.update_one({"id": v["id"]}, {"$set": {"navixy_vehicle_id": None}})
+
+
+class TestReservoirApplyPush:
+    """Validation réservoir IA => même service de sync Navixy que la carte grise."""
+
+    def test_apply_sans_integration_local_intact(self):
+        r = requests.post(f"{_BASE}/api/vehicles/{_S['veh']}/reservoir/apply",
+                          json={"value_l": 55}, headers=_h(*ADMIN), timeout=30)
+        assert r.status_code == 200, r.text
+        res = r.json()
+        assert res["navixy_push"]["status"] == "integration_absente"
+        assert res["vehicle"]["capacite_reservoir_l"] == 55
+        v = requests.get(f"{_BASE}/api/vehicles/{_S['veh']}", headers=_h(*ADMIN), timeout=30).json()
+        assert v["capacite_reservoir_l"] == 55  # échec/absence Navixy ne bloque jamais le local

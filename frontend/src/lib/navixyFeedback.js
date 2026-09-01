@@ -12,7 +12,7 @@ export function notifyNavixyPush(push, vehicleId) {
       toast.info("Navixy : véhicule déjà à jour");
       break;
     case "not_linked":
-      toast.info("Navixy : véhicule non lié à un tracker — synchronisation non effectuée");
+      toast.info("Navixy : véhicule non lié à une fiche « Gestion de flotte » Navixy — synchronisation non effectuée (liaison possible depuis la page Intégrité)");
       break;
     case "integration_absente":
     case "disabled":
