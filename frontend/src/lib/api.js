@@ -154,6 +154,12 @@ export const getDocumentTypes = () => http.get("/document-types").then((r) => r.
 export const getDocumentExtraction = (docId) =>
   http.get(`/documents/${docId}/extraction`).then((r) => r.data);
 
+export const suggestReservoir = (vehicleId) =>
+  http.post(`/vehicles/${vehicleId}/reservoir/suggest`).then((r) => r.data);
+
+export const applyReservoir = (vehicleId, valueL) =>
+  http.post(`/vehicles/${vehicleId}/reservoir/apply`, { value_l: valueL }).then((r) => r.data);
+
 export const scanVehicleDocument = (vehicleId, files, { documentType, documentId, asPdf } = {}) => {
   const form = new FormData();
   (files || []).forEach((f) => form.append("files", f));

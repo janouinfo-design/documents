@@ -2735,6 +2735,57 @@ async def get_vehicle_field_meta(vehicle_id: str, request: Request):
 
 
 # ---------------------------------------------------------------------------
+# Capacité réservoir — suggestion IA (donnée constructeur) + validation humaine
+# ---------------------------------------------------------------------------
+class ReservoirApply(BaseModel):
+    value_l: float
+
+
+@api_router.post("/vehicles/{vehicle_id}/reservoir/suggest")
+async def suggest_reservoir(vehicle_id: str, request: Request):
+    """Suggestion IA de la capacité réservoir — AUCUNE écriture, validation humaine requise."""
+    vehicle = await find_tenant_vehicle(request, vehicle_id)
+    if not (vehicle.get("marque") or vehicle.get("modele")):
+        raise HTTPException(status_code=422, detail="Marque ou modèle requis pour proposer une estimation")
+    if (vehicle.get("type_carburant") or "").lower().startswith(("électr", "electr")):
+        raise HTTPException(status_code=422, detail="Véhicule électrique — pas de réservoir de carburant")
+    try:
+        s = await extraction_provider.suggest_reservoir(vehicle)
+    except Exception as e:
+        logger.warning(f"Suggestion réservoir indisponible: {e}")
+        raise HTTPException(status_code=502, detail="Estimation indisponible pour le moment — réessayez")
+    if not s.get("value_l"):
+        raise HTTPException(status_code=422, detail="Aucune estimation fiable pour ce véhicule — saisie manuelle recommandée")
+    return {"vehicle_id": vehicle_id, "value_l": s["value_l"], "confidence": s.get("confidence"),
+            "rationale": s.get("rationale"), "source": "ESTIMATION_IA",
+            "current_value": vehicle.get("capacite_reservoir_l") or None}
+
+
+@api_router.post("/vehicles/{vehicle_id}/reservoir/apply")
+async def apply_reservoir(vehicle_id: str, payload: ReservoirApply, request: Request):
+    """Application d'une capacité VALIDÉE par l'utilisateur (provenance estimation IA tracée)."""
+    vehicle = await find_tenant_vehicle(request, vehicle_id)
+    value = round(float(payload.value_l), 1)
+    if not (10 <= value <= 500):
+        raise HTTPException(status_code=422, detail="Capacité hors plage plausible (10–500 L)")
+    old = vehicle.get("capacite_reservoir_l") or 0
+    now = datetime.now(timezone.utc).isoformat()
+    await db.vehicles.update_one({"id": vehicle_id},
+                                 {"$set": {"capacite_reservoir_l": value, "updated_at": now}})
+    await db.vehicle_field_meta.update_one(
+        {"vehicle_id": vehicle_id, "field": "capacite_reservoir_l"},
+        {"$set": {"label": "Capacité réservoir (L)", "source": "estimation_ia",
+                  "measurement_type": "reference", "tenant_id": tid(request),
+                  "validated_by": "utilisateur", "validated_at": now, "updated_at": now}},
+        upsert=True)
+    await audit("modify", "vehicle", request, vehicle_id, vehicle_id,
+                f"Capacité réservoir (L): {old if old else '—'} → {value} (source: estimation IA validée)")
+    fresh = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
+    fresh["metrics"] = compute_metrics(fresh, await th_for(request))
+    return {"ok": True, "vehicle": fresh}
+
+
+# ---------------------------------------------------------------------------
 # Enrichissement technique externe (SwissCarInfo — données officielles OFROU)
 # ---------------------------------------------------------------------------
 async def _can_locked_keys(vehicle_id: str) -> set:

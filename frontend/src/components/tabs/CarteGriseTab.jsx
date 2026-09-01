@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Pencil, Loader2, ScrollText, Calendar, Weight, Users,
-  Fuel, Gauge, Zap, Leaf, Hash, TrendingUp, Database,
+  Fuel, Gauge, Zap, Leaf, Hash, TrendingUp, Database, Sparkles,
 } from "lucide-react";
 import { updateVehicle, getFieldMeta, revertTechnicalField } from "@/lib/api";
 import { dateFr, fmtNum } from "@/lib/format";
@@ -13,6 +13,8 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@
 import DocFolderSection from "@/components/DocFolderSection";
 import DocumentScanCard from "@/components/DocumentScanCard";
 import TechnicalEnrichDialog from "@/components/TechnicalEnrichDialog";
+import ReservoirSuggestDialog from "@/components/ReservoirSuggestDialog";
+import { useAuth } from "@/context/AuthContext";
 
 const CG_FIELDS = [
   "date_mise_circulation", "poids_total", "nombre_places", "couleur",
@@ -43,10 +45,13 @@ const pick = (vehicle) => ({
 
 export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
   const c = vehicle.carte_grise || {};
+  const { user } = useAuth();
+  const readOnly = user?.role === "read_only";
   const [edit, setEdit] = useState(false);
   const [form, setForm] = useState(() => pick(vehicle));
   const [saving, setSaving] = useState(false);
   const [techOpen, setTechOpen] = useState(false);
+  const [reservoirOpen, setReservoirOpen] = useState(false);
   const [swissMeta, setSwissMeta] = useState(null);
   const [astraHistory, setAstraHistory] = useState([]);
   const scanValidatedRef = useRef(false);
@@ -333,7 +338,20 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
                 value={ecart != null ? `${ecart > 0 ? "+" : ""}${ecart.toFixed(1)} %` : "—"}
                 icon={TrendingUp}
               />
-              <Stat label="Capacité réservoir" value={cap > 0 ? `${cap} L` : "—"} />
+              <div className="relative" data-testid="reservoir-stat">
+                <Stat label="Capacité réservoir" value={cap > 0 ? `${cap} L` : "—"} />
+                {!readOnly && !(vehicle.type_carburant || "").toLowerCase().startsWith("électr") && (
+                  <button
+                    type="button"
+                    data-testid="reservoir-suggest-btn"
+                    onClick={() => setReservoirOpen(true)}
+                    title="Suggestion IA (donnée constructeur) — validation requise"
+                    className="absolute right-2 top-2 flex items-center gap-1 rounded-md border border-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 transition-colors hover:border-slate-400 hover:bg-slate-50 hover:text-slate-700"
+                  >
+                    <Sparkles className="h-3 w-3" /> Suggérer
+                  </button>
+                )}
+              </div>
               <Stat label="Batterie" value={battTxt} icon={Zap} />
               <Stat label="Autonomie (réf.)" value={autonomie > 0 ? `${fmtNum(autonomie)} km` : "—"} />
               <Stat label="Niveau carburant" value={niveauTxt} icon={Fuel} />
@@ -373,6 +391,7 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
       </SectionCard>
 
       <TechnicalEnrichDialog open={techOpen} onOpenChange={setTechOpen} vehicle={vehicle} onApplied={() => onSaved?.()} />
+      <ReservoirSuggestDialog open={reservoirOpen} onOpenChange={setReservoirOpen} vehicle={vehicle} onSaved={() => onSaved?.()} />
     </div>
   );
 }

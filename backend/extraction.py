@@ -286,6 +286,56 @@ class LlmVisionProvider(DocumentExtractionProvider):
             "fields": fields,
         }
 
+    async def suggest_reservoir(self, vehicle: dict) -> dict:
+        """Estimation IA de la capacité du réservoir carburant (donnée constructeur).
+        Retourne value_l=None si aucune estimation fiable. JAMAIS écrit sans validation humaine."""
+        if not self.api_key:
+            raise RuntimeError("Aucune clé d'extraction configurée (ANTHROPIC_API_KEY ou EMERGENT_LLM_KEY)")
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        cg = vehicle.get("carte_grise") or {}
+        desc = " · ".join(filter(None, [
+            vehicle.get("marque"), vehicle.get("modele"), vehicle.get("variante"),
+            f"{vehicle.get('cylindree_cm3')} cm³" if vehicle.get("cylindree_cm3") else None,
+            f"{vehicle.get('puissance_kw')} kW" if vehicle.get("puissance_kw") else None,
+            vehicle.get("type_carburant"),
+            f"1re mise en circulation {cg.get('date_mise_circulation')}" if cg.get("date_mise_circulation") else None,
+        ]))
+        prompt = (
+            "Quelle est la capacité du réservoir de carburant (en litres, donnée constructeur) de ce véhicule ?\n"
+            f"Véhicule : {desc}\n\n"
+            "Règles STRICTES :\n"
+            "- Réponds UNIQUEMENT en JSON strict : {\"value_l\": <nombre|null>, \"confidence\": <0..1>, \"rationale\": \"<justification courte en français>\"}\n"
+            "- value_l = capacité standard constructeur du réservoir carburant pour ce modèle/génération/motorisation.\n"
+            "- Si plusieurs variantes existent, prends la capacité standard la plus courante et dis-le dans rationale.\n"
+            "- Si tu n'es pas raisonnablement sûr, ou si le véhicule est 100% électrique : value_l = null.\n"
+            "- N'invente JAMAIS une valeur farfelue ; plage plausible 20–200 L pour un véhicule routier."
+        )
+        chat = LlmChat(
+            api_key=self.api_key,
+            session_id=f"reservoir-{uuid.uuid4()}",
+            system_message="Tu es un expert des fiches techniques constructeur automobile. Tu réponds uniquement en JSON strict.",
+        ).with_model(self.llm_provider, self.model)
+        resp = await chat.send_message(UserMessage(text=prompt))
+        text = resp if isinstance(resp, str) else getattr(resp, "text", str(resp))
+        text = text.strip()
+        if "{" in text and "}" in text:
+            text = text[text.find("{"): text.rfind("}") + 1]
+        parsed = json.loads(text)
+        value = parsed.get("value_l")
+        try:
+            value = round(float(value), 1) if value is not None else None
+        except (TypeError, ValueError):
+            value = None
+        if value is not None and not (10 <= value <= 500):
+            value = None
+        conf = parsed.get("confidence")
+        try:
+            conf = max(0.0, min(1.0, float(conf)))
+        except (TypeError, ValueError):
+            conf = None
+        return {"value_l": value, "confidence": conf,
+                "rationale": (parsed.get("rationale") or "").strip() or None}
+
 
 def check_image_quality(data: bytes) -> dict:
     """Contrôle qualité non-LLM (résolution + netteté). level: ok | warning | blocked.

@@ -474,7 +474,14 @@ Bug d'origine (prod) : document « Analysé » mais fiche véhicule vide. Cause 
 - [x] Pull `28d9749` → `635f741` (17 fichiers), backup Mongo préalable 27 Mo (`logitrak_fleet-20260901-140708.archive.gz`), Dockerfile COPY vérifié avec storage.py, rebuild backend+web, logs propres (`Storage initialized`, startup complete), probes 401/401/401(extraction)/200.
 - [ ] Validation visuelle production par l'utilisateur (VD 594 862 → Carte grise → review → confirmer → F5) : en attente.
 - Production = OCR complet (review ré-ouvrable, bouton Analyser, garde VIN, 4 groupes carte grise) + read_only sans boutons + Véhicule/Synchroniser.
-- Lot suivant approuvé (pas encore codé) : échéance contrôle dérivée `controle_technique.date_dernier + intervalle` (défaut 24 mois, configurable tenant), `source: derived`, provenance CARTE_GRISE, à la volée sans écriture, effacée dès vraie date. Question posée à l'utilisateur : intervalle 24 mois OK ?
+- Lot suivant approuvé (pas encore codé) : échéance contrôle dérivée `controle_technique.date_dernier + intervalle` (défaut 24 mois, configurable tenant), `source: derived`, provenance CARTE_GRISE, à la volée sans écriture, effacée dès vraie date. Question posée à l'utilisateur : intervalle 24 mois OK ? (toujours en attente de réponse)
+
+## Implemented — Capacité réservoir : suggestion IA + validation humaine (2026-09-01, preview)
+- [x] `extraction.py` : `suggest_reservoir()` (LLM texte, JSON strict, null si incertain/électrique, plage 10–500 L).
+- [x] `server.py` : POST /vehicles/{id}/reservoir/suggest (aucune écriture, 422 sans marque/modèle ou si électrique) + POST /vehicles/{id}/reservoir/apply (bornes 10–500, écrit capacite_reservoir_l + vehicle_field_meta source=estimation_ia + audit_logs). read_only 403 (guard global POST), cross-tenant 404.
+- [x] Frontend : `ReservoirSuggestDialog.jsx` + bouton « Suggérer » sur la tuile Capacité réservoir (CarteGriseTab, masqué read_only/électrique). Remplit aussi Autonomie (réf.) et litres restants du niveau carburant.
+- [x] Tests : 7/7 PASS (RBAC, cross-tenant, bornes, écriture+provenance+audit, suggestion LLM réelle VW Polo→45 L plausible, 422 sans marque) + régression ciblée 32 PASS + UI e2e screenshot (45 L, confiance 85 %, appliqué).
+- NON déployé en production (preview seulement) — à embarquer avec le prochain lot. Aucun nouveau fichier backend (Dockerfile inchangé).
 - Notes : ~~sync auto quotidienne = tenant `default` uniquement~~ **CORRECTION (2026-08-31)** : le `daily_job` synchronise DÉJÀ tous les tenants à intégration Navixy `enabled:true` (commit `2f8c434` du 25/08, en production) — hygie-soins inclus. Seule lacune restante (backlog mineur) : le job n'exclut pas les tenants suspendus (disabled). Backlog inchangé : masquage read_only complet, rappels e-mail réels, budgets par véhicule.
 
 ## Implemented — Conformité lint plateforme : refactor stockage + vendor OpenCV (2026-08-31, fork)
