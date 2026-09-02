@@ -1,0 +1,29 @@
+{
+  "summary": "Frontend-only validation of the redesigned Dashboard UX (route /). Verified 6-KPI hierarchy (4 priority + 2 secondary) + 'Prochaines actions' block, removal of the 7 legacy KPI cards, value parity Dashboard == /timeline == /couts == API (GET /api/dashboard, /api/deadlines, /api/costs), KPI navigation targets, next-actions table (columns/sort/8 rows/row click drawer/see-all button) and responsive behaviour at 1920x800, 1366x768, 768x1024, 390x844. No backend or frontend code was modified.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard 1366x768 (laptop)", "issues": ["kpi-conformes and kpi-cout-annuel are offset by 2px vertically (top 425 vs 423) — cosmetic baseline misalignment of the two secondary cards, likely due to differing inner content heights"]},
+      {"screen": "Dashboard next-actions table on tablet/mobile", "issues": ["StatusBadge text ('Échu depuis 481 j') wraps/clips inside the last column at <=768px; the table scrolls horizontally as intended, but a whitespace-nowrap on the badge would look cleaner"]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Dashboard.jsx uses three parallel queries (dashboard, deadlines, costs) but only the dashboard query surfaces isError/QueryErrorState; if /api/deadlines or /api/costs fails, the KPIs silently render '—' with no error feedback (cost card has a fallback text, deadlines KPIs do not).",
+    "kpi-docs-manquants reads kpi.documents_missing while kpi-docs-a-verifier reads kpi.docs_a_verifier ?? 0 — inconsistent null handling (the first shows '—' only when the whole payload is missing). Harmless today, but worth normalising."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (3 GET endpoints verified, unchanged)", "frontend": "100% (all 7 requested checks passed)"},
+  "seed_data_creation": "None — no create/update/delete performed on tenant default (read-only testing as requested).",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "admin@logitrak.ch / 3a9218d1606b52e003383e52d7aea3d6 (from /app/memory/test_credentials.md) — login OK",
+  "context_for_next_testing_agent": "Preview data at test time: /api/dashboard -> total_vehicles=13, documents_missing=13, docs_a_verifier=13, vehicles_conformes=0, docs_expires=16; /api/deadlines summary.expired=17, urgent=1, warning=2, total=130; /api/costs totals.annuel=147144, mensuel=12262, postes_actifs=23, year=2026. Dashboard UI matched all of these exactly. All legacy KPI testids (kpi-leasing-expired, kpi-leasing-soon, kpi-assurance-renew, kpi-controle-upcoming, kpi-cout-leasing, kpi-cout-assurance, kpi-docs-expire-90) return count=0. Note: /couts renders CHF with narrow no-break spaces ('147 144 CHF'), so plain string matching on '147144' fails — normalise whitespace when asserting. /integrite was not exercised beyond navigation (Navixy live reads, slow by design).",
+  "rca_of_the_issue": "N/A — no functional defect found. Detailed results: (1) Dashboard shows exactly 4 priority KPIs on one row at 1920 (kpi-expired=17, kpi-urgent=1 with label 'À traiter ≤ 30 jours' from deadline_thresholds.urgent_days, kpi-docs-manquants=13, kpi-docs-a-verifier=13), then 2 secondary cards (kpi-conformes '0/13 · 0 %' with mini donut, kpi-cout-annuel '147 144 CHF · 23 poste(s) actif(s) · 2026'), then next-actions. (2) Parity: dashboard 17/1 == deadlines-kpi-expired 17 / deadlines-kpi-urgent 1 == API summary; 147 144 CHF == costs-kpi-annuel on /couts == API totals.annuel. (3) next-actions-table columns exactly Véhicule/Élément-document/Catégorie/Échéance/Jours restants/Statut, 8 rows, all EXPIRE first in chronological order (-481, -107, -95, -94, -83, -71, -70, -70 days); clicking next-action-row-0 opened the vehicle drawer on the 'Contrôles' tab for VD 594 862; see-all-deadlines-btn navigated to /timeline. (4) KPI navigation all correct: /timeline?statut=EXPIRE, /timeline?statut=URGENT, /documents, /documents?statut=A_VERIFIER, /couts (kpi-conformes -> /integrite present, target page is the slow Navixy page by design). (5) No horizontal overflow at any of the 4 breakpoints (scrollWidth == innerWidth); priority order preserved (urgency KPIs -> conformity/cost -> next actions) at every width; 4-across at 1920 and 1366, 2x2 at 768, 1-per-row at 390. (6) Zero console errors during the flows (only a recharts width/height warning on the login screen before the donut container is measured)."
+}
