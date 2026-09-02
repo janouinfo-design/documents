@@ -7,6 +7,7 @@ import { Stat, SectionCard, FormRow } from "@/components/Field";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/context/AuthContext";
 import { Label } from "@/components/ui/label";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import AlertChips from "@/components/AlertChips";
@@ -19,6 +20,8 @@ const pick = (a = {}) => Object.fromEntries(F.map((k) => [k, a[k] ?? (k === "ass
 const COVERAGES = ["RC", "Casco partielle", "Casco complète", "RC + Casco complète"];
 
 export default function AssuranceTab({ vehicle, metrics, onSaved, docs, refetchDocs }) {
+  const { user } = useAuth();
+  const readOnly = user?.role === "read_only";
   const a = vehicle.assurance || {};
   const am = metrics.assurance || {};
   const [edit, setEdit] = useState(false);
@@ -89,7 +92,7 @@ export default function AssuranceTab({ vehicle, metrics, onSaved, docs, refetchD
           title="Police d'assurance"
           description={a.compagnie || "Aucune compagnie renseignée"}
           testId="assurance-view"
-          action={<Button variant="outline" size="sm" onClick={() => { setForm(pick(a)); setEdit(true); }} data-testid="assurance-edit-btn" className="gap-1.5"><Pencil className="h-3.5 w-3.5" /> Modifier</Button>}
+          action={!readOnly && (<Button variant="outline" size="sm" onClick={() => { setForm(pick(a)); setEdit(true); }} data-testid="assurance-edit-btn" className="gap-1.5"><Pencil className="h-3.5 w-3.5" /> Modifier</Button>)}
         >
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <Stat label="Compagnie" value={a.compagnie} icon={Building2} />

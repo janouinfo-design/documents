@@ -1,10 +1,13 @@
 import { useState } from "react";
 import {
   FileText, Image as ImageIcon, FileSpreadsheet, FileArchive, File,
-  Eye, Download, Trash2, Sparkles, Loader2, RefreshCw,
+  Eye, Download, Trash2, Sparkles, Loader2, RefreshCw, ImagePlus,
 } from "lucide-react";
 import { toast } from "sonner";
-import { uploadDocument, deleteDocument, fileUrl, scanVehicleDocument } from "@/lib/api";
+import { uploadDocument, deleteDocument, fileUrl, scanVehicleDocument, setVehiclePhotoFromDocument } from "@/lib/api";
+import { notifyNavixyPhoto } from "@/lib/navixyFeedback";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { fileSize } from "@/components/Field";
 import { dateFr } from "@/lib/format";
 import DropZone from "@/components/DropZone";
@@ -35,6 +38,8 @@ const FOLDER_DOC_TYPE = {
 const isScannable = (d) =>
   /^image\/(jpeg|png|webp)$/.test(d.content_type || "") || d.content_type === "application/pdf";
 
+const isVehiclePhotoCandidate = (d) => /^image\/(jpeg|png|webp)$/.test(d.content_type || "");
+
 export default function DocFolderSection({ vehicleId, folder, docs = [], onChange, compact = false }) {
   const { user } = useAuth();
   const readOnly = user?.role === "read_only";
@@ -42,7 +47,24 @@ export default function DocFolderSection({ vehicleId, folder, docs = [], onChang
   const [preview, setPreview] = useState(null);
   const [analyzingId, setAnalyzingId] = useState(null);
   const [reviewDocId, setReviewDocId] = useState(null);
+  const [confirmPhotoDoc, setConfirmPhotoDoc] = useState(null);
   const items = docs.filter((d) => d.folder === folder);
+
+  const setAsVehiclePhoto = async (d, replace = false) => {
+    try {
+      const r = await setVehiclePhotoFromDocument(vehicleId, d.id, replace);
+      toast.success(`Photo du véhicule définie depuis « ${d.original_filename} »`);
+      notifyNavixyPhoto(r.navixy_photo, vehicleId);
+      setConfirmPhotoDoc(null);
+      onChange?.();
+    } catch (e) {
+      if (e?.response?.status === 409) {
+        setConfirmPhotoDoc(d); // Une photo existe déjà : jamais de remplacement silencieux
+      } else {
+        toast.error(e?.response?.data?.detail || "Impossible de définir la photo");
+      }
+    }
+  };
 
   const handleFiles = async (files) => {
     setBusy(true);
@@ -170,6 +192,17 @@ export default function DocFolderSection({ vehicleId, folder, docs = [], onChang
                   <button onClick={() => setPreview(d)} data-testid={`doc-preview-${d.id}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Aperçu">
                     <Eye className="h-4 w-4" />
                   </button>
+                  {!readOnly && isVehiclePhotoCandidate(d) && (
+                    <button
+                      onClick={() => setAsVehiclePhoto(d)}
+                      data-testid={`doc-set-photo-${d.id}`}
+                      title="Définir comme photo du véhicule"
+                      className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      aria-label="Définir comme photo du véhicule"
+                    >
+                      <ImagePlus className="h-4 w-4" />
+                    </button>
+                  )}
                   {/* URL résolue au clic : jeton fichier toujours frais (rafraîchi toutes les 8 min) */}
                   <button
                     onClick={() => window.open(fileUrl(d.storage_path, { download: true, filename: d.original_filename }), "_blank", "noopener")}
@@ -195,6 +228,23 @@ export default function DocFolderSection({ vehicleId, folder, docs = [], onChang
         onOpenChange={(o) => !o && setPreview(null)}
         file={preview ? { ...preview, path: preview.storage_path } : null}
       />
+      <Dialog open={!!confirmPhotoDoc} onOpenChange={(o) => !o && setConfirmPhotoDoc(null)}>
+        <DialogContent data-testid="doc-photo-replace-dialog" className="w-[calc(100vw-1rem)] max-w-md rounded-xl sm:w-full">
+          <DialogHeader>
+            <DialogTitle className="font-display text-lg">Une photo principale existe déjà</DialogTitle>
+            <DialogDescription>
+              Voulez-vous la remplacer par « {confirmPhotoDoc?.original_filename} » ?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+            <Button variant="outline" data-testid="doc-photo-replace-cancel" onClick={() => setConfirmPhotoDoc(null)}>Annuler</Button>
+            <Button data-testid="doc-photo-replace-confirm" onClick={() => setAsVehiclePhoto(confirmPhotoDoc, true)}
+                    className="bg-slate-900 hover:bg-slate-800">
+              Remplacer la photo
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <ExtractionReviewDialog
         docId={reviewDocId}
         open={!!reviewDocId}

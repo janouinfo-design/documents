@@ -3,12 +3,15 @@ import { Camera, FolderUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionCard } from "@/components/Field";
 import ScanDocumentDialog, { DOC_TYPE_OPTIONS } from "@/components/ScanDocumentDialog";
+import { useAuth } from "@/context/AuthContext";
 
 export default function DocumentScanCard({ vehicle, docType, title, description, onValidated, testIdPrefix = "scan-card" }) {
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState("import");
   const label = DOC_TYPE_OPTIONS.find((t) => t.key === docType)?.label;
   const openWith = (m) => { setMode(m); setOpen(true); };
+  if (user?.role === "read_only") return null;
 
   return (
     <SectionCard

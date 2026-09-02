@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import DropZone from "@/components/DropZone";
 import FilePreview from "@/components/FilePreview";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/context/AuthContext";
 
 const ANGLES = [
   { key: "avant_gauche", label: "Avant gauche" },
@@ -139,6 +140,8 @@ function Compare({ inspections }) {
 }
 
 export default function InspectionTab({ vehicle }) {
+  const { user } = useAuth();
+  const readOnly = user?.role === "read_only";
   const [addOpen, setAddOpen] = useState(false);
   const [preview, setPreview] = useState(null);
   const { data: inspections = [], refetch } = useQuery({ queryKey: ["inspections", vehicle.id], queryFn: () => getInspections(vehicle.id) });
@@ -156,7 +159,9 @@ export default function InspectionTab({ vehicle }) {
           <h4 className="font-display text-base font-semibold tracking-tight text-slate-900">État des lieux</h4>
           <p className="text-xs text-slate-500">Historique annuel · {inspections.length} entrée(s)</p>
         </div>
-        <Button data-testid="add-inspection-btn" onClick={() => setAddOpen(true)} className="gap-1.5 bg-slate-900 hover:bg-slate-800"><Plus className="h-4 w-4" /> Nouvel état</Button>
+        {!readOnly && (
+          <Button data-testid="add-inspection-btn" onClick={() => setAddOpen(true)} className="gap-1.5 bg-slate-900 hover:bg-slate-800"><Plus className="h-4 w-4" /> Nouvel état</Button>
+        )}
       </div>
 
       {inspections.length >= 2 && <Compare inspections={inspections} />}
@@ -177,7 +182,9 @@ export default function InspectionTab({ vehicle }) {
                   <span className="flex items-center gap-1.5 text-slate-600"><User className="h-4 w-4 text-slate-400" /> {ins.responsable || "—"}</span>
                   <span className="flex items-center gap-1.5 text-slate-600"><Gauge className="h-4 w-4 text-slate-400" /> {fmtKm(ins.kilometrage)}</span>
                 </div>
-                <button onClick={() => handleDelete(ins.id)} data-testid={`inspection-delete-${ins.id}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label="Supprimer"><Trash2 className="h-4 w-4" /></button>
+                {!readOnly && (
+                  <button onClick={() => handleDelete(ins.id)} data-testid={`inspection-delete-${ins.id}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label="Supprimer"><Trash2 className="h-4 w-4" /></button>
+                )}
               </div>
               {ins.commentaire && <p className="mb-3 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{ins.commentaire}</p>}
               {ins.photos?.length > 0 && (

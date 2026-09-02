@@ -6,6 +6,7 @@ import { dateFr } from "@/lib/format";
 import { Stat, SectionCard, FormRow } from "@/components/Field";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/context/AuthContext";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import AlertChips from "@/components/AlertChips";
 import StatusBadge from "@/components/StatusBadge";
@@ -17,6 +18,8 @@ const pick = (c = {}) => Object.fromEntries(F.map((k) => [k, c[k] ?? ""]));
 const RESULTS = ["Conforme", "Conforme avec remarques", "Non conforme"];
 
 export default function ControleTab({ vehicle, metrics, onSaved, docs, refetchDocs }) {
+  const { user } = useAuth();
+  const readOnly = user?.role === "read_only";
   const c = vehicle.controle_technique || {};
   const cm = metrics.controle || {};
   const [edit, setEdit] = useState(false);
@@ -78,7 +81,7 @@ export default function ControleTab({ vehicle, metrics, onSaved, docs, refetchDo
           title="Contrôle technique"
           description={c.centre || "Aucun centre renseigné"}
           testId="controle-view"
-          action={<Button variant="outline" size="sm" onClick={() => { setForm(pick(c)); setEdit(true); }} data-testid="ctrl-edit-btn" className="gap-1.5"><Pencil className="h-3.5 w-3.5" /> Modifier</Button>}
+          action={!readOnly && (<Button variant="outline" size="sm" onClick={() => { setForm(pick(c)); setEdit(true); }} data-testid="ctrl-edit-btn" className="gap-1.5"><Pencil className="h-3.5 w-3.5" /> Modifier</Button>)}
         >
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <Stat label="Dernier contrôle" value={dateFr(c.date_dernier)} icon={Calendar} />

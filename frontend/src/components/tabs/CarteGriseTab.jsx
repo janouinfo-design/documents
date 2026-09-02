@@ -263,11 +263,11 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
             title="Carte grise"
             description="Données lues sur le permis de circulation — valeurs canoniques validées uniquement"
             testId="carte-grise-view"
-            action={
+            action={!readOnly && (
               <Button variant="outline" size="sm" onClick={() => { setForm(pick(vehicle)); setEdit(true); }} data-testid="cg-edit-btn" className="gap-1.5">
                 <Pencil className="h-3.5 w-3.5" /> Modifier
               </Button>
-            }
+            )}
           >
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3" data-testid="cg-group-identification">
               <Stat label="Plaque" value={vehicle.plaque} icon={ScrollText} />

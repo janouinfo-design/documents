@@ -1,0 +1,36 @@
+{
+  "summary": "Frontend-only E2E test (Playwright, public preview URL) of the delivered phase: Vehicles list revamp, real sync state, canonical vehicle photo (upload/preview/replace, choose from Documents, Navixy badge), read-only restrictions, Documents set-as-photo button, and responsive (1366x768 / 390x844). 8/8 requested scenarios passed. Zero console errors on every page tested. 3 minor issues found (read-only write-control leak on 'Carte grise' tab, mobile page-level horizontal overflow, duplicate data-testid on two vehicle rows) + 1 cosmetic (drawer subtitle shows '· 0' when year is empty).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "VehicleDrawer / Carte grise tab (read_only)", "issue": "Read-only user (ro-e2e@client-test.ch) still sees write controls on the 'Carte grise' tab: 'Prendre une photo', 'Importer un fichier' (Scan intelligent) and 'Modifier'. Photo menu, dropzones, doc delete and doc-set-photo are correctly hidden, so this tab is inconsistent (backend returns 403 but user gets a dead-end).", "selector": "button:has-text('Prendre une photo'), button:has-text('Importer un fichier'), button:has-text('Modifier')", "priority": "MEDIUM"},
+      {"component": "Vehicles.jsx row testid", "issue": "Two distinct vehicles ('VD 594 862' and 'VD594862') collapse to the same data-testid vehicle-row-VD594862 / open-vehicle-VD594862 (plate whitespace stripped). Ambiguous selectors for automation; use vehicle id in testid.", "selector": "[data-testid='vehicle-row-VD594862']", "priority": "LOW"},
+      {"component": "VehicleDrawer header subtitle (line 136)", "issue": "Renders `{marque} {modele} · {annee}` unconditionally → displays 'Skoda Enyaq · 0' when annee is 0/absent (Général tab shows '—' for the same field).", "selector": "[data-testid='vehicle-drawer']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/vehicules @ 390x844", "issues": ["Page-level horizontal overflow: document.scrollWidth = 809px vs viewport 390px. The toolbar row (search + Véhicule + Consommation + Base technique + Exporter + Synchroniser) uses flex without wrap, so the whole page scrolls sideways (not only the table). Table internal scroll is fine; header/nav are cut off."]},
+      {"screen": "/vehicules @ 1366x768", "issues": ["No overflow, table readable, thumbnails and sync caption correct — OK."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Hide (or disable) 'Prendre une photo' / 'Importer un fichier' / 'Modifier' on the vehicle Carte grise tab (and audit other tabs: Leasing/Assurance/Contrôles) for role read_only.",
+    "Fix mobile (<=430px) layout of /vehicules toolbar: add flex-wrap / stack so the page no longer scrolls horizontally (scrollWidth 809 vs 390).",
+    "Make vehicle row data-testid unique (use v.id) — 'VD 594 862' and 'VD594862' currently collide.",
+    "Drawer subtitle: only render '· année' when vehicle.annee is truthy."
+  ],
+  "critical_code_review_comments": [
+    "Vehicles.jsx: unused import `Loader2` (dead import).",
+    "SyncButton: dot/caption logic correctly avoids a green dot on unknown state (verified: emerald dot + 'Dernière sync : 02.09 13:25' after a real sync). Good.",
+    "VehiclePhotoMenu: replacement is never silent (409/preview dialog path) — verified; delete dialog correctly warns that the Navixy avatar is unchanged (not executed to avoid destroying real data)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (per request)", "frontend": "100% of requested scenarios passed (8/8); 3 minor + 1 cosmetic side findings"},
+  "seed_data_creation": "Uploaded a 64x64 blue test PNG as main photo of BE 579928 only (authorised test vehicle). No photo deleted, no other vehicle touched. Real Navixy sync triggered once (13:25) and 'Importer la photo Navixy' NOT clicked.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "admin@logitrak.ch / 3a9218d1606b52e003383e52d7aea3d6 ; ro-e2e@client-test.ch / RoTest-2026y",
+  "context_for_next_testing_agent": "Verified in detail: (1) /vehicules headers exactly ['Véhicule','Affectation / km','Leasing','Assurance','Contrôle',''] — no RESPONSABLE; (2) BE 579928 thumbnail is a real loaded image (naturalWidth 320 from thumb_ path), 11/13 rows have images, 2 rows show the visible Truck fallback; (3) placeholder 'Rechercher un véhicule, une plaque...', search 'BE 579' → 1 row, 'Skoda' → 2 Skoda rows; (4) sync-status-dot = bg-emerald-500, caption 'Dernière sync : 02.09 13:17' → click → button 'Synchronisation…' + caption 'Synchronisation en cours…' → caption updated to 13:25 (success toast confirmed in the photo flow run; in the sync run the 20s wait outlasted the toast — poll toasts every 1s); (5) drawer BE 579928: header-photo-img (640x400) + badge 'Photo synchronisée Navixy' + menu with exactly the 4 expected items; (6) photo replace flow: preview dialog with 'Une photo principale existe déjà. Voulez-vous la remplacer ?', Annuler leaves src unchanged, 'Remplacer la photo' → toasts 'Photo principale remplacée' + 'Photo synchronisée avec la fiche Navixy', src changed, badge still synced; (7) photo-doc-picker lists 4 images with loaded thumbnails (empty-state string not reachable for these vehicles since all have images — code path reviewed only); (8) Documents tab: images have doc-set-photo-{id}, 20 PDFs of vehicle 1-Enyaq 01 Bern have none; (9) read-only: no add-vehicle-btn, no sync-btn/caption, no vehicle-photo-menu-btn, no doc-set-photo/doc-delete/dropzone/'Ajouter un document'. Tip: when clicking accordion folders inside the drawer, scope the locator to [data-testid='vehicle-drawer'] — a bare text=Assurance matches the table header behind the sheet.",
+  "rca_of_the_issue": "Read-only leak: DocFolderSection/VehiclePhotoMenu gate on user.role === 'read_only', but the Carte grise tab's scan (Prendre une photo / Importer un fichier) and 'Modifier' buttons have no such guard. Mobile overflow: the /vehicules action toolbar is a non-wrapping flex row (~800px of fixed-width buttons) inside a page container without overflow handling, so the document — not just the table — becomes horizontally scrollable at 390px."
+}

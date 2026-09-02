@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/context/AuthContext";
 import { Label } from "@/components/ui/label";
 import AlertChips from "@/components/AlertChips";
 import StatusBadge from "@/components/StatusBadge";
@@ -18,6 +19,8 @@ const F = ["societe", "numero_contrat", "date_debut", "date_fin", "mensualite_ch
 const pick = (l = {}) => Object.fromEntries(F.map((k) => [k, l[k] ?? (k === "option_achat" ? false : "")]));
 
 export default function LeasingTab({ vehicle, metrics, onSaved, docs, refetchDocs }) {
+  const { user } = useAuth();
+  const readOnly = user?.role === "read_only";
   const l = vehicle.leasing || {};
   const lm = metrics.leasing || {};
   const [edit, setEdit] = useState(false);
@@ -114,7 +117,7 @@ export default function LeasingTab({ vehicle, metrics, onSaved, docs, refetchDoc
           title="Contrat de leasing"
           description={l.societe || "Aucune société renseignée"}
           testId="leasing-view"
-          action={<Button variant="outline" size="sm" onClick={() => { setForm(pick(l)); setEdit(true); }} data-testid="leasing-edit-btn" className="gap-1.5"><Pencil className="h-3.5 w-3.5" /> Modifier</Button>}
+          action={!readOnly && (<Button variant="outline" size="sm" onClick={() => { setForm(pick(l)); setEdit(true); }} data-testid="leasing-edit-btn" className="gap-1.5"><Pencil className="h-3.5 w-3.5" /> Modifier</Button>)}
         >
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <Stat label="Société" value={l.societe} icon={Building2} />

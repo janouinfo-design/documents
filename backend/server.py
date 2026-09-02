@@ -10,6 +10,7 @@ import base64
 import json
 import asyncio
 import calendar
+import io
 import requests
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -1132,6 +1133,259 @@ async def serve_file(path: str, request: Request, download: bool = False, filena
 
 
 # ---------------------------------------------------------------------------
+# Photo principale du véhicule — SOURCE CANONIQUE UNIQUE (vehicle.photo_url + vehicle.photo).
+# Sync Navixy : capacité VÉRIFIÉE (doc officielle) — POST /vehicle/avatar/upload (multipart,
+# MIME jpeg/png/webp), lecture via avatar_file_name + /static/vehicle/avatars/<name>.
+# Pas d'endpoint de suppression côté Navixy : la suppression locale ne touche jamais Navixy.
+# ---------------------------------------------------------------------------
+PHOTO_EXTS = {"jpg", "jpeg", "png", "webp"}
+PHOTO_MAX_BYTES = 10 * 1024 * 1024
+_PHOTO_MIME = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
+
+
+def _photo_thumb_bytes(data: bytes) -> bytes:
+    from PIL import Image
+    img = Image.open(io.BytesIO(data)).convert("RGB")
+    img.thumbnail((320, 320))
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=80)
+    return buf.getvalue()
+
+
+def _validate_photo(filename: str, data: bytes) -> str:
+    ext = _ext_of(filename)
+    if ext not in PHOTO_EXTS:
+        raise HTTPException(status_code=422, detail="Format non supporté — JPEG, PNG ou WEBP uniquement")
+    if not data:
+        raise HTTPException(status_code=422, detail="Fichier vide")
+    if len(data) > PHOTO_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Image trop lourde (maximum 10 Mo)")
+    from PIL import Image
+    try:
+        Image.open(io.BytesIO(data)).verify()  # contenu réel vérifié, pas seulement l'extension
+    except Exception:
+        raise HTTPException(status_code=422, detail="Fichier illisible — ce n'est pas une image valide")
+    return ext
+
+
+async def _store_photo_file(vehicle: dict, data: bytes, content_type: str, path: str, label: str):
+    put_object(path, data, content_type)
+    await db.files.insert_one({
+        "id": str(uuid.uuid4()), "storage_path": path, "original_filename": label,
+        "content_type": content_type, "size": len(data), "vehicle_id": vehicle["id"],
+        "tenant_id": vehicle["tenant_id"], "is_deleted": False,
+        "created_at": datetime.now(timezone.utc).isoformat()})
+
+
+async def _apply_vehicle_photo(vehicle: dict, data: bytes, content_type: str, origin: str,
+                               request: Request, storage_path: str = None,
+                               source_document_id: str = None) -> dict:
+    """Enregistre la photo canonique + miniature. Réutilise le fichier existant si storage_path fourni."""
+    vid = vehicle["id"]
+    if storage_path is None:
+        ext = {v: k for k, v in _PHOTO_MIME.items()}.get(content_type, "jpg")
+        storage_path = f"{APP_NAME}/media/{vid}/photo_{uuid.uuid4()}.{ext}"
+        await _store_photo_file(vehicle, data, content_type, storage_path,
+                                f"photo_{(vehicle.get('plaque') or vid).replace(' ', '_')}.{ext}")
+    thumb_path = None
+    try:
+        thumb = _photo_thumb_bytes(data)
+        thumb_path = f"{APP_NAME}/media/{vid}/thumb_{uuid.uuid4()}.jpg"
+        await _store_photo_file(vehicle, thumb, "image/jpeg", thumb_path, "thumb.jpg")
+    except Exception as e:
+        logger.warning(f"Miniature non générée: {e}")
+    now = datetime.now(timezone.utc).isoformat()
+    user = getattr(request.state, "user", None) or {}
+    photo = {"storage_path": storage_path, "thumb_path": thumb_path,
+             "content_type": content_type, "size": len(data), "set_at": now,
+             "set_by": user.get("email") or "", "origin": origin,
+             "source_document_id": source_document_id}
+    await db.vehicles.update_one(
+        {"id": vid, "tenant_id": vehicle["tenant_id"]},
+        {"$set": {"photo_url": f"/api/files/{storage_path}", "photo": photo, "updated_at": now}})
+    return photo
+
+
+async def push_photo_to_navixy(vehicle: dict, request=None) -> dict:
+    """Avatar Navixy — best effort : un échec ne perd JAMAIS la photo locale. Jamais de faux succès."""
+    tenant_id = vehicle.get("tenant_id") or "default"
+    now = datetime.now(timezone.utc).isoformat()
+    photo = vehicle.get("photo") or {}
+
+    async def _persist(status: str, extra: dict = None):
+        prev = ((vehicle.get("integrations") or {}).get("navixy") or {}).get("photo_sync") or {}
+        sync = {"status": status, "at": now, "attempts": int(prev.get("attempts") or 0) + 1}
+        sync.update(extra or {})
+        await db.vehicles.update_one({"id": vehicle["id"], "tenant_id": tenant_id},
+                                     {"$set": {"integrations.navixy.photo_sync": sync}})
+        out = {"status": status}
+        if extra and extra.get("error"):
+            out["message"] = extra["error"]
+        if extra and extra.get("avatar_file_name"):
+            out["avatar_file_name"] = extra["avatar_file_name"]
+        return out
+
+    if not photo.get("storage_path"):
+        return {"status": "no_photo"}
+    integ = await get_navixy_integration(tenant_id)
+    if not integ:
+        return await _persist("integration_absente")
+    if not integ.get("write_enabled", NAVIXY_WRITE_ENABLED):
+        return await _persist("disabled")
+    nvid = vehicle.get("navixy_vehicle_id")
+    if not nvid:
+        return await _persist("not_linked")
+    try:
+        data, _ct = get_object(photo["storage_path"])
+    except Exception:
+        return await _persist("failed", {"error": "fichier photo introuvable dans le stockage"})
+    try:
+        resp = requests.post(
+            f"{(integ.get('base_url') or NAVIXY_BASE_URL)}/vehicle/avatar/upload",
+            data={"hash": integ["api_hash"], "vehicle_id": str(nvid)},
+            files={"file": ("photo.jpg", data, photo.get("content_type") or "image/jpeg")},
+            timeout=45)
+    except requests.RequestException:
+        return await _persist("failed", {"error": "erreur réseau vers le service télématique"})
+    try:
+        j = resp.json()
+    except ValueError:
+        return await _persist("failed", {"error": f"réponse invalide du service (HTTP {resp.status_code})"})
+    if not j.get("success"):
+        code = (j.get("status") or {}).get("code")
+        return await _persist("failed", {"error": f"refus du service télématique (code {code})"})
+    avatar = j.get("value") or ""
+    await audit("navixy_photo_push", "vehicle", request, vehicle["id"], vehicle["id"],
+                f"Photo du véhicule synchronisée vers la fiche télématique (avatar {avatar or 'mis à jour'})",
+                tenant_id=tenant_id)
+    return await _persist("synced", {"avatar_file_name": avatar})
+
+
+class PhotoFromDocument(BaseModel):
+    document_id: str
+    replace: bool = False
+
+
+class PhotoNavixyImport(BaseModel):
+    replace: bool = False
+
+
+@api_router.post("/vehicles/{vehicle_id}/photo")
+async def set_vehicle_photo(vehicle_id: str, request: Request,
+                            file: UploadFile = File(...), replace: str = Form("false")):
+    vehicle = await find_tenant_vehicle(request, vehicle_id)
+    data = await file.read()
+    ext = _validate_photo(file.filename, data)
+    had_photo = bool(vehicle.get("photo_url"))
+    if had_photo and replace.lower() != "true":
+        raise HTTPException(status_code=409,
+                            detail="Une photo principale existe déjà — confirmez le remplacement")
+    photo = await _apply_vehicle_photo(vehicle, data, _PHOTO_MIME[ext], "upload", request)
+    await audit("modify", "vehicle", request, vehicle_id, vehicle_id,
+                f"Photo principale {'remplacée' if had_photo else 'définie'} (import fichier)")
+    fresh = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
+    navixy_photo = await push_photo_to_navixy(fresh, request)
+    return {"ok": True, "photo_url": f"/api/files/{photo['storage_path']}", "photo": photo,
+            "navixy_photo": navixy_photo}
+
+
+@api_router.post("/vehicles/{vehicle_id}/photo/from-document")
+async def set_vehicle_photo_from_document(vehicle_id: str, payload: PhotoFromDocument, request: Request):
+    """Action MANUELLE : une image de Documents devient la photo du véhicule (fichier réutilisé, pas de copie)."""
+    vehicle = await find_tenant_vehicle(request, vehicle_id)
+    doc = await db.documents.find_one({"id": payload.document_id, "tenant_id": tid(request),
+                                       "is_deleted": {"$ne": True}}, {"_id": 0})
+    if not doc or doc.get("vehicle_id") != vehicle_id:
+        raise HTTPException(status_code=404, detail="Document introuvable pour ce véhicule")
+    if (doc.get("content_type") or "") not in ("image/jpeg", "image/png", "image/webp"):
+        raise HTTPException(status_code=422, detail="Ce document n'est pas une image (JPEG, PNG, WEBP)")
+    had_photo = bool(vehicle.get("photo_url"))
+    if had_photo and not payload.replace:
+        raise HTTPException(status_code=409,
+                            detail="Une photo principale existe déjà — confirmez le remplacement")
+    try:
+        data, _ct = get_object(doc["storage_path"])
+    except Exception:
+        raise HTTPException(status_code=404, detail="Fichier du document introuvable dans le stockage")
+    _validate_photo(doc["storage_path"], data)
+    photo = await _apply_vehicle_photo(vehicle, data, doc["content_type"], "document", request,
+                                       storage_path=doc["storage_path"],
+                                       source_document_id=doc["id"])
+    await audit("modify", "vehicle", request, vehicle_id, vehicle_id,
+                f"Photo principale définie depuis le document « {doc.get('original_filename')} » (action manuelle)")
+    fresh = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
+    navixy_photo = await push_photo_to_navixy(fresh, request)
+    return {"ok": True, "photo_url": fresh.get("photo_url"), "photo": photo, "navixy_photo": navixy_photo}
+
+
+@api_router.delete("/vehicles/{vehicle_id}/photo")
+async def delete_vehicle_photo(vehicle_id: str, request: Request):
+    """Suppression LOCALE uniquement — Navixy n'expose pas de suppression d'avatar (vérifié)."""
+    vehicle = await find_tenant_vehicle(request, vehicle_id)
+    if not (vehicle.get("photo_url") or vehicle.get("photo")):
+        raise HTTPException(status_code=404, detail="Aucune photo principale à supprimer")
+    await db.vehicles.update_one(
+        {"id": vehicle_id, "tenant_id": tid(request)},
+        {"$set": {"photo_url": "", "updated_at": datetime.now(timezone.utc).isoformat()},
+         "$unset": {"photo": "", "integrations.navixy.photo_sync": ""}})
+    await audit("modify", "vehicle", request, vehicle_id, vehicle_id,
+                "Photo principale supprimée (LogiTrak uniquement — la photo Navixy reste inchangée, "
+                "suppression non supportée par leur API)")
+    return {"ok": True, "navixy": "unchanged"}
+
+
+@api_router.post("/vehicles/{vehicle_id}/photo/navixy/push")
+async def retry_photo_push(vehicle_id: str, request: Request):
+    vehicle = await find_tenant_vehicle(request, vehicle_id)
+    if not (vehicle.get("photo") or {}).get("storage_path"):
+        raise HTTPException(status_code=404, detail="Aucune photo principale à synchroniser")
+    return {"vehicle_id": vehicle_id, "navixy_photo": await push_photo_to_navixy(vehicle, request)}
+
+
+@api_router.post("/vehicles/{vehicle_id}/photo/navixy/import")
+async def import_photo_from_navixy(vehicle_id: str, payload: PhotoNavixyImport, request: Request):
+    """Import MANUEL de la photo Navixy existante (Cas 1) — jamais d'écrasement sans confirmation."""
+    vehicle = await find_tenant_vehicle(request, vehicle_id)
+    integ = await get_navixy_integration(tid(request))
+    if not integ:
+        raise HTTPException(status_code=503, detail="Aucune intégration télématique configurée pour ce compte")
+    nvid = vehicle.get("navixy_vehicle_id")
+    if not nvid:
+        raise HTTPException(status_code=422, detail="Véhicule non lié à une fiche Navixy")
+    if vehicle.get("photo_url") and not payload.replace:
+        raise HTTPException(status_code=409,
+                            detail="Une photo principale existe déjà — confirmez le remplacement")
+    try:
+        remote = navixy_post(integ, "/vehicle/read", {"vehicle_id": nvid}).get("value") or {}
+    except NavixyError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    avatar = (remote.get("avatar_file_name") or "").strip()
+    if not avatar or "/" in avatar or "\\" in avatar or ".." in avatar:
+        raise HTTPException(status_code=404, detail="Aucune photo disponible côté Navixy pour ce véhicule")
+    url = f"{(integ.get('base_url') or NAVIXY_BASE_URL).rstrip('/')}/static/vehicle/avatars/{avatar}"
+    try:
+        r = requests.get(url, timeout=30)
+        r.raise_for_status()
+        data = r.content
+    except requests.RequestException:
+        raise HTTPException(status_code=502, detail="Téléchargement de la photo Navixy impossible")
+    ext = (avatar.rsplit(".", 1)[-1] or "jpg").lower()
+    if ext not in PHOTO_EXTS:
+        ext = "jpg"
+    _validate_photo(f"navixy.{ext}", data)
+    photo = await _apply_vehicle_photo(vehicle, data, _PHOTO_MIME[ext], "navixy_import", request)
+    await db.vehicles.update_one(
+        {"id": vehicle_id, "tenant_id": tid(request)},
+        {"$set": {"integrations.navixy.photo_sync": {
+            "status": "synced", "at": datetime.now(timezone.utc).isoformat(),
+            "attempts": 0, "avatar_file_name": avatar, "direction": "import"}}})
+    await audit("modify", "vehicle", request, vehicle_id, vehicle_id,
+                "Photo importée depuis la fiche Navixy (action manuelle)")
+    fresh = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
+    return {"ok": True, "photo_url": fresh.get("photo_url"), "photo": photo}
+
+
+# ---------------------------------------------------------------------------
 # Documents (arborescence)
 # ---------------------------------------------------------------------------
 FOLDERS = ["Leasing", "Assurance", "Carte grise", "Contrôle technique", "Vignette",
@@ -2178,7 +2432,7 @@ async def navixy_sync_internal(tenant_id: str = "default") -> dict:
     removed = await db.vehicles.delete_many({"source": {"$in": ["demo", None]}, "tenant_id": tenant_id})
     await db.tenant_integrations.update_one(
         {"tenant_id": tenant_id, "provider": "navixy"},
-        {"$set": {"last_sync_at": now}})
+        {"$set": {"last_sync_at": now}}, upsert=True)
     return {"synced": len(trackers), "created": created, "updated": updated, "removed_demo": removed.deleted_count}
 
 
@@ -2194,12 +2448,15 @@ async def navixy_status(request: Request):
         return {"connected": False, "configured": True, "error": str(e)}
     account = (info.get("paas_settings", {}) or {}).get("service_title") or "Télématique"
     imported = await db.vehicles.count_documents({"source": "navixy", "tenant_id": tid(request)})
+    row = await db.tenant_integrations.find_one(
+        {"tenant_id": tid(request), "provider": "navixy"}, {"_id": 0, "last_sync_at": 1})
     return {
         "connected": True,
         "configured": True,
         "trackers_count": len(trackers),
         "imported_count": imported,
         "account": account,
+        "last_sync_at": (row or {}).get("last_sync_at"),
     }
 
 

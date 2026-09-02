@@ -89,6 +89,32 @@ export const mediaSrc = (item) => {
 // Ajoute le jeton aux URLs de photos stockées pointant vers /api/files
 export const photoSrc = (url) => (url && url.includes("/api/files/") ? withToken(url) : url);
 
+export const vehicleThumbSrc = (v) =>
+  v?.photo?.thumb_path
+    ? photoSrc(`/api/files/${v.photo.thumb_path}`)
+    : v?.photo_url
+      ? photoSrc(v.photo_url)
+      : null;
+
+export const setVehiclePhoto = (vehicleId, file, replace = false) => {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("replace", replace ? "true" : "false");
+  return http.post(`/vehicles/${vehicleId}/photo`, fd).then((r) => r.data);
+};
+
+export const setVehiclePhotoFromDocument = (vehicleId, documentId, replace = false) =>
+  http.post(`/vehicles/${vehicleId}/photo/from-document`, { document_id: documentId, replace }).then((r) => r.data);
+
+export const deleteVehiclePhoto = (vehicleId) =>
+  http.delete(`/vehicles/${vehicleId}/photo`).then((r) => r.data);
+
+export const retryVehiclePhotoNavixy = (vehicleId) =>
+  http.post(`/vehicles/${vehicleId}/photo/navixy/push`).then((r) => r.data);
+
+export const importVehiclePhotoFromNavixy = (vehicleId, replace = false) =>
+  http.post(`/vehicles/${vehicleId}/photo/navixy/import`, { replace }).then((r) => r.data);
+
 // Vehicles
 export const getVehicles = () => http.get("/vehicles").then((r) => r.data);
 export const getVehicle = (id) => http.get(`/vehicles/${id}`).then((r) => r.data);

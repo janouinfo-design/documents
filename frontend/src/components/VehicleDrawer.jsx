@@ -11,6 +11,8 @@ import { getVehicle, getDocuments, vehicleReportUrl, photoSrc } from "@/lib/api"
 import { fmtKm } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import StatusBadge from "@/components/StatusBadge";
+import VehiclePhotoMenu from "@/components/VehiclePhotoMenu";
+import { useAuth } from "@/context/AuthContext";
 import GeneralTab from "@/components/tabs/GeneralTab";
 import LeasingTab from "@/components/tabs/LeasingTab";
 import AssuranceTab from "@/components/tabs/AssuranceTab";
@@ -40,8 +42,26 @@ function Chip({ icon: Icon, children }) {
   );
 }
 
+function HeaderPhoto({ vehicle }) {
+  const [err, setErr] = useState(false);
+  const src = vehicle.photo_url ? photoSrc(vehicle.photo_url) : null;
+  if (!src || err) {
+    return (
+      <div className="flex h-full w-full items-center justify-center text-slate-300" data-testid="header-photo-fallback">
+        <Car className="h-8 w-8" />
+      </div>
+    );
+  }
+  return (
+    <img src={src} alt={vehicle.plaque} onError={() => setErr(true)}
+         className="h-full w-full object-cover" data-testid="header-photo-img" />
+  );
+}
+
 export default function VehicleDrawer({ open, onOpenChange, vehicleId, initialTab = "general" }) {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const readOnly = user?.role === "read_only";
   const [tab, setTab] = useState(initialTab);
 
   useEffect(() => {
@@ -88,11 +108,12 @@ export default function VehicleDrawer({ open, onOpenChange, vehicleId, initialTa
             {/* Header */}
             <div className="shrink-0 border-b border-slate-200 bg-white p-5 sm:p-6">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-                <div className="h-28 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 sm:h-24 sm:w-40">
-                  {vehicle.photo_url ? (
-                    <img src={photoSrc(vehicle.photo_url)} alt={vehicle.plaque} className="h-full w-full object-cover" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-slate-300"><Car className="h-8 w-8" /></div>
+                <div className="flex flex-col gap-2">
+                  <div className="h-28 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 sm:h-24 sm:w-40">
+                    <HeaderPhoto vehicle={vehicle} />
+                  </div>
+                  {!readOnly && (
+                    <VehiclePhotoMenu vehicle={vehicle} docs={docs} onChanged={refresh} />
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
@@ -112,7 +133,7 @@ export default function VehicleDrawer({ open, onOpenChange, vehicleId, initialTa
                     </Button>
                   </div>
                   <SheetDescription className="mt-0.5 text-sm text-slate-500">
-                    {vehicle.marque} {vehicle.modele} · {vehicle.annee}
+                    {vehicle.marque} {vehicle.modele}{vehicle.annee ? ` · ${vehicle.annee}` : ""}
                   </SheetDescription>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Chip icon={Hash}>{vehicle.vin || "VIN —"}</Chip>
