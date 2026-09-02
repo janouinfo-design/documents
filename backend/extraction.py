@@ -336,6 +336,60 @@ class LlmVisionProvider(DocumentExtractionProvider):
         return {"value_l": value, "confidence": conf,
                 "rationale": (parsed.get("rationale") or "").strip() or None}
 
+    async def suggest_conso(self, vehicle: dict) -> dict:
+        """Estimation IA de la consommation officielle combinée (homologation constructeur).
+        Retourne value_l_100km=None si aucune estimation fiable. JAMAIS écrit sans validation humaine."""
+        if not self.api_key:
+            raise RuntimeError("Aucune clé d'extraction configurée (ANTHROPIC_API_KEY ou EMERGENT_LLM_KEY)")
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        cg = vehicle.get("carte_grise") or {}
+        desc = " · ".join(filter(None, [
+            vehicle.get("marque"), vehicle.get("modele"), vehicle.get("variante"),
+            f"{vehicle.get('cylindree_cm3')} cm³" if vehicle.get("cylindree_cm3") else None,
+            f"{vehicle.get('puissance_kw')} kW" if vehicle.get("puissance_kw") else None,
+            vehicle.get("type_carburant"),
+            f"1re mise en circulation {cg.get('date_mise_circulation')}" if cg.get("date_mise_circulation") else None,
+        ]))
+        prompt = (
+            "Quelle est la consommation officielle combinée (homologation constructeur, en L/100 km) de ce véhicule ?\n"
+            f"Véhicule : {desc}\n\n"
+            "Règles STRICTES :\n"
+            "- Réponds UNIQUEMENT en JSON strict : {\"value_l_100km\": <nombre|null>, \"norme\": \"WLTP\"|\"NEDC\"|null, "
+            "\"confidence\": <0..1>, \"rationale\": \"<justification courte en français>\"}\n"
+            "- value_l_100km = consommation combinée d'homologation pour ce modèle/génération/motorisation (WLTP de préférence, sinon NEDC — indique la norme).\n"
+            "- Si plusieurs variantes existent, prends la valeur de la variante la plus courante et dis-le dans rationale.\n"
+            "- Si tu n'es pas raisonnablement sûr, ou si le véhicule est 100% électrique : value_l_100km = null.\n"
+            "- N'invente JAMAIS une valeur farfelue ; plage plausible 2–35 L/100 km pour un véhicule routier."
+        )
+        chat = LlmChat(
+            api_key=self.api_key,
+            session_id=f"conso-{uuid.uuid4()}",
+            system_message="Tu es un expert des fiches techniques constructeur automobile. Tu réponds uniquement en JSON strict.",
+        ).with_model(self.llm_provider, self.model)
+        resp = await chat.send_message(UserMessage(text=prompt))
+        text = resp if isinstance(resp, str) else getattr(resp, "text", str(resp))
+        text = text.strip()
+        if "{" in text and "}" in text:
+            text = text[text.find("{"): text.rfind("}") + 1]
+        parsed = json.loads(text)
+        value = parsed.get("value_l_100km")
+        try:
+            value = round(float(value), 1) if value is not None else None
+        except (TypeError, ValueError):
+            value = None
+        if value is not None and not (1 <= value <= 40):
+            value = None
+        norme = (parsed.get("norme") or "").strip().upper() or None
+        if norme not in ("WLTP", "NEDC"):
+            norme = None
+        conf = parsed.get("confidence")
+        try:
+            conf = max(0.0, min(1.0, float(conf)))
+        except (TypeError, ValueError):
+            conf = None
+        return {"value_l_100km": value, "norme": norme, "confidence": conf,
+                "rationale": (parsed.get("rationale") or "").strip() or None}
+
 
 def check_image_quality(data: bytes) -> dict:
     """Contrôle qualité non-LLM (résolution + netteté). level: ok | warning | blocked.

@@ -160,6 +160,12 @@ export const suggestReservoir = (vehicleId) =>
 export const applyReservoir = (vehicleId, valueL) =>
   http.post(`/vehicles/${vehicleId}/reservoir/apply`, { value_l: valueL }).then((r) => r.data);
 
+export const suggestConso = (vehicleId) =>
+  http.post(`/vehicles/${vehicleId}/conso/suggest`).then((r) => r.data);
+
+export const applyConso = (vehicleId, payload) =>
+  http.post(`/vehicles/${vehicleId}/conso/apply`, payload).then((r) => r.data);
+
 export const pushVehicleNavixy = (vehicleId) =>
   http.post(`/vehicles/${vehicleId}/navixy/push`).then((r) => r.data);
 

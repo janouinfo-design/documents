@@ -2802,6 +2802,14 @@ class ReservoirApply(BaseModel):
     value_l: float
 
 
+class ConsoApply(BaseModel):
+    value_l_100km: float
+    norme: Optional[str] = None
+    source: Optional[str] = None
+    matched_by: Optional[str] = None
+    retrieved_at: Optional[str] = None
+
+
 @api_router.post("/vehicles/{vehicle_id}/reservoir/suggest")
 async def suggest_reservoir(vehicle_id: str, request: Request):
     """Suggestion IA de la capacité réservoir — AUCUNE écriture, validation humaine requise."""
@@ -2846,6 +2854,76 @@ async def apply_reservoir(vehicle_id: str, payload: ReservoirApply, request: Req
     navixy_push = await push_vehicle_to_navixy(fresh, request)
     fresh["metrics"] = compute_metrics(fresh, await th_for(request))
     return {"ok": True, "vehicle": fresh, "navixy_push": navixy_push}
+
+
+@api_router.post("/vehicles/{vehicle_id}/conso/suggest")
+async def suggest_conso_endpoint(vehicle_id: str, request: Request):
+    """Conso officielle — base officielle ASTRA/OFROU d'abord, estimation IA en dernier recours.
+    AUCUNE écriture, validation humaine requise."""
+    vehicle = await find_tenant_vehicle(request, vehicle_id)
+    if not (vehicle.get("marque") or vehicle.get("modele")):
+        raise HTTPException(status_code=422, detail="Marque ou modèle requis pour proposer une valeur")
+    if (vehicle.get("type_carburant") or "").lower().startswith(("électr", "electr")):
+        raise HTTPException(status_code=422, detail=(
+            "Véhicule électrique — la consommation officielle se saisit en kWh/100 km, pas en L/100 km"))
+    current = vehicle.get("conso_officielle_l_100km") or None
+    try:
+        result = await astra_data.resolve_vehicle_data(db, vehicle)
+        f = result.get("fields") or {}
+        if f.get("conso_officielle_l_100km"):
+            return {"vehicle_id": vehicle_id, "value_l_100km": round(float(f["conso_officielle_l_100km"]), 1),
+                    "norme": f.get("conso_officielle_norme"), "source": "ASTRA_OFROU",
+                    "confidence": None, "rationale": "Base officielle ASTRA/OFROU (donnée d'homologation)",
+                    "matched_by": result.get("matched_by"), "retrieved_at": result.get("retrieved_at"),
+                    "current_value": current}
+    except AstraLookupError:
+        pass
+    try:
+        s = await extraction_provider.suggest_conso(vehicle)
+    except Exception as e:
+        logger.warning(f"Suggestion conso indisponible: {e}")
+        raise HTTPException(status_code=502, detail="Estimation indisponible pour le moment — réessayez")
+    if not s.get("value_l_100km"):
+        raise HTTPException(status_code=422, detail=(
+            "Aucune donnée fiable (ni base officielle, ni estimation) — saisie manuelle recommandée"))
+    return {"vehicle_id": vehicle_id, "value_l_100km": s["value_l_100km"], "norme": s.get("norme"),
+            "source": "ESTIMATION_IA", "confidence": s.get("confidence"),
+            "rationale": s.get("rationale"), "matched_by": None, "retrieved_at": None,
+            "current_value": current}
+
+
+@api_router.post("/vehicles/{vehicle_id}/conso/apply")
+async def apply_conso(vehicle_id: str, payload: ConsoApply, request: Request):
+    """Application d'une conso officielle VALIDÉE par l'utilisateur (provenance ASTRA ou estimation IA tracée)."""
+    vehicle = await find_tenant_vehicle(request, vehicle_id)
+    _check_ev_conso(vehicle.get("type_carburant"), payload.value_l_100km)
+    value = round(float(payload.value_l_100km), 1)
+    if not (1 <= value <= 40):
+        raise HTTPException(status_code=422, detail="Consommation hors plage plausible (1–40 L/100 km)")
+    is_astra = (payload.source or "").upper() == "ASTRA_OFROU"
+    norme = (payload.norme or "").strip().upper() or None
+    if norme not in ("WLTP", "NEDC"):
+        norme = None
+    norme_txt = norme if is_astra else (f"{norme} (est.)" if norme else "estimée")
+    old = vehicle.get("conso_officielle_l_100km") or 0
+    now = datetime.now(timezone.utc).isoformat()
+    await db.vehicles.update_one({"id": vehicle_id}, {"$set": {
+        "conso_officielle_l_100km": value, "conso_officielle_norme": norme_txt, "updated_at": now}})
+    meta = ({"source": "external_vehicle_database", "provider": "astra_tas",
+             "source_ref": payload.matched_by or "", "retrieved_at": payload.retrieved_at or ""}
+            if is_astra else {"source": "estimation_ia"})
+    await db.vehicle_field_meta.update_one(
+        {"vehicle_id": vehicle_id, "field": "conso_officielle_l_100km"},
+        {"$set": {"label": "Consommation officielle (L/100 km)", **meta,
+                  "measurement_type": "reference", "tenant_id": tid(request),
+                  "validated_by": "utilisateur", "validated_at": now, "updated_at": now}},
+        upsert=True)
+    src_txt = "Base officielle ASTRA/OFROU" if is_astra else "estimation IA validée"
+    await audit("modify", "vehicle", request, vehicle_id, vehicle_id,
+                f"Consommation officielle (L/100 km): {old if old else '—'} → {value} · {norme_txt} (source: {src_txt})")
+    fresh = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
+    fresh["metrics"] = compute_metrics(fresh, await th_for(request))
+    return {"ok": True, "vehicle": fresh}
 
 
 @api_router.post("/vehicles/{vehicle_id}/navixy/push")
