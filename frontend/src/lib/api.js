@@ -166,6 +166,12 @@ export const suggestConso = (vehicleId) =>
 export const applyConso = (vehicleId, payload) =>
   http.post(`/vehicles/${vehicleId}/conso/apply`, payload).then((r) => r.data);
 
+export const suggestCo2 = (vehicleId) =>
+  http.post(`/vehicles/${vehicleId}/co2/suggest`).then((r) => r.data);
+
+export const applyCo2 = (vehicleId, payload) =>
+  http.post(`/vehicles/${vehicleId}/co2/apply`, payload).then((r) => r.data);
+
 export const pushVehicleNavixy = (vehicleId) =>
   http.post(`/vehicles/${vehicleId}/navixy/push`).then((r) => r.data);
 

@@ -2810,6 +2810,14 @@ class ConsoApply(BaseModel):
     retrieved_at: Optional[str] = None
 
 
+class Co2Apply(BaseModel):
+    value_g_km: float
+    norme: Optional[str] = None
+    source: Optional[str] = None
+    matched_by: Optional[str] = None
+    retrieved_at: Optional[str] = None
+
+
 @api_router.post("/vehicles/{vehicle_id}/reservoir/suggest")
 async def suggest_reservoir(vehicle_id: str, request: Request):
     """Suggestion IA de la capacité réservoir — AUCUNE écriture, validation humaine requise."""
@@ -2921,6 +2929,72 @@ async def apply_conso(vehicle_id: str, payload: ConsoApply, request: Request):
     src_txt = "Base officielle ASTRA/OFROU" if is_astra else "estimation IA validée"
     await audit("modify", "vehicle", request, vehicle_id, vehicle_id,
                 f"Consommation officielle (L/100 km): {old if old else '—'} → {value} · {norme_txt} (source: {src_txt})")
+    fresh = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
+    fresh["metrics"] = compute_metrics(fresh, await th_for(request))
+    return {"ok": True, "vehicle": fresh}
+
+
+@api_router.post("/vehicles/{vehicle_id}/co2/suggest")
+async def suggest_co2_endpoint(vehicle_id: str, request: Request):
+    """CO₂ officiel — base officielle ASTRA/OFROU d'abord, estimation IA en dernier recours.
+    AUCUNE écriture, validation humaine requise."""
+    vehicle = await find_tenant_vehicle(request, vehicle_id)
+    if not (vehicle.get("marque") or vehicle.get("modele")):
+        raise HTTPException(status_code=422, detail="Marque ou modèle requis pour proposer une valeur")
+    current = vehicle.get("co2_g_km") or None
+    try:
+        result = await astra_data.resolve_vehicle_data(db, vehicle)
+        f = result.get("fields") or {}
+        if f.get("co2_g_km") is not None:
+            return {"vehicle_id": vehicle_id, "value_g_km": round(float(f["co2_g_km"])),
+                    "norme": f.get("co2_norme"), "source": "ASTRA_OFROU",
+                    "confidence": None, "rationale": "Base officielle ASTRA/OFROU (donnée d'homologation)",
+                    "matched_by": result.get("matched_by"), "retrieved_at": result.get("retrieved_at"),
+                    "current_value": current}
+    except AstraLookupError:
+        pass
+    try:
+        s = await extraction_provider.suggest_co2(vehicle)
+    except Exception as e:
+        logger.warning(f"Suggestion CO₂ indisponible: {e}")
+        raise HTTPException(status_code=502, detail="Estimation indisponible pour le moment — réessayez")
+    if s.get("value_g_km") is None:
+        raise HTTPException(status_code=422, detail=(
+            "Aucune donnée fiable (ni base officielle, ni estimation) — saisie manuelle recommandée"))
+    return {"vehicle_id": vehicle_id, "value_g_km": s["value_g_km"], "norme": s.get("norme"),
+            "source": "ESTIMATION_IA", "confidence": s.get("confidence"),
+            "rationale": s.get("rationale"), "matched_by": None, "retrieved_at": None,
+            "current_value": current}
+
+
+@api_router.post("/vehicles/{vehicle_id}/co2/apply")
+async def apply_co2(vehicle_id: str, payload: Co2Apply, request: Request):
+    """Application d'un CO₂ officiel VALIDÉ par l'utilisateur (provenance ASTRA ou estimation IA tracée)."""
+    vehicle = await find_tenant_vehicle(request, vehicle_id)
+    value = round(float(payload.value_g_km))
+    if not (0 <= value <= 500):
+        raise HTTPException(status_code=422, detail="CO₂ hors plage plausible (0–500 g/km)")
+    is_astra = (payload.source or "").upper() == "ASTRA_OFROU"
+    norme = (payload.norme or "").strip().upper() or None
+    if norme not in ("WLTP", "NEDC"):
+        norme = None
+    norme_txt = norme if is_astra else (f"{norme} (est.)" if norme else "estimée")
+    old = vehicle.get("co2_g_km") or 0
+    now = datetime.now(timezone.utc).isoformat()
+    await db.vehicles.update_one({"id": vehicle_id}, {"$set": {
+        "co2_g_km": value, "co2_norme": norme_txt, "updated_at": now}})
+    meta = ({"source": "external_vehicle_database", "provider": "astra_tas",
+             "source_ref": payload.matched_by or "", "retrieved_at": payload.retrieved_at or ""}
+            if is_astra else {"source": "estimation_ia"})
+    await db.vehicle_field_meta.update_one(
+        {"vehicle_id": vehicle_id, "field": "co2_g_km"},
+        {"$set": {"label": "CO₂ officiel (g/km)", **meta,
+                  "measurement_type": "reference", "tenant_id": tid(request),
+                  "validated_by": "utilisateur", "validated_at": now, "updated_at": now}},
+        upsert=True)
+    src_txt = "Base officielle ASTRA/OFROU" if is_astra else "estimation IA validée"
+    await audit("modify", "vehicle", request, vehicle_id, vehicle_id,
+                f"CO₂ officiel (g/km): {old if old else '—'} → {value} · {norme_txt} (source: {src_txt})")
     fresh = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
     fresh["metrics"] = compute_metrics(fresh, await th_for(request))
     return {"ok": True, "vehicle": fresh}

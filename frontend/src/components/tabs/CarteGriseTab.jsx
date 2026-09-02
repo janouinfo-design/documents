@@ -15,6 +15,7 @@ import DocumentScanCard from "@/components/DocumentScanCard";
 import TechnicalEnrichDialog from "@/components/TechnicalEnrichDialog";
 import ReservoirSuggestDialog from "@/components/ReservoirSuggestDialog";
 import ConsoSuggestDialog from "@/components/ConsoSuggestDialog";
+import Co2SuggestDialog from "@/components/Co2SuggestDialog";
 import { useAuth } from "@/context/AuthContext";
 
 const CG_FIELDS = [
@@ -54,6 +55,7 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
   const [techOpen, setTechOpen] = useState(false);
   const [reservoirOpen, setReservoirOpen] = useState(false);
   const [consoOpen, setConsoOpen] = useState(false);
+  const [co2Open, setCo2Open] = useState(false);
   const [swissMeta, setSwissMeta] = useState(null);
   const [astraHistory, setAstraHistory] = useState([]);
   const scanValidatedRef = useRef(false);
@@ -318,11 +320,24 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
               <Stat label="Carburant" value={vehicle.type_carburant || "—"} icon={Fuel} />
               <Stat label="Cylindrée" value={litres} icon={Gauge} />
               <Stat label="Puissance" value={vehicle.puissance_kw ? `${vehicle.puissance_kw} kW` : "—"} icon={Zap} />
-              <Stat
-                label="CO₂ officiel"
-                value={vehicle.co2_g_km ? `${vehicle.co2_g_km} g/km${vehicle.co2_norme ? ` · ${vehicle.co2_norme}` : ""}` : "—"}
-                icon={Leaf}
-              />
+              <div className="relative" data-testid="co2-officiel-stat">
+                <Stat
+                  label="CO₂ officiel"
+                  value={vehicle.co2_g_km ? `${vehicle.co2_g_km} g/km${vehicle.co2_norme ? ` · ${vehicle.co2_norme}` : ""}` : "—"}
+                  icon={Leaf}
+                />
+                {!readOnly && (
+                  <button
+                    type="button"
+                    data-testid="co2-suggest-btn"
+                    onClick={() => setCo2Open(true)}
+                    title="Base officielle ASTRA/OFROU d'abord, estimation IA en dernier recours — validation requise"
+                    className="absolute right-2 top-2 flex items-center gap-1 rounded-md border border-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 transition-colors hover:border-slate-400 hover:bg-slate-50 hover:text-slate-700"
+                  >
+                    <Sparkles className="h-3 w-3" /> Suggérer
+                  </button>
+                )}
+              </div>
               <div className="relative" data-testid="conso-officielle-stat">
                 <Stat
                   label="Conso officielle"
@@ -408,6 +423,7 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
       <TechnicalEnrichDialog open={techOpen} onOpenChange={setTechOpen} vehicle={vehicle} onApplied={() => onSaved?.()} />
       <ReservoirSuggestDialog open={reservoirOpen} onOpenChange={setReservoirOpen} vehicle={vehicle} onSaved={() => onSaved?.()} />
       <ConsoSuggestDialog open={consoOpen} onOpenChange={setConsoOpen} vehicle={vehicle} onSaved={() => onSaved?.()} />
+      <Co2SuggestDialog open={co2Open} onOpenChange={setCo2Open} vehicle={vehicle} onSaved={() => onSaved?.()} />
     </div>
   );
 }
