@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { RefreshCw, Link2, PlusCircle, Loader2, AlertTriangle } from "lucide-react";
 import { getIntegrity, getLinkSuggestions, linkNavixyVehicle, createNavixyVehicle } from "@/lib/api";
+import { notifyNavixyPush } from "@/lib/navixyFeedback";
 import { Button } from "@/components/ui/button";
 import QueryErrorState from "@/components/QueryErrorState";
 import { cn } from "@/lib/utils";
@@ -62,6 +63,7 @@ function LinkSection({ onDone }) {
     try {
       const r = await linkNavixyVehicle(vehicleId, extId);
       toast.success(`Liaison validée (preuve : ${r.matched_by.join(", ")})`);
+      notifyNavixyPush(r.navixy_push, vehicleId);
       onDone();
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Échec de la liaison");
@@ -87,6 +89,7 @@ function LinkSection({ onDone }) {
     try {
       const r = await createNavixyVehicle(simulation.vehicleId, true);
       toast.success(`Objet véhicule créé chez le fournisseur (id ${r.external_vehicle_id})`);
+      notifyNavixyPush(r.navixy_push, simulation.vehicleId);
       setSimulation(null);
       onDone();
     } catch (e) {

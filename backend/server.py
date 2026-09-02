@@ -3342,7 +3342,10 @@ async def navixy_link(payload: NavixyLinkPayload, request: Request):
     await audit("navixy_link", "vehicle", request, v["id"], v["id"],
                 f"Liaison télématique validée (objet {payload.external_vehicle_id}, "
                 f"preuve: {', '.join(cands[0]['matched_by'])})")
-    return {"ok": True, "matched_by": cands[0]["matched_by"]}
+    # Chaînon complet : la liaison pousse immédiatement les données déjà validées (best effort)
+    fresh = await db.vehicles.find_one({"id": v["id"], "tenant_id": tid(request)}, {"_id": 0})
+    navixy_push = await push_vehicle_to_navixy(fresh, request)
+    return {"ok": True, "matched_by": cands[0]["matched_by"], "navixy_push": navixy_push}
 
 
 class NavixyCreatePayload(BaseModel):
@@ -3410,7 +3413,10 @@ async def navixy_create_vehicle(payload: NavixyCreatePayload, request: Request):
         "integrations.navixy.last_sync_at": now, "updated_at": now}})
     await audit("navixy_create", "vehicle", request, v["id"], v["id"],
                 f"Création objet vehicle fournisseur (id {new_id}) après simulation confirmée")
-    return {"ok": True, "external_vehicle_id": new_id, "confirmed": True}
+    # Complète la fiche créée avec les champs validés restants (poids, réservoir, carburant…)
+    fresh = await db.vehicles.find_one({"id": v["id"], "tenant_id": tid(request)}, {"_id": 0})
+    navixy_push = await push_vehicle_to_navixy(fresh, request)
+    return {"ok": True, "external_vehicle_id": new_id, "confirmed": True, "navixy_push": navixy_push}
 
 
 @api_router.get("/fleet/consumption-ranking")
