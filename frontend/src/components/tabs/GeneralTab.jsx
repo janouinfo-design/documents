@@ -2,6 +2,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Pencil, Loader2, Car, Calendar, Hash, Gauge, Users, MapPin, User, Radio, Wrench, ClipboardList } from "lucide-react";
 import { updateVehicle, uploadFile, photoSrc } from "@/lib/api";
+import { notifyNavixyPush } from "@/lib/navixyFeedback";
 import { fmtKm, dateFr } from "@/lib/format";
 import { Stat, SectionCard, FormRow } from "@/components/Field";
 import { Input } from "@/components/ui/input";
@@ -40,7 +41,7 @@ export default function GeneralTab({ vehicle, onSaved }) {
   const save = async () => {
     setSaving(true);
     try {
-      await updateVehicle(vehicle.id, {
+      const res = await updateVehicle(vehicle.id, {
         ...form,
         annee: Number(form.annee) || 0,
         kilometrage: Number(form.kilometrage) || 0,
@@ -48,6 +49,7 @@ export default function GeneralTab({ vehicle, onSaved }) {
         prochaine_expertise: form.prochaine_expertise || null,
       });
       toast.success("Informations enregistrées");
+      notifyNavixyPush(res?.navixy_push, vehicle.id);
       onSaved?.();
       setEdit(false);
     } catch {

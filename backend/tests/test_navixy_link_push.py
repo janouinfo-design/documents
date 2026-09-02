@@ -150,3 +150,30 @@ class TestCreatePush:
         assert "fuel_tank_volume" in res["navixy_push"]["fields"]
         assert MOCK["vehicles"][502]["fuel_tank_volume"] == 44
         assert MOCK["vehicles"][502]["fuel_type"] == "petrol"
+
+
+class TestEditPush:
+    """Toute modification d'un champ compatible dans Documents part immédiatement vers Navixy."""
+
+    def test_put_champ_compatible_pousse(self):
+        r = requests.put(f"{_BASE}/api/vehicles/{_S['veh']}", headers=_h(*ADMIN), timeout=30,
+                         json={"carte_grise": {"couleur": "rouge"}})
+        assert r.status_code == 200, r.text
+        assert r.json()["navixy_push"]["status"] == "pushed"
+        assert MOCK["vehicles"][501]["color"] == "rouge"
+
+    def test_conso_officielle_poussee_norm_avg(self):
+        r = requests.post(f"{_BASE}/api/vehicles/{_S['veh']}/conso/apply", headers=_h(*ADMIN),
+                          timeout=30, json={"value_l_100km": 5.6, "norme": "WLTP",
+                                            "source": "ESTIMATION_IA"})
+        assert r.status_code == 200, r.text
+        assert r.json()["navixy_push"]["status"] == "pushed"
+        assert MOCK["vehicles"][501]["norm_avg_fuel_consumption"] == 5.6
+
+    def test_champ_non_compatible_aucun_push(self):
+        n_before = len(MOCK["updates"])
+        r = requests.put(f"{_BASE}/api/vehicles/{_S['veh']}", headers=_h(*ADMIN), timeout=30,
+                         json={"responsable": "Marc Test"})
+        assert r.status_code == 200, r.text
+        assert "navixy_push" not in r.json()
+        assert len(MOCK["updates"]) == n_before  # aucune écriture Navixy inutile

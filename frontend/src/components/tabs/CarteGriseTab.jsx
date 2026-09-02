@@ -5,6 +5,7 @@ import {
   Fuel, Gauge, Zap, Leaf, Hash, TrendingUp, Database, Sparkles,
 } from "lucide-react";
 import { updateVehicle, getFieldMeta, revertTechnicalField } from "@/lib/api";
+import { notifyNavixyPush } from "@/lib/navixyFeedback";
 import { dateFr, fmtNum } from "@/lib/format";
 import { Stat, SectionCard, FormRow } from "@/components/Field";
 import { Input } from "@/components/ui/input";
@@ -118,7 +119,7 @@ export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
     setSaving(true);
     try {
       const reelleForm = Number(form.conso_reelle_l_100km) || 0;
-      await updateVehicle(vehicle.id, {
+      const res = await updateVehicle(vehicle.id, {
         type_carburant: form.type_carburant || "",
         cylindree_cm3: Number(form.cylindree_cm3) || 0,
         puissance_kw: Number(form.puissance_kw) || 0,

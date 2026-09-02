@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { suggestConso, applyConso } from "@/lib/api";
+import { notifyNavixyPush } from "@/lib/navixyFeedback";
 
 export default function ConsoSuggestDialog({ vehicle, open, onOpenChange, onSaved }) {
   const [loading, setLoading] = useState(false);
@@ -34,7 +35,7 @@ export default function ConsoSuggestDialog({ vehicle, open, onOpenChange, onSave
     }
     setApplying(true);
     try {
-      await applyConso(vehicle.id, {
+      const r = await applyConso(vehicle.id, {
         value_l_100km: v,
         norme: suggestion?.norme || null,
         source: suggestion?.source,
@@ -42,6 +43,7 @@ export default function ConsoSuggestDialog({ vehicle, open, onOpenChange, onSave
         retrieved_at: suggestion?.retrieved_at || null,
       });
       toast.success(`Conso officielle enregistrée : ${v} L/100 km`);
+      notifyNavixyPush(r?.navixy_push, vehicle.id);
       onSaved?.();
       onOpenChange(false);
     } catch (e) {

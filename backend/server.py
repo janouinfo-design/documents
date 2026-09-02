@@ -385,7 +385,7 @@ def parse_navixy_label(label: str):
 # ---------------------------------------------------------------------------
 NAVIXY_WRITE_ENABLED = (os.environ.get("NAVIXY_WRITE_ENABLED", "true").strip().lower() == "true")
 NAVIXY_PUSH_KEYS = {"plaque", "marque", "modele", "vin", "annee", "type_carburant",
-                    "capacite_reservoir_l", "carte_grise.couleur",
+                    "capacite_reservoir_l", "conso_officielle_l_100km", "carte_grise.couleur",
                     "carte_grise.charge_utile", "carte_grise.poids_total"}
 # Enum fuel_type Navixy documenté : petrol | diesel | gas. Électrique/hybride : pas d'équivalent sûr => non poussé.
 _NAVIXY_FUEL = {"essence": "petrol", "diesel": "diesel", "gaz": "gas", "gpl": "gas", "gnc": "gas"}
@@ -428,6 +428,8 @@ def _navixy_merge_payload(remote: dict, vehicle: dict):
         setf("gross_weight", int(cg["poids_total"]))
     if vehicle.get("capacite_reservoir_l"):
         setf("fuel_tank_volume", int(round(float(vehicle["capacite_reservoir_l"]))))
+    if vehicle.get("conso_officielle_l_100km"):
+        setf("norm_avg_fuel_consumption", round(float(vehicle["conso_officielle_l_100km"]), 1))
     fuel = (vehicle.get("type_carburant") or "").strip().lower()
     for prefix, enum_val in _NAVIXY_FUEL.items():
         if fuel.startswith(prefix):
@@ -2930,8 +2932,9 @@ async def apply_conso(vehicle_id: str, payload: ConsoApply, request: Request):
     await audit("modify", "vehicle", request, vehicle_id, vehicle_id,
                 f"Consommation officielle (L/100 km): {old if old else '—'} → {value} · {norme_txt} (source: {src_txt})")
     fresh = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0})
+    navixy_push = await push_vehicle_to_navixy(fresh, request)
     fresh["metrics"] = compute_metrics(fresh, await th_for(request))
-    return {"ok": True, "vehicle": fresh}
+    return {"ok": True, "vehicle": fresh, "navixy_push": navixy_push}
 
 
 @api_router.post("/vehicles/{vehicle_id}/co2/suggest")
@@ -4184,7 +4187,7 @@ async def startup():
     try:
         scheduler = AsyncIOScheduler(timezone="UTC")
 
-        async def daily_job():
+        async def navixy_sync_job():
             # Synchronisation PAR TENANT : jamais de sync croisée entre comptes
             try:
                 integs = await db.tenant_integrations.find(
@@ -4199,12 +4202,15 @@ async def startup():
                         logger.error(f"Scheduled Navixy sync failed (tenant {t_id}): {e}")
             except Exception as e:
                 logger.error(f"Scheduled Navixy sync failed: {e}")
+
+        async def alerts_job():
             try:
                 await run_alerts()
             except Exception as e:
                 logger.error(f"Scheduled alerts failed: {e}")
 
-        scheduler.add_job(daily_job, IntervalTrigger(hours=24), id="daily-sync-alerts", replace_existing=True)
+        scheduler.add_job(navixy_sync_job, IntervalTrigger(hours=1), id="hourly-navixy-sync", replace_existing=True)
+        scheduler.add_job(alerts_job, IntervalTrigger(hours=24), id="daily-alerts", replace_existing=True)
         if astra_data.sync_enabled():
             async def astra_sync_job():
                 try:
@@ -4216,7 +4222,8 @@ async def startup():
                               id="astra-monthly-sync", replace_existing=True)
         scheduler.start()
         app.state.scheduler = scheduler
-        logger.info("Scheduler started: daily Navixy sync + deadline alerts")
+        asyncio.create_task(navixy_sync_job())
+        logger.info("Scheduler started: hourly Navixy sync (+ startup run) + daily deadline alerts")
     except Exception as e:
         logger.error(f"Scheduler start failed: {e}")
     try:
