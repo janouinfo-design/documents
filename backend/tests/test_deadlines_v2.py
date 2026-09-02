@@ -205,7 +205,8 @@ class TestConsommateurs:
         assert k["docs_expires"] == s["expired"]
         assert k["docs_expire_30"] == s["urgent"]
         assert k["docs_expire_31_90"] == s["warning"]
-        assert k["deadline_thresholds"] == {"urgent_days": 30, "warning_days": 90}
+        assert k["deadline_thresholds"] == {"urgent_days": 30, "warning_days": 90,
+                                            "controle_interval_months": 24}
 
     def test_manquant_jamais_melange_avec_expire(self):
         r = requests.post(f"{_BASE}/api/vehicles", json={"plaque": f"VD C{_RUN[:4]}"},
@@ -233,7 +234,8 @@ class TestConsommateurs:
 
     def test_alerts_depuis_moteur(self):
         data = requests.get(f"{_BASE}/api/alerts", headers=_h(), timeout=30).json()
-        assert data["thresholds"] == {"urgent_days": 30, "warning_days": 90}
+        assert data["thresholds"] == {"urgent_days": 30, "warning_days": 90,
+                                      "controle_interval_months": 24}
         assert all(i["statut"] in ("EXPIRE", "URGENT", "A_PLANIFIER") for i in data["items"])
         doc_items = [i for i in data["items"] if i["document_id"] == _S["doc_m1"]["id"]]
         assert doc_items and doc_items[0]["level"] == "expired" and doc_items[0]["category"] == "Divers"
@@ -291,7 +293,7 @@ class TestSeuilsTenant:
     def test_defauts(self):
         r = requests.get(f"{_BASE}/api/settings/deadlines", headers=_h(), timeout=30).json()
         assert r["urgent_days"] == 30 and r["warning_days"] == 90
-        assert r["defaults"] == {"urgent_days": 30, "warning_days": 90}
+        assert r["defaults"] == {"urgent_days": 30, "warning_days": 90, "controle_interval_months": 24}
 
     def test_read_only_lecture_ok_ecriture_403(self):
         assert requests.get(f"{_BASE}/api/settings/deadlines", headers=_h(RO_A), timeout=30).status_code == 200
@@ -309,13 +311,15 @@ class TestSeuilsTenant:
     def test_seuils_personnalises_appliques(self):
         r = requests.put(f"{_BASE}/api/settings/deadlines",
                          json={"urgent_days": 10, "warning_days": 40}, headers=_h(), timeout=30)
-        assert r.status_code == 200 and r.json() == {"urgent_days": 10, "warning_days": 40}
+        assert r.status_code == 200 and r.json() == {"urgent_days": 10, "warning_days": 40,
+                                                     "controle_interval_months": 24}
         by = _by_key(_deadlines())
         assert by[f"doc:{_S['doc_p1']['id']}"]["statut"] == "URGENT"
         assert by[f"doc:{_S['doc_p30']['id']}"]["statut"] == "A_PLANIFIER"
         assert by[f"doc:{_S['doc_p90']['id']}"]["statut"] == "OK"
         k = requests.get(f"{_BASE}/api/dashboard", headers=_h(), timeout=30).json()
-        assert k["deadline_thresholds"] == {"urgent_days": 10, "warning_days": 40}
+        assert k["deadline_thresholds"] == {"urgent_days": 10, "warning_days": 40,
+                                            "controle_interval_months": 24}
         # le filtre échéances de la page Documents suit les seuils du tenant
         ids = {d["id"] for d in requests.get(f"{_BASE}/api/documents", params={"echeance": "30"},
                                              headers=_h(), timeout=30).json()}

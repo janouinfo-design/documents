@@ -9,6 +9,7 @@ import uuid
 import base64
 import json
 import asyncio
+import calendar
 import requests
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -1359,7 +1360,7 @@ async def vehicle_doc_conformity(vehicle_id: str, request: Request):
 # Dual-read : document V2 daté prioritaire ; legacy uniquement sans équivalent V2.
 # Clés canoniques anti-doublon : doc:{document_id} / legacy:{vehicle_id}:{type}.
 # ---------------------------------------------------------------------------
-DEFAULT_DEADLINE_SETTINGS = {"urgent_days": 30, "warning_days": 90}
+DEFAULT_DEADLINE_SETTINGS = {"urgent_days": 30, "warning_days": 90, "controle_interval_months": 24}
 DEADLINE_STATUTS = ["EXPIRE", "URGENT", "A_PLANIFIER", "OK", "DATE_INVALIDE", "SANS_ECHEANCE"]
 _DL_RANK = {s: i for i, s in enumerate(DEADLINE_STATUTS)}
 DEADLINE_LEVEL = {"EXPIRE": "expired", "URGENT": "critical", "A_PLANIFIER": "warning",
@@ -1381,7 +1382,19 @@ _DEADLINE_CATEGORY_TYPE = {"Leasing": "leasing", "Assurance": "assurance",
 async def deadline_settings(tenant_id: str) -> dict:
     s = await db.tenant_settings.find_one({"tenant_id": tenant_id}, {"_id": 0}) or {}
     return {"urgent_days": s.get("deadline_urgent_days") or DEFAULT_DEADLINE_SETTINGS["urgent_days"],
-            "warning_days": s.get("deadline_warning_days") or DEFAULT_DEADLINE_SETTINGS["warning_days"]}
+            "warning_days": s.get("deadline_warning_days") or DEFAULT_DEADLINE_SETTINGS["warning_days"],
+            "controle_interval_months": (s.get("deadline_controle_interval_months")
+                                         or DEFAULT_DEADLINE_SETTINGS["controle_interval_months"])}
+
+
+def _add_months(date_str, months: int) -> Optional[str]:
+    try:
+        d = date.fromisoformat(str(date_str)[:10])
+    except (ValueError, TypeError):
+        return None
+    m = d.month - 1 + months
+    y, m = d.year + m // 12, m % 12 + 1
+    return date(y, m, min(d.day, calendar.monthrange(y, m)[1])).isoformat()
 
 
 async def th_for(request: Request) -> dict:
@@ -1473,6 +1486,21 @@ async def collect_deadlines(tenant_id: str, th: dict = None) -> dict:
                   "plaque": v.get("plaque"), "marque": v.get("marque"), "modele": v.get("modele"),
                   "type": type_, "category": cat, "label": label,
                   "date": str(due)[:10], "days_remaining": days_until(due), "responsable": None})
+        # Échéance DÉRIVÉE (jamais écrite en base) : dernière expertise carte grise + intervalle
+        # tenant. Uniquement si AUCUNE vraie échéance contrôle (ni date_prochain ni document daté).
+        ct = v.get("controle_technique") or {}
+        if (ct.get("date_dernier") and not ct.get("date_prochain")
+                and (v["id"], "Contrôle technique") not in covered):
+            interval = th["controle_interval_months"]
+            due = _add_months(ct["date_dernier"], interval)
+            if due:
+                push({"key": f"derived:{v['id']}:controle", "source": "derived",
+                      "is_document_deadline": False, "document_id": None, "vehicle_id": v["id"],
+                      "plaque": v.get("plaque"), "marque": v.get("marque"), "modele": v.get("modele"),
+                      "type": "controle", "category": "Contrôle technique",
+                      "label": f"Contrôle technique estimé (dernière expertise + {interval} mois)",
+                      "provenance": "CARTE_GRISE",
+                      "date": due, "days_remaining": days_until(due), "responsable": None})
 
     # Urgent d'abord, puis chronologique
     items.sort(key=lambda i: (_DL_RANK[i["statut"]], i.get("date") or "9999-12-31",
@@ -1504,6 +1532,7 @@ async def list_deadlines(request: Request,
 class DeadlineSettingsUpdate(BaseModel):
     urgent_days: int
     warning_days: int
+    controle_interval_months: Optional[int] = None
 
 
 @api_router.get("/settings/deadlines")
@@ -1517,16 +1546,24 @@ async def put_deadline_settings(payload: DeadlineSettingsUpdate, request: Reques
     if not (1 <= payload.urgent_days < payload.warning_days <= 730):
         raise HTTPException(status_code=422,
                             detail="Seuils invalides : 1 ≤ urgent < à planifier ≤ 730 jours")
+    if payload.controle_interval_months is not None and not (1 <= payload.controle_interval_months <= 120):
+        raise HTTPException(status_code=422,
+                            detail="Intervalle de contrôle invalide : 1 à 120 mois")
     t = tid(request)
+    fields = {"deadline_urgent_days": payload.urgent_days,
+              "deadline_warning_days": payload.warning_days,
+              "updated_at": datetime.now(timezone.utc).isoformat()}
+    if payload.controle_interval_months is not None:
+        fields["deadline_controle_interval_months"] = payload.controle_interval_months
     await db.tenant_settings.update_one(
         {"tenant_id": t},
-        {"$set": {"deadline_urgent_days": payload.urgent_days,
-                  "deadline_warning_days": payload.warning_days,
-                  "updated_at": datetime.now(timezone.utc).isoformat()}},
+        {"$set": fields},
         upsert=True)
     await audit("modify", "deadline_settings", request, t, None,
                 f"Seuils d'échéances : urgent ≤ {payload.urgent_days} j, "
-                f"à planifier ≤ {payload.warning_days} j")
+                f"à planifier ≤ {payload.warning_days} j"
+                + (f", contrôle estimé tous les {payload.controle_interval_months} mois"
+                   if payload.controle_interval_months is not None else ""))
     return await deadline_settings(t)
 
 

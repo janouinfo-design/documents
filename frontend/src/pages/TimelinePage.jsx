@@ -185,6 +185,12 @@ export default function TimelinePage() {
                     {e.source === "legacy" && (
                       <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Fiche véhicule</span>
                     )}
+                    {e.source === "derived" && (
+                      <span data-testid={`deadline-derived-badge-${e.vehicle_id}`}
+                            className="inline-flex rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                        Estimé — carte grise
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", t.bg, t.text)}>
