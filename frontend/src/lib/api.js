@@ -263,8 +263,10 @@ export const adminUpdateIntegration = (tid, data) =>
 export const getAllDocuments = (params = {}) => http.get("/documents", { params }).then((r) => r.data);
 export const getVehiclesArchive = () => http.get("/vehicles-archive").then((r) => r.data);
 export const getArchiveDocuments = (id) => http.get(`/vehicles-archive/${id}/documents`).then((r) => r.data);
+export const restoreArchivedVehicle = (id) => http.post(`/vehicles-archive/${id}/restore`).then((r) => r.data);
 export const adminListTenantVehicles = (tid) => http.get(`/admin/tenants/${tid}/vehicles`).then((r) => r.data);
 export const adminTransferArchive = (data) => http.post("/admin/vehicles-archive/transfer", data).then((r) => r.data);
+export const adminListTransfers = () => http.get("/admin/transfers").then((r) => r.data);
 export const updateDocument = (docId, data) => http.patch(`/documents/${docId}`, data).then((r) => r.data);
 export const getDocCategories = () => http.get("/doc-categories").then((r) => r.data);
 export const createDocCategory = (data) => http.post("/doc-categories", data).then((r) => r.data);

@@ -1,7 +1,8 @@
 import { useState, Fragment } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Archive, ChevronDown, ChevronRight, Download, FileText, Loader2, Send } from "lucide-react";
-import { getVehiclesArchive, getArchiveDocuments, fileUrl } from "@/lib/api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { Archive, ChevronDown, ChevronRight, Download, FileText, Loader2, Send, RotateCcw } from "lucide-react";
+import { getVehiclesArchive, getArchiveDocuments, restoreArchivedVehicle, fileUrl } from "@/lib/api";
 import { dateFr } from "@/lib/format";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -51,13 +52,31 @@ function ArchiveDocs({ vehicleId }) {
 
 export default function ArchivesPage() {
   const { user } = useAuth();
+  const qc = useQueryClient();
   const isSuperadmin = user?.role === "superadmin";
+  const canWrite = user?.role !== "read_only";
   const [expanded, setExpanded] = useState(null);
   const [transferRow, setTransferRow] = useState(null);
+  const [restoring, setRestoring] = useState(null);
   const { data: rows = [], isLoading, isError, error } = useQuery({
     queryKey: ["vehicles-archive"],
     queryFn: getVehiclesArchive,
   });
+
+  const restore = async (r) => {
+    setRestoring(r.id);
+    try {
+      const res = await restoreArchivedVehicle(r.id);
+      toast.success(`Véhicule ${r.plaque} restauré · ${res.restored_documents} document(s) réactivé(s)`);
+      ["vehicles-archive", "vehicles", "documents", "dashboard"].forEach((k) =>
+        qc.invalidateQueries({ queryKey: [k] })
+      );
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Restauration impossible");
+    } finally {
+      setRestoring(null);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-fade-in" data-testid="archives-page">
@@ -82,17 +101,17 @@ export default function ArchivesPage() {
               <TableHead>Par</TableHead>
               <TableHead>Documents</TableHead>
               <TableHead>Transfert</TableHead>
-              {isSuperadmin && <TableHead className="text-right">Actions</TableHead>}
+              {canWrite && <TableHead className="text-right">Actions</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading && (
-              <TableRow><TableCell colSpan={isSuperadmin ? 7 : 6}>
+              <TableRow><TableCell colSpan={canWrite ? 7 : 6}>
                 <div className="flex items-center justify-center gap-2 py-10 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" /> Chargement…</div>
               </TableCell></TableRow>
             )}
             {!isLoading && rows.length === 0 && (
-              <TableRow><TableCell colSpan={isSuperadmin ? 7 : 6}>
+              <TableRow><TableCell colSpan={canWrite ? 7 : 6}>
                 <div className="flex flex-col items-center gap-2 py-10 text-center" data-testid="archives-empty">
                   <Archive className="h-8 w-8 text-slate-300" />
                   <p className="text-sm font-medium text-slate-600">Aucun véhicule archivé</p>
@@ -126,21 +145,28 @@ export default function ArchivesPage() {
                       <span className="text-xs text-slate-400">—</span>
                     )}
                   </TableCell>
-                  {isSuperadmin && (
+                  {canWrite && (
                     <TableCell className="text-right">
-                      {r.documents_count > 0 && (
-                        <Button variant="outline" size="sm" data-testid={`archive-transfer-btn-${r.id}`}
-                                onClick={(e) => { e.stopPropagation(); setTransferRow(r); }} className="gap-1.5">
-                          <Send className="h-3.5 w-3.5" /> Transférer les documents
+                      <div className="flex justify-end gap-2">
+                        <Button variant="outline" size="sm" data-testid={`archive-restore-btn-${r.id}`}
+                                disabled={restoring === r.id}
+                                onClick={(e) => { e.stopPropagation(); restore(r); }} className="gap-1.5">
+                          {restoring === r.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />} Restaurer
                         </Button>
-                      )}
+                        {isSuperadmin && r.documents_count > 0 && (
+                          <Button variant="outline" size="sm" data-testid={`archive-transfer-btn-${r.id}`}
+                                  onClick={(e) => { e.stopPropagation(); setTransferRow(r); }} className="gap-1.5">
+                            <Send className="h-3.5 w-3.5" /> Transférer les documents
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   )}
                 </TableRow>
                 {expanded === r.id && (
                   <TableRow className="bg-slate-50/60 hover:bg-slate-50/60">
                     <TableCell />
-                    <TableCell colSpan={isSuperadmin ? 6 : 5}><ArchiveDocs vehicleId={r.id} /></TableCell>
+                    <TableCell colSpan={canWrite ? 6 : 5}><ArchiveDocs vehicleId={r.id} /></TableCell>
                   </TableRow>
                 )}
               </Fragment>

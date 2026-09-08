@@ -71,6 +71,7 @@ def teardown_module():
                      "vehicle_field_meta", "users"):
             db[coll].delete_many({"tenant_id": t})
         db.tenants.delete_many({"id": t})
+    db.document_transfers.delete_many({"source_tenant_id": SRC})
 
 
 class TestArchiveConsultation:
@@ -136,3 +137,61 @@ class TestTransfert:
                           timeout=30, json={"source_tenant_id": SRC, "archive_vehicle_id": _S["veh_src"],
                                             "target_tenant_id": DST, "target_vehicle_id": _S["veh_dst"]})
         assert r.status_code == 200 and r.json()["transferred"] == 0
+
+
+class TestHistoriqueTransferts:
+    def test_liste_superadmin(self):
+        r = requests.get(f"{_BASE}/api/admin/transfers", headers=sa(), timeout=30)
+        assert r.status_code == 200
+        mine = [e for e in r.json() if e["source_tenant_id"] == SRC]
+        assert any(e["documents"] == 1 and e["target_tenant_id"] == DST
+                   and e["source_tenant_name"] and e["target_tenant_name"] for e in mine)
+
+    def test_admin_normal_403(self):
+        r = requests.get(f"{_BASE}/api/admin/transfers", headers=_h(*ADM_SRC), timeout=30)
+        assert r.status_code == 403
+
+
+class TestRestauration:
+    def test_restore_apres_transfert(self):
+        r = requests.post(f"{_BASE}/api/vehicles-archive/{_S['veh_src']}/restore",
+                          headers=_h(*ADM_SRC), timeout=30)
+        assert r.status_code == 200, r.text
+        assert r.json()["restored_documents"] == 0  # documents déjà transférés
+        db = _mongo()
+        assert db.vehicles.find_one({"id": _S["veh_src"], "tenant_id": SRC})
+        assert db.vehicles_archive.find_one({"id": _S["veh_src"]}) is None
+
+    def test_restore_avec_documents(self):
+        r = requests.post(f"{_BASE}/api/vehicles", headers=_h(*ADM_SRC), timeout=30,
+                          json={"plaque": f"RST {_RUN[:6].upper()}", "marque": "VW", "modele": "Golf"})
+        vid = r.json()["id"]
+        did = str(uuid.uuid4())
+        _mongo().documents.insert_one({
+            "id": did, "vehicle_id": vid, "tenant_id": SRC, "folder": "Divers",
+            "original_filename": "restore.pdf", "storage_path": f"pytest-arc/r-{_RUN}.pdf",
+            "content_type": "application/pdf", "size": 5, "is_deleted": False,
+            "created_at": datetime.now(timezone.utc).isoformat()})
+        assert requests.delete(f"{_BASE}/api/vehicles/{vid}", headers=_h(*ADM_SRC), timeout=30).status_code == 200
+        r = requests.post(f"{_BASE}/api/vehicles-archive/{vid}/restore", headers=_h(*ADM_SRC), timeout=30)
+        assert r.status_code == 200 and r.json()["restored_documents"] == 1
+        doc = _mongo().documents.find_one({"id": did}, {"_id": 0})
+        assert doc["is_deleted"] is False and "deleted_reason" not in doc
+
+    def test_restore_collision_tracker_409(self):
+        r = requests.post(f"{_BASE}/api/vehicles", headers=_h(*ADM_SRC), timeout=30,
+                          json={"plaque": f"TRK {_RUN[:6].upper()}", "marque": "Opel", "modele": "Corsa"})
+        va = r.json()["id"]
+        _mongo().vehicles.update_one({"id": va}, {"$set": {"source": "navixy",
+                                                           "navixy_tracker_id": 777, "navixy_absent": True}})
+        assert requests.delete(f"{_BASE}/api/vehicles/{va}", headers=_h(*ADM_SRC), timeout=30).status_code == 200
+        r = requests.post(f"{_BASE}/api/vehicles", headers=_h(*ADM_SRC), timeout=30,
+                          json={"plaque": f"TRK2 {_RUN[:5].upper()}", "marque": "Opel", "modele": "Corsa"})
+        _mongo().vehicles.update_one({"id": r.json()["id"]}, {"$set": {"navixy_tracker_id": 777}})
+        r = requests.post(f"{_BASE}/api/vehicles-archive/{va}/restore", headers=_h(*ADM_SRC), timeout=30)
+        assert r.status_code == 409
+        assert "recréé par la synchronisation" in r.json()["detail"]
+
+    def test_restore_cross_tenant_404(self):
+        r = requests.post(f"{_BASE}/api/vehicles-archive/inexistant/restore", headers=_h(*ADM_DST), timeout=30)
+        assert r.status_code == 404

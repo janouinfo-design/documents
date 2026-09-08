@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import NewClientDialog from "@/components/admin/NewClientDialog";
 import ClientUsers from "@/components/admin/ClientUsers";
 import ClientIntegration from "@/components/admin/ClientIntegration";
+import TransfersHistory from "@/components/admin/TransfersHistory";
 
 function ClientCard({ tenant, expanded, onToggle }) {
   const qc = useQueryClient();
@@ -122,6 +123,7 @@ export default function AdminPage() {
           ))}
         </div>
       )}
+      <TransfersHistory />
       <NewClientDialog open={newOpen} onOpenChange={setNewOpen} />
     </div>
   );

@@ -1099,6 +1099,34 @@ async def list_archive_documents(vehicle_id: str, request: Request):
     return docs
 
 
+@api_router.post("/vehicles-archive/{vehicle_id}/restore")
+async def restore_vehicle_archive(vehicle_id: str, request: Request):
+    """Restaure un véhicule supprimé par erreur, avec ses documents conservés."""
+    t = tid(request)
+    arc = await db.vehicles_archive.find_one({"id": vehicle_id, "tenant_id": t}, {"_id": 0})
+    if not arc:
+        raise HTTPException(status_code=404, detail="Véhicule archivé introuvable")
+    if await db.vehicles.find_one({"id": vehicle_id, "tenant_id": t}, {"_id": 1}):
+        raise HTTPException(status_code=409, detail="Un véhicule avec cet identifiant existe déjà")
+    ntid = arc.get("navixy_tracker_id")
+    if ntid and await db.vehicles.find_one({"navixy_tracker_id": ntid, "tenant_id": t}, {"_id": 1}):
+        raise HTTPException(status_code=409, detail=(
+            "Ce véhicule a déjà été recréé par la synchronisation Navixy — restauration impossible. "
+            "Utilisez le transfert de documents pour récupérer ses documents archivés."))
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {k: v for k, v in arc.items() if k not in ("deleted_at", "deleted_by", "transferred_to")}
+    doc["updated_at"] = now
+    await db.vehicles.insert_one(dict(doc))
+    res = await db.documents.update_many(
+        {"vehicle_id": vehicle_id, "tenant_id": t, "deleted_reason": "vehicle_removed"},
+        {"$set": {"is_deleted": False}, "$unset": {"deleted_reason": "", "deleted_at": ""}})
+    await db.vehicles_archive.delete_one({"id": vehicle_id, "tenant_id": t})
+    await audit("restore", "vehicle", request, entity_id=vehicle_id, vehicle_id=vehicle_id,
+                detail=(f"Véhicule {arc.get('plaque') or vehicle_id} restauré depuis l'archive — "
+                        f"{res.modified_count} document(s) réactivé(s)"))
+    return {"ok": True, "restored_documents": res.modified_count}
+
+
 # ---------------------------------------------------------------------------
 # File upload / serving
 # ---------------------------------------------------------------------------
@@ -4295,11 +4323,30 @@ async def admin_transfer_archive_documents(payload: ArchiveTransferPayload, requ
     detail = (f"Transfert de {res.modified_count} document(s) du véhicule archivé "
               f"{arc.get('plaque') or payload.archive_vehicle_id} (client {payload.source_tenant_id}) "
               f"vers {target.get('plaque') or payload.target_vehicle_id} (client {payload.target_tenant_id})")
+    await db.document_transfers.insert_one({
+        "id": str(uuid.uuid4()), "at": now, "by": state_user.get("email"),
+        "source_tenant_id": payload.source_tenant_id, "source_plaque": arc.get("plaque"),
+        "archive_vehicle_id": payload.archive_vehicle_id,
+        "target_tenant_id": payload.target_tenant_id, "target_vehicle_id": payload.target_vehicle_id,
+        "target_plaque": target.get("plaque"), "documents": res.modified_count})
     await audit("transfer", "documents", request, entity_id=payload.archive_vehicle_id,
                 vehicle_id=payload.target_vehicle_id, detail=detail, tenant_id=payload.target_tenant_id)
     await audit("transfer", "documents", request, entity_id=payload.archive_vehicle_id,
                 vehicle_id=payload.archive_vehicle_id, detail=detail, tenant_id=payload.source_tenant_id)
     return {"ok": True, "transferred": res.modified_count, "target_plaque": target.get("plaque")}
+
+
+@admin_router.get("/transfers")
+async def admin_list_transfers(limit: int = 100):
+    """Historique des transferts de documents entre clients (superadmin)."""
+    rows = await db.document_transfers.find({}, {"_id": 0}).to_list(None)
+    rows.sort(key=lambda r: r.get("at") or "", reverse=True)
+    names = {t["id"]: t.get("name") or t["id"]
+             for t in await db.tenants.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(None)}
+    for r in rows:
+        r["source_tenant_name"] = names.get(r["source_tenant_id"], r["source_tenant_id"])
+        r["target_tenant_name"] = names.get(r["target_tenant_id"], r["target_tenant_id"])
+    return rows[:max(1, min(limit, 500))]
 
 
 @admin_router.get("/overview")
