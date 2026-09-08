@@ -1,7 +1,6 @@
 # Procédure de mise en production — Scanner mobile V2 + badge « à vérifier »
 
-> **PRÉREQUIS ABSOLU : GO explicite « GO déploiement VPS Documents ».**
-> Sans ce GO, ne rien exécuter sur le VPS.
+> **GO reçu le 2026-09 (« GO Déploiement VPS »).** Exécution par l'utilisateur sur le VPS.
 
 ## Contenu du lot
 - **Scanner mobile V2** (frontend uniquement) : capture caméra mobile, multi-pages,
@@ -32,7 +31,7 @@
 3. Vérifications post-déploiement :
    ```bash
    docker compose ps                                  # tous les services "running"
-   curl -s https://documents.logitrak.ch/api/health   # ou la route de santé habituelle
+   curl -s https://documents.logitrak.ch/api/         # route de santé (répond en JSON)
    ```
    Puis dans un navigateur :
    - Login → badge ambre éventuel sur l'onglet **Documents** (si scans en attente).
