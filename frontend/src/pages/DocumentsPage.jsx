@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { Search, FolderCog, ListChecks, Pencil, Download, FolderOpen, Loader2 } from "lucide-react";
+import { Search, FolderCog, ListChecks, Pencil, Download, FolderOpen, Loader2, Sparkles } from "lucide-react";
 import { getAllDocuments, getDocCategories, getDeadlineSettings, getVehicles, fileUrl } from "@/lib/api";
 import { dateFr } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -30,6 +30,7 @@ export default function DocumentsPage() {
   const [folder, setFolder] = useState(searchParams.get("folder") || ALL);
   const [statut, setStatut] = useState(searchParams.get("statut") || ALL);
   const [echeance, setEcheance] = useState(searchParams.get("echeance") || ALL);
+  const [aValider, setAValider] = useState(searchParams.get("a_valider") === "1");
   const [editDoc, setEditDoc] = useState(null);
   const [catsOpen, setCatsOpen] = useState(false);
   const [reqsOpen, setReqsOpen] = useState(false);
@@ -39,13 +40,18 @@ export default function DocumentsPage() {
     return () => clearTimeout(t);
   }, [q]);
 
+  useEffect(() => {
+    if (searchParams.get("a_valider") === "1") setAValider(true);
+  }, [searchParams]);
+
   const params = useMemo(() => ({
     ...(qDebounced.trim() && { q: qDebounced.trim() }),
     ...(vehicle !== ALL && { vehicle_id: vehicle }),
     ...(folder !== ALL && { folder }),
     ...(statut !== ALL && { statut }),
     ...(echeance !== ALL && { echeance }),
-  }), [qDebounced, vehicle, folder, statut, echeance]);
+    ...(aValider && { a_valider: "1" }),
+  }), [qDebounced, vehicle, folder, statut, echeance, aValider]);
 
   const { data: docs = [], isLoading, isError, error } = useQuery({
     queryKey: ["all-documents", params],
@@ -85,7 +91,7 @@ export default function DocumentsPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-6">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <Input data-testid="docs-filter-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nom, fournisseur, n°, tag…" className="pl-9" />
@@ -117,6 +123,19 @@ export default function DocumentsPage() {
             {ECHEANCES.map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
           </SelectContent>
         </Select>
+        <Button
+          data-testid="docs-filter-a-valider"
+          variant="outline"
+          onClick={() => setAValider((x) => !x)}
+          className={cn(
+            "justify-start gap-2 font-medium",
+            aValider
+              ? "border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-100 hover:text-amber-900"
+              : "text-slate-600"
+          )}
+        >
+          <Sparkles className="h-4 w-4" /> À valider (scan)
+        </Button>
       </div>
 
       {isError && <QueryErrorState error={error} testId="documents-error" />}
@@ -162,6 +181,11 @@ export default function DocumentsPage() {
                     {d.numero ? `N° ${d.numero}` : d.sub_category || ""}
                     {(d.tags || []).length > 0 && ` · ${d.tags.join(", ")}`}
                   </p>
+                  {d.extraction_status === "done" && (
+                    <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800" data-testid={`doc-a-valider-${d.id}`}>
+                      Analysé — à valider
+                    </span>
+                  )}
                 </TableCell>
                 <TableCell>
                   <button onClick={() => openVehicle(d.vehicle_id, "documents")} className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline" data-testid={`doc-open-vehicle-${d.id}`}>

@@ -1,6 +1,7 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Plus, ChevronRight, Truck, FileDown, Database, Fuel } from "lucide-react";
+import { Search, Plus, ChevronRight, Truck, FileDown, Database, Fuel, Archive } from "lucide-react";
 import { getVehicles, conformityReportUrl, costsCsvUrl, vehicleThumbSrc } from "@/lib/api";
 import { fmtKm } from "@/lib/format";
 import { Input } from "@/components/ui/input";
@@ -24,6 +25,7 @@ import { cn } from "@/lib/utils";
 export default function Vehicles() {
   const { openVehicle } = useVehicleDrawer();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const readOnly = user?.role === "read_only";
   const [q, setQ] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
@@ -99,6 +101,9 @@ export default function Vehicles() {
               </DropdownMenuItem>
               <DropdownMenuItem data-testid="report-csv-btn" onClick={() => window.open(costsCsvUrl(), "_blank", "noopener")}>
                 Coûts de la flotte (CSV)
+              </DropdownMenuItem>
+              <DropdownMenuItem data-testid="archives-menu-item" onClick={() => navigate("/archives")}>
+                <Archive className="mr-2 h-4 w-4 text-slate-400" /> Véhicules archivés
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

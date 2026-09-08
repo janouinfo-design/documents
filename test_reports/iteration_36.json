@@ -1,0 +1,32 @@
+{
+  "summary": "Frontend E2E validation of 3 new features on LOGITRAK: (1) badge documents pending click, (2) archives page (list/expand/download) with delete-vehicle-guard, (3) superadmin cross-tenant document transfer via impersonation. 6/6 target flows PASS after resolving test-script URL typo (/vehicules FR, not /vehicles). RBAC visual checks (admin no-transfer, read_only no-badge no-transfer) confirmed. Backend guard 409 confirmed. Console clean (0 errors) on happy paths.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_36.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "ArchivesPage: TableRow colSpan={7} used unconditionally for loading/empty but header has 6 cols for non-superadmin (superadmin=7). Cosmetic only, no visible impact.",
+    "TransferArchiveDialog: 'admin-overview' query enabled=open loads full overview when opening dialog; could be scoped to /api/admin/tenants list if payload heavy.",
+    "Route naming inconsistency: /vehicules (FR) vs /documents /archives (EN) — mixed lang in routes. Not a bug; may confuse future testers/scripts."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped, already 14/14 pytest)", "frontend": "100%"},
+  "test_credentials": "admin@logitrak.ch / 3a9218d1606b52e003383e52d7aea3d6 ; superadmin@logitrak.ch / 8129413106bcdc0b11dcfa1c7dc9b5e5 ; ro-e2e@client-test.ch / RoTest-2026y",
+  "seed_data_creation": "Created 2 test archives via admin: E2E-ARC-6Y4I3F (1 doc, then transferred to Client Test E2E vehicle GE 100 200 — now count=0 with transferred badge) and E2E-ARC-MS2LBG (1 doc, kept). One doc now exists on GE 100 200 in tenant client-test-e2e with a_verifier=true (expected side-effect flagged in review request).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "IMPORTANT: Vehicles page route is /vehicules (French), NOT /vehicles. The Layout nav link uses /vehicules. Direct goto /vehicles renders blank inside the app shell. Archives page route is /archives (EN). Archive rows expand-on-click; superadmin actions column only appears in Vue client mode (setActingTenant via admin-view-client-btn-{tenantId}). Tenant Select in TransferArchiveDialog displays tenant NAMES (e.g. 'Client Test E2E') not IDs — filter options by name. 2 archives remain in default tenant, one transferred one not.",
+  "test_results_detail": {
+    "badge_click_documents": "PASS — nav-documents-pending-badge click → /documents?a_valider=1, docs-filter-a-valider in amber-active state, 34 doc-a-valider-{id} badges rendered, toggle-off works (staying on page keeps searchParams for reactivation).",
+    "flux_archive_e2e_ui": "PASS — POST /api/vehicles (manual)+upload+DELETE returned {ok:true, documents_archived:1}; navigated /vehicules → export-menu-btn → archives-menu-item → /archives; archive-row-{id} shows plaque E2E-ARC-*, deleted_by admin@logitrak.ch, docs count 1; expand shows archive-docs-{id} with archive-doc-download-{docId}; GET /api/vehicles-archive/{id}/documents returns 200.",
+    "guard_delete_navixy_409": "PASS — DELETE on navixy source non-absent vehicle → 409 detail: \"Ce véhicule est synchronisé avec Navixy. Retirez d'abord son tracker...\".",
+    "transfer_superadmin_e2e_ui": "PASS — superadmin@logitrak.ch → /admin → admin-view-client-btn-default → /archives → archive-transfer-btn-{id} → dialog → transfer-tenant-select (Client Test E2E) → transfer-vehicle-select (GE 100 200) → transfer-confirm-btn → toast '1 document(s) transféré(s) vers GE 100 200' → archive-transferred-{id} badge '1 doc(s) → GE 100 200' visible → docs count → 0.",
+    "rbac_admin_archives": "PASS — /archives as admin: 0 archive-transfer-btn-*, no Actions column header.",
+    "rbac_readonly_archives": "PASS — /archives as ro-e2e: archives-page renders, 0 transfer btns, nav-documents-pending-badge absent (no documents module badge for RO tenant).",
+    "non_regression": "PASS — /documents (no filter) works, /vehicules loads with 14 vehicles, docs badge shows count 34, 0 console errors on flows (only benign Recharts width warnings before container measured)."
+  }
+}

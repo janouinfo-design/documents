@@ -16,6 +16,7 @@ import IntegrityPage from "@/pages/IntegrityPage";
 import AdminPage from "@/pages/AdminPage";
 import DocumentsPage from "@/pages/DocumentsPage";
 import ScanPage from "@/pages/ScanPage";
+import ArchivesPage from "@/pages/ArchivesPage";
 import SsoNotConfigured from "@/pages/SsoNotConfigured";
 import { useLocation } from "react-router-dom";
 
@@ -51,6 +52,7 @@ function App() {
                         <Routes>
                           <Route path="/" element={<Dashboard />} />
                           <Route path="/vehicules" element={<Vehicles />} />
+                          <Route path="/archives" element={<ArchivesPage />} />
                           <Route path="/scan/:vehicleId" element={<ScanPage />} />
                           <Route path="/documents" element={<DocumentsPage />} />
                           <Route path="/timeline" element={<TimelinePage />} />

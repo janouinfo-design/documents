@@ -1071,6 +1071,34 @@ async def delete_vehicle(vehicle_id: str, request: Request):
     return {"ok": True, "documents_archived": res.modified_count}
 
 
+@api_router.get("/vehicles-archive")
+async def list_vehicles_archive(request: Request):
+    """Véhicules supprimés (consultation) — leurs documents restent récupérables."""
+    t = tid(request)
+    rows = await db.vehicles_archive.find(
+        {"tenant_id": t},
+        {"_id": 0, "id": 1, "plaque": 1, "marque": 1, "modele": 1, "annee": 1,
+         "deleted_at": 1, "deleted_by": 1, "transferred_to": 1}).to_list(None)
+    for r in rows:
+        r["documents_count"] = await db.documents.count_documents(
+            {"tenant_id": t, "vehicle_id": r["id"], "deleted_reason": "vehicle_removed"})
+    rows.sort(key=lambda r: r.get("deleted_at") or "", reverse=True)
+    return rows
+
+
+@api_router.get("/vehicles-archive/{vehicle_id}/documents")
+async def list_archive_documents(vehicle_id: str, request: Request):
+    t = tid(request)
+    if not await db.vehicles_archive.find_one({"id": vehicle_id, "tenant_id": t}, {"_id": 1}):
+        raise HTTPException(status_code=404, detail="Véhicule archivé introuvable")
+    docs = await db.documents.find(
+        {"tenant_id": t, "vehicle_id": vehicle_id, "deleted_reason": "vehicle_removed"},
+        {"_id": 0, "id": 1, "original_filename": 1, "folder": 1, "document_type": 1,
+         "size": 1, "created_at": 1, "deleted_at": 1, "storage_path": 1, "content_type": 1}).to_list(None)
+    docs.sort(key=lambda d: d.get("created_at") or "", reverse=True)
+    return docs
+
+
 # ---------------------------------------------------------------------------
 # File upload / serving
 # ---------------------------------------------------------------------------
@@ -2059,6 +2087,7 @@ async def list_all_documents(request: Request,
                              statut: Optional[str] = None,
                              q: Optional[str] = None,
                              echeance: Optional[str] = None,
+                             a_valider: Optional[str] = None,
                              limit: int = 500):
     t = tid(request)
     th = await deadline_settings(t)
@@ -2067,6 +2096,9 @@ async def list_all_documents(request: Request,
         query["vehicle_id"] = vehicle_id
     if folder:
         query["folder"] = folder
+    if a_valider:
+        query["extraction_status"] = "done"
+        query["archived"] = {"$ne": True}
     docs = await db.documents.find(query, {"_id": 0, "pages": 0, "extracted_fields": 0}).to_list(None)
     vmap = {v["id"]: v for v in await db.vehicles.find(
         {"tenant_id": t}, {"_id": 0, "id": 1, "plaque": 1, "marque": 1, "modele": 1}).to_list(None)}
@@ -4212,6 +4244,62 @@ class IntegrationUpdate(BaseModel):
     enabled: Optional[bool] = None
     write_enabled: Optional[bool] = None
     base_url: Optional[str] = None
+
+
+@admin_router.get("/tenants/{tid}/vehicles")
+async def admin_list_tenant_vehicles(tid: str):
+    """Sélecteur de véhicule cible pour le transfert de documents archivés."""
+    rows = await db.vehicles.find(
+        {"tenant_id": tid}, {"_id": 0, "id": 1, "plaque": 1, "marque": 1, "modele": 1}).to_list(None)
+    rows.sort(key=lambda v: v.get("plaque") or "")
+    return rows
+
+
+class ArchiveTransferPayload(BaseModel):
+    source_tenant_id: str
+    archive_vehicle_id: str
+    target_tenant_id: str
+    target_vehicle_id: str
+
+
+@admin_router.post("/vehicles-archive/transfer")
+async def admin_transfer_archive_documents(payload: ArchiveTransferPayload, request: Request):
+    """Rattache les documents conservés d'un véhicule supprimé au véhicule du client repreneur."""
+    arc = await db.vehicles_archive.find_one(
+        {"id": payload.archive_vehicle_id, "tenant_id": payload.source_tenant_id}, {"_id": 0})
+    if not arc:
+        raise HTTPException(status_code=404, detail="Véhicule archivé introuvable dans le client source")
+    target = await db.vehicles.find_one(
+        {"id": payload.target_vehicle_id, "tenant_id": payload.target_tenant_id},
+        {"_id": 0, "id": 1, "plaque": 1})
+    if not target:
+        raise HTTPException(status_code=404, detail="Véhicule cible introuvable dans le client cible")
+    now = datetime.now(timezone.utc).isoformat()
+    state_user = getattr(request.state, "user", None) or {}
+    res = await db.documents.update_many(
+        {"tenant_id": payload.source_tenant_id, "vehicle_id": payload.archive_vehicle_id,
+         "deleted_reason": "vehicle_removed"},
+        {"$set": {"tenant_id": payload.target_tenant_id, "vehicle_id": payload.target_vehicle_id,
+                  "is_deleted": False, "a_verifier": True,
+                  "transferred_from": {"tenant_id": payload.source_tenant_id,
+                                       "vehicle_id": payload.archive_vehicle_id,
+                                       "plaque": arc.get("plaque"), "at": now,
+                                       "by": state_user.get("email")}},
+         "$unset": {"deleted_reason": "", "deleted_at": ""}})
+    await db.vehicles_archive.update_one(
+        {"id": payload.archive_vehicle_id, "tenant_id": payload.source_tenant_id},
+        {"$set": {"transferred_to": {"tenant_id": payload.target_tenant_id,
+                                     "vehicle_id": payload.target_vehicle_id,
+                                     "plaque": target.get("plaque"), "at": now,
+                                     "documents": res.modified_count}}})
+    detail = (f"Transfert de {res.modified_count} document(s) du véhicule archivé "
+              f"{arc.get('plaque') or payload.archive_vehicle_id} (client {payload.source_tenant_id}) "
+              f"vers {target.get('plaque') or payload.target_vehicle_id} (client {payload.target_tenant_id})")
+    await audit("transfer", "documents", request, entity_id=payload.archive_vehicle_id,
+                vehicle_id=payload.target_vehicle_id, detail=detail, tenant_id=payload.target_tenant_id)
+    await audit("transfer", "documents", request, entity_id=payload.archive_vehicle_id,
+                vehicle_id=payload.archive_vehicle_id, detail=detail, tenant_id=payload.source_tenant_id)
+    return {"ok": True, "transferred": res.modified_count, "target_plaque": target.get("plaque")}
 
 
 @admin_router.get("/overview")

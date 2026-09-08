@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { LayoutDashboard, Truck, CalendarClock, Bell, Layers3, UserCircle2, KeyRound, LogOut, ShieldCheck, Building2, Eye, FolderOpen, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -37,6 +37,7 @@ function Brand() {
 
 function TopTabs() {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const canValidate = !!user && user.role !== "read_only";
   const { data: pending } = useQuery({
@@ -75,8 +76,9 @@ function TopTabs() {
             {to === "/documents" && pendingCount > 0 && (
               <span
                 data-testid="nav-documents-pending-badge"
-                title={`${pendingCount} scan${pendingCount > 1 ? "s" : ""} analysé${pendingCount > 1 ? "s" : ""} en attente de validation`}
-                className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold text-white"
+                title={`${pendingCount} scan${pendingCount > 1 ? "s" : ""} analysé${pendingCount > 1 ? "s" : ""} en attente de validation — cliquer pour les afficher`}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate("/documents?a_valider=1"); }}
+                className="flex h-5 min-w-[20px] cursor-pointer items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold text-white transition-colors hover:bg-amber-600"
               >
                 {pendingCount > 99 ? "99+" : pendingCount}
               </span>
