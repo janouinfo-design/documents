@@ -155,6 +155,12 @@ export default function Vehicles() {
                             {v.plaque}
                           </button>
                           <p className="text-xs text-slate-500">{[v.marque, v.modele].filter(Boolean).join(" ")}{v.annee ? ` · ${v.annee}` : ""}</p>
+                          {v.navixy_absent && (
+                            <span data-testid={`vehicle-navixy-absent-${v.id}`}
+                                  className="mt-0.5 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                              Retiré de Navixy
+                            </span>
+                          )}
                         </div>
                       </div>
                     </td>

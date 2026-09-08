@@ -28,7 +28,7 @@ export default function SyncButton() {
     setSyncing(true);
     try {
       const r = await navixySync();
-      toast.success(`Synchronisation réussie · ${r.synced} véhicules (${r.created} ajoutés, ${r.updated} mis à jour)`);
+      toast.success(`Synchronisation réussie · ${r.synced} véhicules (${r.created} ajoutés, ${r.updated} mis à jour${r.marked_absent ? `, ${r.marked_absent} retiré(s) de Navixy` : ""})`);
       ["vehicles", "dashboard", "timeline", "sync-status"].forEach((k) =>
         qc.invalidateQueries({ queryKey: [k] })
       );

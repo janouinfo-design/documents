@@ -448,6 +448,8 @@ async def push_vehicle_to_navixy(vehicle: dict, request=None) -> dict:
         return {"status": "integration_absente"}
     if not integ.get("write_enabled", NAVIXY_WRITE_ENABLED):
         return {"status": "disabled"}
+    if vehicle.get("navixy_absent"):
+        return {"status": "retire_navixy"}
     nvid = vehicle.get("navixy_vehicle_id")
     if not nvid:
         return {"status": "not_linked"}
@@ -1048,14 +1050,25 @@ async def update_vehicle(vehicle_id: str, payload: VehicleUpdate, request: Reque
 
 @api_router.delete("/vehicles/{vehicle_id}")
 async def delete_vehicle(vehicle_id: str, request: Request):
-    result = await db.vehicles.delete_one({"id": vehicle_id, "tenant_id": tid(request)})
-    if result.deleted_count == 0:
+    v = await db.vehicles.find_one({"id": vehicle_id, "tenant_id": tid(request)}, {"_id": 0})
+    if not v:
         raise HTTPException(status_code=404, detail="Véhicule introuvable")
-    await db.documents.delete_many({"vehicle_id": vehicle_id})
-    await db.inspections.delete_many({"vehicle_id": vehicle_id})
-    await db.vehicle_field_meta.delete_many({"vehicle_id": vehicle_id})
-    await db.fuel_snapshots.delete_many({"vehicle_id": vehicle_id})
-    return {"ok": True}
+    if v.get("source") == "navixy" and not v.get("navixy_absent"):
+        raise HTTPException(status_code=409, detail=(
+            "Ce véhicule est synchronisé avec Navixy. Retirez d'abord son tracker du compte Navixy : "
+            "à la prochaine synchronisation il sera marqué « Retiré de Navixy » et pourra être supprimé."))
+    now = datetime.now(timezone.utc).isoformat()
+    state_user = getattr(request.state, "user", None) or {}
+    await db.vehicles_archive.insert_one(dict(v, deleted_at=now, deleted_by=state_user.get("email")))
+    await db.vehicles.delete_one({"id": vehicle_id, "tenant_id": tid(request)})
+    # Documents conservés (soft-delete, fichiers intacts) — récupérables pour le compte qui reprend le véhicule
+    res = await db.documents.update_many(
+        {"vehicle_id": vehicle_id, "tenant_id": tid(request), "is_deleted": False},
+        {"$set": {"is_deleted": True, "deleted_reason": "vehicle_removed", "deleted_at": now}})
+    await audit("delete", "vehicle", request, entity_id=vehicle_id, vehicle_id=vehicle_id,
+                detail=(f"Véhicule {v.get('plaque') or vehicle_id} supprimé — "
+                        f"{res.modified_count} document(s) conservé(s) en archive (récupérables)"))
+    return {"ok": True, "documents_archived": res.modified_count}
 
 
 # ---------------------------------------------------------------------------
@@ -2377,6 +2390,7 @@ async def navixy_sync_internal(tenant_id: str = "default") -> dict:
             "kilometrage": km,
             "tracker_gps": source_obj.get("device_id") or label,
             "navixy_tracker_id": tid,
+            "navixy_absent": False,
             "integrations.navixy.tracker_id": tid,
             "integrations.navixy.sync_status": "ok",
             "integrations.navixy.last_sync_at": now,
@@ -2438,11 +2452,28 @@ async def navixy_sync_internal(tenant_id: str = "default") -> dict:
         if fuel.get("litres_cumules") is not None and km > 0:
             await _record_fuel_snapshot(vid, fuel["litres_cumules"], km, tenant_id)
 
+    # Trackers disparus du compte (véhicule déplacé/retiré côté Navixy) : marquage, JAMAIS de suppression auto
+    present_ids = [t["id"] for t in trackers]
+    marked_absent = 0
+    gone = await db.vehicles.find(
+        {"tenant_id": tenant_id, "source": "navixy", "navixy_absent": {"$ne": True},
+         "navixy_tracker_id": {"$exists": True, "$ne": None, "$nin": present_ids}},
+        {"_id": 0, "id": 1, "plaque": 1}).to_list(None)
+    for gv in gone:
+        await db.vehicles.update_one({"id": gv["id"], "tenant_id": tenant_id}, {"$set": {
+            "navixy_absent": True, "navixy_absent_since": now,
+            "integrations.navixy.sync_status": "absent", "updated_at": now}})
+        await audit("navixy_absent", "vehicle", entity_id=gv["id"], vehicle_id=gv["id"],
+                    detail=f"Tracker introuvable dans le compte Navixy — véhicule {gv.get('plaque') or gv['id']} marqué « Retiré de Navixy »",
+                    tenant_id=tenant_id)
+        marked_absent += 1
+
     removed = await db.vehicles.delete_many({"source": {"$in": ["demo", None]}, "tenant_id": tenant_id})
     await db.tenant_integrations.update_one(
         {"tenant_id": tenant_id, "provider": "navixy"},
         {"$set": {"last_sync_at": now}}, upsert=True)
-    return {"synced": len(trackers), "created": created, "updated": updated, "removed_demo": removed.deleted_count}
+    return {"synced": len(trackers), "created": created, "updated": updated,
+            "removed_demo": removed.deleted_count, "marked_absent": marked_absent}
 
 
 @api_router.get("/navixy/status")

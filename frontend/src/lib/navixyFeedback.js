@@ -14,6 +14,9 @@ export function notifyNavixyPush(push, vehicleId) {
     case "not_linked":
       toast.info("Navixy : véhicule non lié à une fiche « Gestion de flotte » Navixy — synchronisation non effectuée (liaison possible depuis la page Intégrité)");
       break;
+    case "retire_navixy":
+      toast.info("Navixy : ce véhicule a été retiré du compte Navixy — synchronisation non effectuée");
+      break;
     case "integration_absente":
     case "disabled":
       break; // pas d'intégration télématique : rien à signaler

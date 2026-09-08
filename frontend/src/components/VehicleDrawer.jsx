@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Car, FileText, ShieldCheck, ScrollText, Images, ClipboardCheck, FolderTree,
-  Gauge, MapPin, User, Radio, Loader2, Hash, FileDown, Wallet,
+  Gauge, MapPin, User, Radio, Loader2, Hash, FileDown, Wallet, Unlink,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -12,6 +12,7 @@ import { fmtKm } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import StatusBadge from "@/components/StatusBadge";
 import VehiclePhotoMenu from "@/components/VehiclePhotoMenu";
+import DeleteVehicleButton from "@/components/DeleteVehicleButton";
 import { useAuth } from "@/context/AuthContext";
 import GeneralTab from "@/components/tabs/GeneralTab";
 import LeasingTab from "@/components/tabs/LeasingTab";
@@ -122,6 +123,12 @@ export default function VehicleDrawer({ open, onOpenChange, vehicleId, initialTa
                       {vehicle.plaque}
                     </SheetTitle>
                     <StatusBadge level={m.overall} testId="drawer-overall-status" />
+                    {vehicle.navixy_absent && (
+                      <span data-testid="vehicle-navixy-absent-badge"
+                            className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-800">
+                        <Unlink className="h-3 w-3" /> Retiré de Navixy
+                      </span>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"
@@ -131,6 +138,16 @@ export default function VehicleDrawer({ open, onOpenChange, vehicleId, initialTa
                     >
                       <FileDown className="h-3.5 w-3.5" /> Fiche PDF
                     </Button>
+                    {!readOnly && (vehicle.navixy_absent || vehicle.source !== "navixy") && (
+                      <DeleteVehicleButton
+                        vehicle={vehicle}
+                        onDeleted={() => {
+                          refresh();
+                          qc.invalidateQueries({ queryKey: ["documents"] });
+                          onOpenChange(false);
+                        }}
+                      />
+                    )}
                   </div>
                   <SheetDescription className="mt-0.5 text-sm text-slate-500">
                     {vehicle.marque} {vehicle.modele}{vehicle.annee ? ` · ${vehicle.annee}` : ""}
