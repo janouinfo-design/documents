@@ -569,3 +569,41 @@ Bug d'origine (prod) : document « Analysé » mais fiche véhicule vide. Cause 
 - Frontend : `Co2SuggestDialog.jsx` + bouton Suggérer sur la tuile CO₂ officiel (masqué read_only seulement). testids co2-suggest-btn/dialog/source-badge/value-input/apply-btn.
 - Tests : `tests/test_co2_suggest.py` **8/8 PASS** (RBAC, cross-tenant, bornes, IA → « NEDC (est.) » + meta, ASTRA → sans (est.), 0 g/km électrique valide, fallback IA réel plausible 80–200, 422 sans marque) + conso re-passée 8/8. E2E UI réel VD 594 862 : ASTRA → 128 g/km · NEDC appliqué, tuile mise à jour.
 - NON déployé — aucun nouveau fichier backend runtime (Dockerfile inchangé).
+
+## Mobile Document Scanner V2 (2026-09, preview — testing agent it.35 100% PASS)
+
+### Objective
+Scanner de documents réellement utilisable sur smartphone : capture caméra, multi-pages, aperçu/rotation/suppression/réordonnancement, compression client, OCR existant, fallback contrôlé « Ouvrir dans le navigateur » quand la WebView bloque fichiers/caméra.
+
+### User flow
+Véhicule → Documents → Scanner → Capturer/importer → pages (max 8) → rotation/suppression/réordonnancement → Analyser (unique) → OCR Claude → Review → Validation humaine → Persist. MÊME pipeline OCR desktop/mobile (aucun 2e moteur).
+
+### Implémentation (fichiers)
+- `ScanDocumentDialog.jsx` : étapes type/capture/camera/crop/analyzing/review/failed ; input caméra `accept="image/*" capture="environment"` (mobile) ; getUserMedia `facingMode environment` (desktop) ; compression client (EXIF corrigé, bord max 2400px, JPEG 88%) ; panneau WebView `scan-webview-fallback` + bouton « Ouvrir dans le navigateur » + « Copier le lien » ; gardes **busyRef** (anti double-submit — 2 clics = 1 POST prouvé) et **genRef** (anti résultat obsolète après fermeture/reset) ; reset complet à la fermeture (0 fuite véhicule A → B, prouvé).
+- `ScanPage.jsx` (NOUVEAU) + route `/scan/:vehicleId?type=...` dans App.js : fallback plein écran ; type validé contre allowlist DOC_TYPE_OPTIONS ; véhicule inconnu → message ; read_only → `<Navigate to="/vehicules">`.
+- `Login.jsx` : redirection post-login vers `location.state.from` **validée interne** (startsWith('/'), pas '//', ≠ /login) — retour automatique sur la même fiche véhicule/scanner/type après reconnexion. AUCUN token/JWT/secret dans l'URL. Pas d'open redirect.
+- `DocumentScanCard.jsx` : libellés mobiles « Scanner avec l'appareil photo » / « Importer depuis le téléphone » ; masqué read_only.
+- Backend INCHANGÉ dans ce lot (endpoint scan ligne ~2759 server.py : tenant scope find_tenant_vehicle, read_only 403 middleware, MAX 8 pages, 25 Mo, SCAN_EXTS, as_pdf → enhance_and_pdf).
+
+### Security (prouvé)
+- Read-only backend POST scan = **403** (curl + pytest) · frontend : aucun bouton scan, /scan → redirect.
+- Cross-tenant scan/GET véhicule = **404** (curl + pytest).
+- Token in URL = **NO** · Open redirect = **NO** (safeFrom + allowlist type).
+- Tests : `backend/tests/test_scan_v2_readonly.py` **4/4 PASS** (créé par testing agent it.35).
+
+### Platform validation (it.35 — /app/test_reports/iteration_35.json)
+| Plateforme | UI | Import | Multi-pages | OCR e2e | Caméra | Fallback | Statut |
+|---|---|---|---|---|---|---|---|
+| Desktop Chrome | PASS | PASS | PASS | PASS (Claude réel) | NOT TESTED (getUserMedia auto) | PASS (URL propre) | PASS |
+| Mobile 390px simulé | PASS | PASS | PASS | — | N/A | PASS | PASS |
+| Android Chrome réel | NOT TESTED — physical device required |||||||
+| iPhone Safari réel | NOT TESTED — physical device required |||||||
+| WebView réelle (hub) | NOT TESTED — physical device required (fallback panel vérifié par code review) |||||||
+
+### Statut
+- IMPLEMENTATION STATUS = COMPLETE · SOFTWARE VALIDATION = PASS (build PASS, it.35 100%, 0 erreur console)
+- REAL DEVICE VALIDATION = **PENDING** · PRODUCTION READINESS = PENDING REAL DEVICE TEST
+- NEXT ACTION = REAL DEVICE VALIDATION : 1) Android Chrome + caméra arrière 2) iPhone Safari + caméra 3) WebView/hub d'origine (bug initial « téléchargements via le navigateur ») → bouton « Ouvrir dans le navigateur » → reconnexion → retour auto même véhicule → scan → OCR → review.
+
+### VERROUILLAGE DÉPLOIEMENT
+**AUCUN DÉPLOIEMENT VPS/PRODUCTION SANS « GO déploiement VPS Documents » EXPLICITE.** Ce lot est frontend-only (Dockerfile backend inchangé). NON déployé.

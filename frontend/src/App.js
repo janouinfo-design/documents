@@ -15,10 +15,13 @@ import Login from "@/pages/Login";
 import IntegrityPage from "@/pages/IntegrityPage";
 import AdminPage from "@/pages/AdminPage";
 import DocumentsPage from "@/pages/DocumentsPage";
+import ScanPage from "@/pages/ScanPage";
 import SsoNotConfigured from "@/pages/SsoNotConfigured";
+import { useLocation } from "react-router-dom";
 
 function Protected({ children }) {
   const { user, ssoPending, ssoUnconfigured } = useAuth();
+  const location = useLocation();
   if (ssoUnconfigured) return <SsoNotConfigured />;
   if (user === undefined || ssoPending)
     return (
@@ -27,7 +30,7 @@ function Protected({ children }) {
         {ssoPending && <p className="text-sm text-slate-500" data-testid="sso-pending">Ouverture de Documents…</p>}
       </div>
     );
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />;
   return children;
 }
 
@@ -48,6 +51,7 @@ function App() {
                         <Routes>
                           <Route path="/" element={<Dashboard />} />
                           <Route path="/vehicules" element={<Vehicles />} />
+                          <Route path="/scan/:vehicleId" element={<ScanPage />} />
                           <Route path="/documents" element={<DocumentsPage />} />
                           <Route path="/timeline" element={<TimelinePage />} />
                           <Route path="/couts" element={<CostsPage />} />

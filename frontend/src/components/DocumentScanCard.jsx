@@ -21,10 +21,10 @@ export default function DocumentScanCard({ vehicle, docType, title, description,
     >
       <div className="flex flex-col gap-2 sm:flex-row">
         <Button data-testid={`${testIdPrefix}-camera`} onClick={() => openWith("camera")} className="gap-2 bg-slate-900 hover:bg-slate-800">
-          <Camera className="h-4 w-4" /> Prendre une photo
+          <Camera className="h-4 w-4" /> {/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? "Scanner avec l'appareil photo" : "Prendre une photo"}
         </Button>
         <Button data-testid={`${testIdPrefix}-import`} variant="outline" onClick={() => openWith("import")} className="gap-2">
-          <FolderUp className="h-4 w-4" /> Importer un fichier
+          <FolderUp className="h-4 w-4" /> {/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? "Importer depuis le téléphone" : "Importer un fichier"}
         </Button>
       </div>
       <ScanDocumentDialog

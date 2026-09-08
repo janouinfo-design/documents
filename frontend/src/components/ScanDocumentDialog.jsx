@@ -30,6 +30,42 @@ const typeLabel = (key) => DOC_TYPE_OPTIONS.find((t) => t.key === key)?.label ||
 const inputType = (kind) => (kind === "date" ? "date" : kind === "int" || kind === "float" ? "number" : "text");
 const isMobileDevice = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
+// WebView intégrée (hub mobile) : le sélecteur de fichiers/caméra y est souvent bloqué par l'app hôte.
+export const isEmbeddedWebView = () => {
+  const ua = navigator.userAgent || "";
+  if (/Android/i.test(ua) && /; wv\)/.test(ua)) return true;
+  if (/iPhone|iPad|iPod/i.test(ua) && !/Safari\//i.test(ua) && !/CriOS|FxiOS|EdgiOS/i.test(ua)) return true;
+  return false;
+};
+
+export const scannerBrowserUrl = (vehicleId, docType) =>
+  `${window.location.origin}/scan/${vehicleId}${docType ? `?type=${encodeURIComponent(docType)}` : ""}`;
+
+// Compression client : orientation EXIF corrigée, bord max 2400 px, JPEG 88 % —
+// qualité suffisante pour l'OCR (petits caractères de carte grise lisibles).
+const MAX_IMAGE_EDGE = 2400;
+async function normalizeImage(file) {
+  if (!/^image\//.test(file.type || "")) return file;
+  try {
+    const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(bmp.width, bmp.height));
+    if (scale === 1 && file.size < 2.5 * 1024 * 1024) {
+      bmp.close();
+      return file;
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bmp.width * scale);
+    canvas.height = Math.round(bmp.height * scale);
+    canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    bmp.close();
+    const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.88));
+    if (!blob) return file;
+    return new File([blob], (file.name || "photo").replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
+  } catch {
+    return file;
+  }
+}
+
 const rotateImageFile = (file) =>
   new Promise((resolve) => {
     const url = URL.createObjectURL(file);
@@ -104,6 +140,8 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const validatedRef = useRef(false);
+  const genRef = useRef(0);
+  const busyRef = useRef(false);
 
   const stopCamera = () => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -111,6 +149,8 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
   };
 
   const reset = () => {
+    genRef.current += 1;
+    busyRef.current = false;
     stopCamera();
     pages.forEach((p) => p.preview && URL.revokeObjectURL(p.preview));
     setStep(initialStep);
@@ -150,6 +190,7 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
 
   const openCamera = async () => {
     setCameraError(null);
+    if (isEmbeddedWebView()) return; // panneau « Ouvrir dans le navigateur » déjà affiché
     ensureScanner();
     if (isMobileDevice()) {
       cameraRef.current?.click();
@@ -260,7 +301,7 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
     onOpenChange(o);
   };
 
-  const addFiles = (list, opts = {}) => {
+  const addFiles = async (list, opts = {}) => {
     const arr = Array.from(list || []);
     if (!arr.length) return;
     const hasPdf = arr.some((f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
@@ -280,9 +321,10 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
       toast.error("Maximum 8 pages par scan");
       return;
     }
+    const normalized = await Promise.all(arr.map((f) => normalizeImage(f)));
     setPages((ps) => [
       ...ps,
-      ...arr.map((f) => ({ id: crypto.randomUUID(), file: f, preview: URL.createObjectURL(f), isPdf: false, fromCamera: !!opts.fromCamera })),
+      ...normalized.map((f) => ({ id: crypto.randomUUID(), file: f, preview: URL.createObjectURL(f), isPdf: false, fromCamera: !!opts.fromCamera })),
     ]);
   };
 
@@ -322,6 +364,22 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
     });
   };
 
+  const movePage = (id, dir) => {
+    setPages((ps) => {
+      const i = ps.findIndex((p) => p.id === id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= ps.length) return ps;
+      const next = [...ps];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  };
+
+  const retakePage = (id) => {
+    removePage(id);
+    openCamera();
+  };
+
   const initReview = (res) => {
     setResult(res);
     setDocType(res.document_type);
@@ -330,11 +388,15 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
   };
 
   const analyze = async () => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    const gen = genRef.current;
     setError(null);
     setStep("analyzing");
     try {
       const asPdf = pages.length > 0 && pages.every((p) => !p.isPdf) && pages.some((p) => p.fromCamera);
       const res = await scanVehicleDocument(vehicle.id, pages.map((p) => p.file), { documentType: chosenType || undefined, asPdf });
+      if (gen !== genRef.current) return;
       if (res.extraction_status === "failed") {
         setFailedDocId(res.document_id);
         setError(res.error);
@@ -343,17 +405,24 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
       }
       initReview(res);
     } catch (e) {
+      if (gen !== genRef.current) return;
       setError(e?.response?.data?.detail || "Échec de l'analyse — vérifiez le fichier puis réessayez.");
       setStep("capture");
+    } finally {
+      if (gen === genRef.current) busyRef.current = false;
     }
   };
 
   const reanalyze = async (type) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    const gen = genRef.current;
     const documentId = result?.document_id || failedDocId;
     setError(null);
     setStep("analyzing");
     try {
       const res = await scanVehicleDocument(vehicle.id, null, { documentType: type, documentId });
+      if (gen !== genRef.current) return;
       if (res.extraction_status === "failed") {
         setFailedDocId(res.document_id);
         setError(res.error);
@@ -362,8 +431,11 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
       }
       initReview(res);
     } catch (e) {
+      if (gen !== genRef.current) return;
       setError(e?.response?.data?.detail || "Échec de la ré-analyse.");
       setStep(result ? "review" : "failed");
+    } finally {
+      if (gen === genRef.current) busyRef.current = false;
     }
   };
 
@@ -407,7 +479,7 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
 
   return (
     <Dialog open={open} onOpenChange={close}>
-      <DialogContent data-testid="scan-dialog" className="max-h-[92vh] w-[calc(100vw-1rem)] max-w-2xl overflow-y-auto rounded-xl sm:w-full">
+      <DialogContent data-testid="scan-dialog" className="max-h-[92vh] w-[calc(100vw-1rem)] max-w-2xl overflow-y-auto rounded-xl sm:w-full max-sm:h-[100dvh] max-sm:max-h-[100dvh] max-sm:w-screen max-sm:max-w-none max-sm:rounded-none">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 font-display text-lg">
             <ScanLine className="h-5 w-5 text-slate-500" /> Scanner un document — {vehicle?.plaque}
@@ -498,30 +570,65 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
             )}
             {cameraError === "iframe" ? (
               <div data-testid="scan-camera-error" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
-                <p>La caméra est bloquée à l'intérieur du hub (iframe) par le navigateur. Ouvrez l'application en plein écran pour scanner, ou utilisez « Importer un fichier ».</p>
-                <Button
-                  size="sm"
-                  variant="outline"
+                <p>La caméra est bloquée à l'intérieur du hub (iframe) par le navigateur. Ouvrez le scanner en plein écran — vous retrouverez ce véhicule directement.</p>
+                <a
+                  href={scannerBrowserUrl(vehicle?.id, chosenType)}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   data-testid="scan-open-fullscreen"
-                  onClick={() => window.open(window.location.href, "_blank", "noopener")}
-                  className="mt-2 gap-1.5 border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
                 >
-                  <ExternalLink className="h-3.5 w-3.5" /> Ouvrir en plein écran
-                </Button>
+                  <ExternalLink className="h-3.5 w-3.5" /> Ouvrir le scanner en plein écran
+                </a>
               </div>
             ) : cameraError && (
               <div data-testid="scan-camera-error" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                 {cameraError}
               </div>
             )}
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Button data-testid="scan-take-photo" onClick={openCamera} className="flex-1 gap-2 bg-slate-900 hover:bg-slate-800">
-                <Camera className="h-4 w-4" /> Prendre une photo
-              </Button>
-              <Button data-testid="scan-import-file" variant="outline" onClick={() => fileRef.current?.click()} className="flex-1 gap-2">
-                <FolderUp className="h-4 w-4" /> Importer un fichier
-              </Button>
-            </div>
+            {isEmbeddedWebView() ? (
+              <div data-testid="scan-webview-fallback" className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <p className="text-sm font-medium text-amber-900">
+                  Le scanner nécessite le navigateur de votre téléphone.
+                </p>
+                <p className="text-xs text-amber-800">
+                  Cette vue intégrée bloque l'appareil photo et l'import de fichiers. Ouvrez le scanner
+                  dans Chrome ou Safari — vous retrouverez directement ce véhicule et ce type de document.
+                </p>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <a
+                    href={scannerBrowserUrl(vehicle?.id, chosenType)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-testid="scan-open-browser"
+                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+                  >
+                    <ExternalLink className="h-4 w-4" /> Ouvrir dans le navigateur
+                  </a>
+                  <Button
+                    variant="outline"
+                    data-testid="scan-copy-link"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(scannerBrowserUrl(vehicle?.id, chosenType))
+                        .then(() => toast.success("Lien copié — collez-le dans votre navigateur"))
+                        .catch(() => toast.error("Copie impossible"));
+                    }}
+                    className="flex-1 gap-2 border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+                  >
+                    Copier le lien
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button data-testid="scan-take-photo" onClick={openCamera} className="h-11 flex-1 gap-2 bg-slate-900 hover:bg-slate-800">
+                  <Camera className="h-4 w-4" /> {isMobileDevice() ? "Scanner avec l'appareil photo" : "Prendre une photo"}
+                </Button>
+                <Button data-testid="scan-import-file" variant="outline" onClick={() => fileRef.current?.click()} className="h-11 flex-1 gap-2">
+                  <FolderUp className="h-4 w-4" /> {isMobileDevice() ? "Importer depuis le téléphone" : "Importer un fichier"}
+                </Button>
+              </div>
+            )}
             {pages.length > 0 ? (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3" data-testid="scan-pages">
                 {pages.map((p, i) => (
@@ -538,9 +645,24 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
                       Page {i + 1}
                     </span>
                     <div className="absolute right-1.5 top-1.5 flex gap-1">
+                      {i > 0 && !p.isPdf && (
+                        <button onClick={() => movePage(p.id, -1)} data-testid={`scan-move-left-${i}`} className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/90 text-slate-600 shadow hover:bg-white" aria-label="Déplacer vers la gauche">
+                          <ArrowLeft className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      {i < pages.length - 1 && !p.isPdf && (
+                        <button onClick={() => movePage(p.id, 1)} data-testid={`scan-move-right-${i}`} className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/90 text-slate-600 shadow hover:bg-white" aria-label="Déplacer vers la droite">
+                          <ArrowLeft className="h-3.5 w-3.5 rotate-180" />
+                        </button>
+                      )}
                       {!p.isPdf && (
                         <button onClick={() => rotatePage(p.id)} data-testid={`scan-rotate-${i}`} className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/90 text-slate-600 shadow hover:bg-white" aria-label="Pivoter">
                           <RotateCw className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      {p.fromCamera && !isEmbeddedWebView() && (
+                        <button onClick={() => retakePage(p.id)} data-testid={`scan-retake-${i}`} className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/90 text-slate-600 shadow hover:bg-white" aria-label="Reprendre la photo">
+                          <Camera className="h-3.5 w-3.5" />
                         </button>
                       )}
                       <button onClick={() => removePage(p.id)} data-testid={`scan-remove-${i}`} className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/90 text-red-500 shadow hover:bg-white" aria-label="Supprimer">

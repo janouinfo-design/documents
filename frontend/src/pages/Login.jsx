@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Layers3, Loader2, Lock, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,10 @@ function formatApiErrorDetail(detail) {
 export default function Login() {
   const { login, ssoError } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  // Retour post-connexion : uniquement une route interne (jamais //host ni URL externe)
+  const rawFrom = location.state?.from;
+  const safeFrom = typeof rawFrom === "string" && rawFrom.startsWith("/") && !rawFrom.startsWith("//") && rawFrom !== "/login" ? rawFrom : null;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -28,7 +32,7 @@ export default function Login() {
     setLoading(true);
     try {
       const u = await login(email, password);
-      navigate(u?.role === "superadmin" ? "/admin" : "/", { replace: true });
+      navigate(safeFrom || (u?.role === "superadmin" ? "/admin" : "/"), { replace: true });
     } catch (err) {
       setError(formatApiErrorDetail(err?.response?.data?.detail) || "Connexion impossible");
     } finally {
