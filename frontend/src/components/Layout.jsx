@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { LayoutDashboard, Truck, CalendarClock, Bell, Layers3, UserCircle2, KeyRound, LogOut, ShieldCheck, Building2, Eye, FolderOpen, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getActingTenant, setActingTenant } from "@/lib/api";
+import { getActingTenant, setActingTenant, getPendingReviewCount } from "@/lib/api";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -37,6 +38,14 @@ function Brand() {
 function TopTabs() {
   const { pathname } = useLocation();
   const { user } = useAuth();
+  const canValidate = !!user && user.role !== "read_only";
+  const { data: pending } = useQuery({
+    queryKey: ["documents", "pending-review-count"],
+    queryFn: getPendingReviewCount,
+    enabled: canValidate,
+    refetchInterval: 60000,
+  });
+  const pendingCount = canValidate ? pending?.count || 0 : 0;
   const items = user?.role === "superadmin"
     ? [...NAV, { to: "/admin", label: "Administration", icon: Building2, testId: "nav-admin" }]
     : NAV;
@@ -63,6 +72,15 @@ function TopTabs() {
               )}
             />
             {label}
+            {to === "/documents" && pendingCount > 0 && (
+              <span
+                data-testid="nav-documents-pending-badge"
+                title={`${pendingCount} scan${pendingCount > 1 ? "s" : ""} analysé${pendingCount > 1 ? "s" : ""} en attente de validation`}
+                className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold text-white"
+              >
+                {pendingCount > 99 ? "99+" : pendingCount}
+              </span>
+            )}
           </Link>
         );
       })}

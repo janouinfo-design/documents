@@ -216,6 +216,8 @@ export const scanVehicleDocument = (vehicleId, files, { documentType, documentId
 };
 export const validateScannedDocument = (docId, payload) =>
   http.post(`/documents/${docId}/validate`, payload).then((r) => r.data);
+export const getPendingReviewCount = () =>
+  http.get("/documents/pending-review-count").then((r) => r.data);
 export const getFieldMeta = (id) => http.get(`/vehicles/${id}/field-meta`).then((r) => r.data);
 export const getVehicleHistory = (id) => http.get(`/vehicles/${id}/history`).then((r) => r.data);
 

@@ -2030,6 +2030,15 @@ async def update_document(doc_id: str, payload: DocumentUpdate, request: Request
     return with_statut({**doc, **updates}, preavis)
 
 
+@api_router.get("/documents/pending-review-count")
+async def pending_review_count(request: Request):
+    """Scans analysés en attente de validation humaine (badge menu Documents)."""
+    n = await db.documents.count_documents(
+        {"tenant_id": tid(request), "is_deleted": False,
+         "archived": {"$ne": True}, "extraction_status": "done"})
+    return {"count": n}
+
+
 @api_router.get("/documents")
 async def list_all_documents(request: Request,
                              vehicle_id: Optional[str] = None,

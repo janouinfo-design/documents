@@ -602,8 +602,15 @@ Véhicule → Documents → Scanner → Capturer/importer → pages (max 8) → 
 
 ### Statut
 - IMPLEMENTATION STATUS = COMPLETE · SOFTWARE VALIDATION = PASS (build PASS, it.35 100%, 0 erreur console)
-- REAL DEVICE VALIDATION = **PENDING** · PRODUCTION READINESS = PENDING REAL DEVICE TEST
-- NEXT ACTION = REAL DEVICE VALIDATION : 1) Android Chrome + caméra arrière 2) iPhone Safari + caméra 3) WebView/hub d'origine (bug initial « téléchargements via le navigateur ») → bouton « Ouvrir dans le navigateur » → reconnexion → retour auto même véhicule → scan → OCR → review.
+- REAL DEVICE VALIDATION = **PASS (user-confirmed 2026-09)** — l'utilisateur a scanné une carte grise avec la caméra de son téléphone : « ça marche ». Détail par plateforme (Android/iOS/WebView hub) non ventilé par l'utilisateur.
+- PRODUCTION READINESS = READY — en attente du GO explicite « GO déploiement VPS Documents ». Procédure préparée : `deploy/PROCEDURE-SCANNER-V2.md`.
 
 ### VERROUILLAGE DÉPLOIEMENT
 **AUCUN DÉPLOIEMENT VPS/PRODUCTION SANS « GO déploiement VPS Documents » EXPLICITE.** Ce lot est frontend-only (Dockerfile backend inchangé). NON déployé.
+
+## Implemented — Badge « scans à valider » sur le menu Documents (2026-09, preview)
+- Demande utilisateur : badge sur l'onglet Documents quand des scans analysés attendent encore la validation humaine.
+- Backend : `GET /api/documents/pending-review-count` (server.py, déclaré avant GET /documents) → `{count}` = documents tenant-scopés `extraction_status == "done"`, non supprimés, non archivés. Prouvé par curl : count exact 33 (= agrégat Mongo), 200 read_only (lecture), 401 sans auth, tenant-scopé.
+- Frontend : `Layout.jsx` TopTabs — useQuery `["documents","pending-review-count"]` (refetch 60 s + invalidée automatiquement par les `invalidateQueries({queryKey:["documents"]})` existants après scan/validation), badge ambre `nav-documents-pending-badge` (99+ cap), **masqué pour read_only** (ne peut pas valider). `api.js` : getPendingReviewCount.
+- Vérifié : screenshot admin badge « 33 » visible, read_only badge absent ; build PASS ; régression backend subset document/scan 89 PASS + suites complètes admin_console/deadlines_v2 53/53 PASS (2 faux échecs initiaux = artefacts du filtre -k, re-passés verts en suite complète).
+- NON déployé — server.py seul modifié côté backend (déjà dans le COPY du Dockerfile).
