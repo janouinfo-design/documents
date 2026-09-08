@@ -614,3 +614,8 @@ Véhicule → Documents → Scanner → Capturer/importer → pages (max 8) → 
 - Frontend : `Layout.jsx` TopTabs — useQuery `["documents","pending-review-count"]` (refetch 60 s + invalidée automatiquement par les `invalidateQueries({queryKey:["documents"]})` existants après scan/validation), badge ambre `nav-documents-pending-badge` (99+ cap), **masqué pour read_only** (ne peut pas valider). `api.js` : getPendingReviewCount.
 - Vérifié : screenshot admin badge « 33 » visible, read_only badge absent ; build PASS ; régression backend subset document/scan 89 PASS + suites complètes admin_console/deadlines_v2 53/53 PASS (2 faux échecs initiaux = artefacts du filtre -k, re-passés verts en suite complète).
 - NON déployé — server.py seul modifié côté backend (déjà dans le COPY du Dockerfile).
+
+## DÉPLOYÉ EN PRODUCTION — Scanner mobile V2 + badge « à vérifier » (2026-09, VPS)
+- GO explicite utilisateur reçu ; déploiement exécuté par l'utilisateur (git pull + docker compose up -d --build backend web). Containers relancés : backend Up, web Up, mongo healthy.
+- **Vérifié à distance par l'agent sur https://documents.logitrak.ch** : /api/ répond (401 non authentifié = normal) ; GET /api/documents/pending-review-count → 401 (route présente = nouveau backend, l'ancien aurait donné 404) ; bundle frontend main.806775af.js contient « pending-review-count » et « Scanner avec l'appareil photo » (nouveau frontend) ; route SPA /scan/... → HTTP 200 text/html (fallback navigateur opérationnel en prod).
+- Rappel : test caméra réel téléphone déjà user-confirmed (« ça marche ») avant déploiement.
