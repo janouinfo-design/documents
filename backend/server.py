@@ -935,31 +935,42 @@ async def resolve_vehicle(request: Request,
                           vin: Optional[str] = None,
                           plate: Optional[str] = None):
     """Résolution inter-modules, LECTURE SEULE — ne modifie jamais aucune donnée.
-    Ordre de priorité : vehicle_id > navixy_vehicle_id > navixy_tracker_id > vin > plate.
-    Un critère fourni sans résultat passe au suivant ; plusieurs résultats = ambiguous
-    immédiat (jamais de rapprochement ambigu silencieux)."""
+    Ordre de jointure : vehicle_id (UUID) > vin > navixy_vehicle_id > navixy_tracker_id > plate.
+    tracker : jointure automatique assortie d'un avertissement tant qu'aucun
+    historique d'affectation boîtier↔véhicule n'est maintenu.
+    plate : JAMAIS de match automatique — statut manual_review avec candidats.
+    Plusieurs résultats sur un critère fort = ambiguous immédiat."""
     vin_n, plate_n = _norm_vin(vin), _norm_plate(plate)
     criteria = []
     if vehicle_id:
         criteria.append(("vehicle_id", lambda v: v.get("id") == vehicle_id))
+    if vin_n:
+        criteria.append(("vin", lambda v: _norm_vin(v.get("vin")) == vin_n))
     if navixy_vehicle_id is not None:
         criteria.append(("navixy_vehicle_id", lambda v: v.get("navixy_vehicle_id") == navixy_vehicle_id))
     if navixy_tracker_id is not None:
         criteria.append(("navixy_tracker_id", lambda v: v.get("navixy_tracker_id") == navixy_tracker_id))
-    if vin_n:
-        criteria.append(("vin", lambda v: _norm_vin(v.get("vin")) == vin_n))
     if plate_n:
         criteria.append(("plate", lambda v: _norm_plate(v.get("plaque")) == plate_n))
     if not criteria:
         raise HTTPException(status_code=422, detail=(
-            "Fournissez au moins un critère : vehicle_id, navixy_vehicle_id, "
-            "navixy_tracker_id, vin ou plate."))
+            "Fournissez au moins un critère : vehicle_id, vin, navixy_vehicle_id, "
+            "navixy_tracker_id ou plate."))
     vehicles = await db.vehicles.find({"tenant_id": tid(request)}, _IDENTITY_PROJ).to_list(None)
     searched = [name for name, _ in criteria]
     for name, pred in criteria:
         matches = [v for v in vehicles if pred(v)]
+        if name == "plate":
+            if matches:
+                return {"status": "manual_review", "matched_by": "plate", "count": len(matches),
+                        "matches": [_identity(m) for m in matches],
+                        "note": "Rapprochement par plaque réservé à une confirmation manuelle"}
+            continue
         if len(matches) == 1:
-            return {"status": "found", "matched_by": name, "vehicle": _identity(matches[0])}
+            out = {"status": "found", "matched_by": name, "vehicle": _identity(matches[0])}
+            if name == "navixy_tracker_id":
+                out["warning"] = "tracker_join_no_assignment_history"
+            return out
         if len(matches) > 1:
             return {"status": "ambiguous", "matched_by": name, "count": len(matches),
                     "matches": [_identity(m) for m in matches]}

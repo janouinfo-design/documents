@@ -46,6 +46,8 @@ class TestResolver:
                          params={"navixy_tracker_id": v["navixy_tracker_id"]}).json()
         assert r["status"] == "found" and r["matched_by"] == "navixy_tracker_id"
         assert r["vehicle"]["vehicle_id"] == v["id"]
+        # Traceur = attribut fixe sans historique d'affectation : avertissement obligatoire
+        assert r["warning"] == "tracker_join_no_assignment_history"
 
     def test_by_vin_normalized(self):
         v = next(x for x in _fleet() if (x.get("vin") or "").strip())
@@ -55,12 +57,26 @@ class TestResolver:
         if r["status"] == "found":
             assert r["matched_by"] == "vin" and r["vehicle"]["vehicle_id"] == v["id"]
 
-    def test_by_plate_normalized(self):
+    def test_by_plate_manual_review_only(self):
+        # La plaque ne produit JAMAIS de found automatique : manual_review avec candidats
         v = next(x for x in _fleet() if (x.get("plaque") or "").strip())
         messy = v["plaque"].lower().replace(" ", "")
         r = requests.get(f"{API}/vehicles/resolve", params={"plate": messy}).json()
-        assert r["status"] == "found" and r["matched_by"] == "plate"
-        assert r["vehicle"]["vehicle_id"] == v["id"]
+        assert r["status"] == "manual_review" and r["matched_by"] == "plate"
+        assert any(m["vehicle_id"] == v["id"] for m in r["matches"])
+
+    def test_vin_priority_over_tracker(self):
+        # Ordre de jointure : vin AVANT navixy_tracker_id
+        tracked = next(x for x in _fleet() if x.get("navixy_tracker_id"))
+        tmp = _mk({"plaque": "ZZ 66666", "vin": "WVWZZZ1JZXW000001"})
+        try:
+            r = requests.get(f"{API}/vehicles/resolve",
+                             params={"vin": "wvwzzz1jzxw000001",
+                                     "navixy_tracker_id": tracked["navixy_tracker_id"]}).json()
+            assert r["status"] == "found" and r["matched_by"] == "vin"
+            assert r["vehicle"]["vehicle_id"] == tmp
+        finally:
+            _rm(tmp)
 
     def test_not_found_and_no_empty_vin_match(self):
         # VIN inconnu : ne doit matcher AUCUN véhicule (y compris ceux au VIN vide)
@@ -68,11 +84,24 @@ class TestResolver:
         assert r["status"] == "not_found" and r["searched_by"] == ["vin"]
 
     def test_ambiguous_explicit(self):
-        a = _mk({"plaque": "ZZ 99999", "marque": "TestA"})
-        b = _mk({"plaque": "ZZ 99999", "marque": "TestB"})
+        # Ambiguïté sur critère FORT (vin dupliqué) : arrêt immédiat
+        a = _mk({"plaque": "ZZ 99999", "marque": "TestA", "vin": "TESTAMBIGUVIN0001"})
+        b = _mk({"plaque": "ZZ 99998", "marque": "TestB", "vin": "TESTAMBIGUVIN0001"})
         try:
-            r = requests.get(f"{API}/vehicles/resolve", params={"plate": "zz99999"}).json()
+            r = requests.get(f"{API}/vehicles/resolve", params={"vin": "TESTAMBIGUVIN0001"}).json()
             assert r["status"] == "ambiguous" and r["count"] == 2
+            assert {m["vehicle_id"] for m in r["matches"]} == {a, b}
+        finally:
+            _rm(a)
+            _rm(b)
+
+    def test_plate_duplicates_manual_review(self):
+        # Plaque dupliquée : manual_review avec les 2 candidats (jamais found)
+        a = _mk({"plaque": "ZZ 99997", "marque": "TestA"})
+        b = _mk({"plaque": "ZZ 99997", "marque": "TestB"})
+        try:
+            r = requests.get(f"{API}/vehicles/resolve", params={"plate": "zz99997"}).json()
+            assert r["status"] == "manual_review" and r["count"] == 2
             assert {m["vehicle_id"] for m in r["matches"]} == {a, b}
         finally:
             _rm(a)
@@ -93,7 +122,7 @@ class TestResolver:
         tmp = _mk({"plaque": "ZZ 77771"})
         try:
             r = requests.get(f"{API}/vehicles/resolve", params={"plate": "ZZ 77771"}).json()
-            assert r["status"] == "found" and r["vehicle"]["vin"] is None
+            assert r["status"] == "manual_review" and r["matches"][0]["vin"] is None
         finally:
             _rm(tmp)
 

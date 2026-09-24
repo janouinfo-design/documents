@@ -92,10 +92,10 @@ class TestTenantIsolation:
         # Le pilote (tenant default) ne résout PAS la plaque du tenant B
         r = requests.get(f"{API}/vehicles/resolve", params={"plate": "TB 22222"}).json()
         assert r["status"] == "not_found"
-        # B la résout chez lui
+        # B la résout chez lui (plaque = revue manuelle, jamais found automatique)
         rb = plain_requests.get(f"{API}/vehicles/resolve", params={"plate": "tb22222"},
                                 headers=hb, timeout=20).json()
-        assert rb["status"] == "found"
+        assert rb["status"] == "manual_review" and rb["count"] == 1
 
     def test_pilot_vehicles_not_visible_from_tenant_b(self, tenants):
         hb = tenants["test-b"]
@@ -188,7 +188,7 @@ class TestVolume:
         assert r.status_code == 200 and len(r.json()) == 300
         res = plain_requests.get(f"{API}/vehicles/resolve", params={"plate": "TV 00042"},
                                  headers=hv, timeout=20).json()
-        assert res["status"] == "found"
+        assert res["status"] == "manual_review" and res["count"] == 1
         integ = plain_requests.get(f"{API}/fleet/integrity", headers=hv, timeout=60).json()
         assert integ["total"] == 300
         dash = plain_requests.get(f"{API}/dashboard", headers=hv, timeout=60)

@@ -15,17 +15,21 @@ Journal de bord et Énergie. Le module Documents en est le fournisseur (lecture 
 Paramètres (au moins un requis, sinon 422) :
 `vehicle_id` · `navixy_vehicle_id` (int) · `navixy_tracker_id` (int) · `vin` · `plate`
 
-Ordre de priorité RÉELLEMENT implémenté (identifiants exacts d'abord) :
-1. `vehicle_id`
-2. `navixy_vehicle_id`
-3. `navixy_tracker_id`
-4. `vin` (normalisé : majuscules, caractères non alphanumériques retirés)
-5. `plate` (normalisée : majuscules, espaces/ponctuation retirés — « vd 123456 » ≡ « VD 123 456 »)
+Ordre de jointure (règle d'identité véhicule, appliquée) :
+1. `vehicle_id` (UUID commun)
+2. `vin` (normalisé : majuscules, caractères non alphanumériques retirés)
+3. id métier partagé — **n'existe pas encore** (à définir au contrat avec les autres projets)
+4. `navixy_vehicle_id` puis `navixy_tracker_id` — la réponse `found` par tracker porte
+   `"warning": "tracker_join_no_assignment_history"` tant qu'aucun historique
+   d'affectation boîtier↔véhicule n'est maintenu (le traceur est un attribut fixe)
+5. `plate` (normalisée) — **JAMAIS de match automatique** : réponse
+   `{"status": "manual_review", "matched_by": "plate", "count", "matches": [...]}` à
+   confirmer par un humain ou le projet appelant.
 
 Sémantique :
 - Chaque critère FOURNI est évalué dans cet ordre.
-- 1 correspondance → `{"status": "found", "matched_by": <critère>, "vehicle": <identity>}`.
-- \>1 correspondances → **arrêt immédiat** `{"status": "ambiguous", "matched_by", "count", "matches": [...]}`
+- 1 correspondance (critère fort) → `{"status": "found", "matched_by": <critère>, "vehicle": <identity>}`.
+- \>1 correspondances (critère fort) → **arrêt immédiat** `{"status": "ambiguous", "matched_by", "count", "matches": [...]}`
   — jamais de rapprochement ambigu silencieux.
 - 0 correspondance → critère suivant fourni ; si aucun ne correspond →
   `{"status": "not_found", "searched_by": [...]}`.
