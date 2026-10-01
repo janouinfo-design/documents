@@ -657,3 +657,9 @@ Véhicule → Documents → Scanner → Capturer/importer → pages (max 8) → 
 - Tests : test_p0_core (resolver adapté + nouveaux tests priorité VIN>tracker, warning tracker, plaque manual_review 1 et 2 candidats, ambiguous VIN) + test_multitenant adaptés — **36/36 PASS**.
 - Backlog issu de l'audit (non codé) : P1 historique `tracker_assignments` (condition pour jointure tracker sans warning) ; P2 index unique partiel (tenant, vin normalisé) — à ne poser qu'après audit prod des doublons ; P2 id métier partagé à définir au contrat inter-projets.
 - NON déployé (le changement resolver partira au prochain déploiement avec GO).
+
+## Test — Documents factices injectés en PREVIEW (2026-10)
+- Demande utilisateur : injecter des documents factices (factures, assurance, tickets) avec chiffres pour tester.
+- 4 documents générés (PIL, texte réaliste CHF) et passés dans le vrai pipeline scan→OCR Claude sur le véhicule « 1-Enyaq 01 Bern » (tenant default preview), laissés « à vérifier » (badge 34→38) : facture garage (auto-classée facture, fournisseur/n°/date/montant 510.77 extraits), police AXA (auto-classée assurance, n° police/prime 1248/échéance 31.12.2026), ticket essence Migrol (facture, 74.17), ticket lavage (autre, description). Classification automatique 4/4 correcte, extraction 4/4.
+- Constat UX noté : la recherche `q` ne trouve pas les valeurs extraites tant que la review n'est pas validée (comportement attendu — champs appliqués seulement après validation humaine).
+- PREVIEW uniquement — rien en production. Script éphémère /tmp (non conservé volontairement).
