@@ -1,0 +1,75 @@
+{
+  "summary": "Phase 3 AMENDES — frontend E2E on vehicle 1-Enyaq 01 Bern. Validated real fine doc 73cb1f99 across /documents, /timeline, /couts, drawer, mark-as-paid / cancel reversal, delete-blocked (409 VALIDATED_FINE), duplicate review dialog on seeded doc, read-only tenant isolation, and 390px responsive. All functional checks PASS, 0 unexpected console errors, 0 unexpected 4xx/5xx. Deliberate 409 observed on DELETE validated fine and POST validate of seeded dup (expected). Canonical fine left in payee=false state. Seeded dup doc cleaned up from Mongo.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "detailed_checks": {
+    "documents_page_filtered": {
+      "fine_summary": "120.00 CHF · Police Cantonale Vaudoise · N° ORD-2026-0078-451 · Infraction le 02.06.2026 · À payer avant le 30.11.2026 — OK",
+      "fournisseur_column": "Police Cantonale Vaudoise — OK",
+      "expiration_column": "30.11.2026 — OK",
+      "status_badge": "doc-statut-a_payer 'À payer' — OK",
+      "pay_button": "fine-paid-toggle-73cb1f99 'Marquer comme payée' — OK, enabled"
+    },
+    "timeline_page": {
+      "deadline_row": "deadline-row-doc:73cb1f99 present with label 'Amende Police Cantonale Vaudoise n° ORD-2026-0078-451 · 120.00 CHF', category 'Amende', 30.11.2026, 55 j — OK"
+    },
+    "costs_page": {
+      "police_mentions": 1,
+      "120_00_count": 2,
+      "regression_74_17_migrol": "present",
+      "regression_510_77_entretien": "present"
+    },
+    "mark_as_paid_flow": {
+      "toast_marquee": true,
+      "badge_payee": "Payée (doc-statut-payee) — OK",
+      "summary_includes_paid_date": "Payée le 06.10.2026 — OK",
+      "button_label_switch": "Annuler le paiement — OK",
+      "timeline_row_gone_after_paid": true,
+      "dashboard_no_reference": true,
+      "costs_still_has_line_after_paid": true,
+      "cancel_payment_toast": true,
+      "cancel_badge_back_a_payer": true,
+      "cancel_timeline_row_back": true
+    },
+    "drawer_documents_tab": {
+      "doc_item_73cb1f99_in_divers": "visible with 'À payer' badge, FineSummary, 'Marquer comme payée' btn — OK",
+      "delete_blocked_409": "Toast 'Amende validée (présente dans Coûts et Échéances) — suppression impossible pour préserver la traçabilité' — OK; doc preserved."
+    },
+    "review_dialog_seeded_dup": {
+      "business_category_picker": "AMENDE selected — OK",
+      "fields_present": "Autorité, N° de l'amende, Date de l'infraction, Montant, Devise, Délai paiement — OK",
+      "confirm_btn": "'Confirmer et enregistrer le coût' — OK",
+      "duplicate_box": "data-testid duplicate-suspected, data-kind=amende, title 'Amende en doublon probable', mentions existing 'amende_test.jpg' — OK",
+      "valider_quand_meme": "closes dialog, 2nd POST validate — OK"
+    },
+    "read_only_tenant_isolation": {
+      "ro_login_ok": true,
+      "no_tenant_default_data_leak": true,
+      "no_fine_paid_toggle_buttons_for_ro": true
+    },
+    "responsive_390x844": {
+      "documents_fine_row_readable": true,
+      "pay_button_visible": true,
+      "timeline_row_visible": true
+    },
+    "network_console": {
+      "unexpected_errors": 0,
+      "expected_409_delete_validated_fine": 1,
+      "expected_409_validate_duplicate": 1
+    }
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (not retested)", "frontend": "100%"},
+  "test_credentials": "admin@logitrak.ch + ro-e2e@client-test.ch from /app/memory/test_credentials.md",
+  "seed_data_creation": "Inserted via Mongo one duplicate amende doc id=8327bb79-3c7a-49d3-97f8-4eeb77b13669 for vehicle 6d00f932..., same numero ORD-2026-0078-451 to trigger business dedup. Validated via 'Valider quand même'. CLEANED UP (delete_one) at end — only canonical fine 73cb1f99 remains. Canonical fine left in payee=false, business_category=AMENDE.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Phase 3 Fines UI fully validated on preview. Canonical fine doc 73cb1f99-aadf-4d34-9a10-3b226d15496f on vehicle 1-Enyaq 01 Bern remains unpaid (payee=false). No pending bugs."
+}
