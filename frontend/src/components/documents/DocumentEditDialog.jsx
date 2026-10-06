@@ -9,8 +9,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { updateDocument } from "@/lib/api";
+import { useBusinessCategories } from "@/components/documents/BusinessCategoryPicker";
 
 const FREQUENCES = [["unique", "Unique"], ["mensuel", "Mensuel"], ["trimestriel", "Trimestriel"], ["semestriel", "Semestriel"], ["annuel", "Annuel"]];
+const NO_CAT = "__none__";
 
 const F = ({ label, children }) => (
   <div className="space-y-1">
@@ -21,6 +23,7 @@ const F = ({ label, children }) => (
 
 export default function DocumentEditDialog({ doc, categories = [], open, onOpenChange, onSaved }) {
   const qc = useQueryClient();
+  const { data: bizCats = [] } = useBusinessCategories();
   const [f, setF] = useState({});
   const [busy, setBusy] = useState(false);
 
@@ -32,6 +35,8 @@ export default function DocumentEditDialog({ doc, categories = [], open, onOpenC
         date_debut: (doc.date_debut || "").slice(0, 10), date_expiration: (doc.date_expiration || "").slice(0, 10),
         preavis_jours: doc.preavis_jours ?? "", montant: doc.montant ?? "", devise: doc.devise || "CHF",
         frequence: doc.frequence || "", responsable: doc.responsable || "",
+        business_category: doc.business_category || "", montant_ht: doc.montant_ht ?? "",
+        tva_chf: doc.tva_chf ?? "", kilometrage_releve: doc.kilometrage_releve ?? "",
         tags: (doc.tags || []).join(", "), notes: doc.notes || "",
         renouvellement_auto: !!doc.renouvellement_auto, en_renouvellement: !!doc.en_renouvellement,
         a_verifier: !!doc.a_verifier, archived: !!doc.archived,
@@ -53,6 +58,10 @@ export default function DocumentEditDialog({ doc, categories = [], open, onOpenC
         preavis_jours: f.preavis_jours === "" ? null : Number(f.preavis_jours),
         montant: f.montant === "" ? null : Number(f.montant),
         devise: f.devise, frequence: f.frequence || null, responsable: f.responsable || null,
+        business_category: f.business_category || null,
+        montant_ht: f.montant_ht === "" ? null : Number(f.montant_ht),
+        tva_chf: f.tva_chf === "" ? null : Number(f.tva_chf),
+        kilometrage_releve: f.kilometrage_releve === "" ? null : Number(f.kilometrage_releve),
         tags: f.tags.split(",").map((s) => s.trim()).filter(Boolean), notes: f.notes || null,
         renouvellement_auto: f.renouvellement_auto, en_renouvellement: f.en_renouvellement,
         a_verifier: f.a_verifier, archived: f.archived,
@@ -117,6 +126,18 @@ export default function DocumentEditDialog({ doc, categories = [], open, onOpenC
               </SelectContent>
             </Select>
           </F>
+          <F label="Catégorie métier (coût)">
+            <Select value={f.business_category || NO_CAT} onValueChange={(v) => set("business_category")(v === NO_CAT ? "" : v)}>
+              <SelectTrigger data-testid="doc-edit-business-category"><SelectValue placeholder="Non classé" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_CAT}>Non classé</SelectItem>
+                {bizCats.map((c) => <SelectItem key={c.code} value={c.code}>{c.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </F>
+          <F label="Montant HT"><Input data-testid="doc-edit-montant-ht" type="number" min="0" step="0.05" value={f.montant_ht} onChange={setI("montant_ht")} /></F>
+          <F label="TVA (montant)"><Input data-testid="doc-edit-tva" type="number" min="0" step="0.05" value={f.tva_chf} onChange={setI("tva_chf")} /></F>
+          <F label="Kilométrage relevé sur le document"><Input data-testid="doc-edit-km-releve" type="number" min="0" step="1" value={f.kilometrage_releve} onChange={setI("kilometrage_releve")} /></F>
           <div className="sm:col-span-2">
             <F label="Tags (séparés par des virgules)"><Input data-testid="doc-edit-tags" value={f.tags} onChange={setI("tags")} placeholder="contrat, flotte, urgent" /></F>
           </div>

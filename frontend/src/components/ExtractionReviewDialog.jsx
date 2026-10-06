@@ -8,8 +8,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { getDocumentExtraction, validateScannedDocument } from "@/lib/api";
 import { notifyNavixyPush } from "@/lib/navixyFeedback";
 import { cn } from "@/lib/utils";
+import {
+  BusinessCategoryPicker, DuplicateSuspectedBox, PlateMismatchNote, isDocPlateMismatch,
+} from "@/components/documents/BusinessCategoryPicker";
 
 const inputType = (kind) => (kind === "date" ? "date" : kind === "int" || kind === "float" ? "number" : "text");
+const CATEGORY_FIELD = "categorie_suggeree";
 
 const fieldState = (f) => {
   if (f.conflict) return "CONFLIT";
@@ -40,12 +44,16 @@ export default function ExtractionReviewDialog({ docId, open, onOpenChange, read
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [validating, setValidating] = useState(false);
+  const [bizCat, setBizCat] = useState(null);
+  const [suggestion, setSuggestion] = useState(null);
+  const [dupInfo, setDupInfo] = useState(null);
 
   useEffect(() => {
     if (!open || !docId) return;
     setLoading(true);
     setError(null);
     setData(null);
+    setDupInfo(null);
     getDocumentExtraction(docId)
       .then((d) => {
         setData(d);
@@ -53,16 +61,22 @@ export default function ExtractionReviewDialog({ docId, open, onOpenChange, read
           const st = fieldState(f);
           return [f.field, { value: f.value ?? "", apply: st === "COMPLETER" && !isVinLocked(f) }];
         })));
+        const sug = (d.fields || []).find((f) => f.field === CATEGORY_FIELD);
+        const code = sug?.value ? String(sug.value).trim().toUpperCase() : null;
+        setSuggestion(code ? { code, confidence: sug.confidence } : null);
+        setBizCat(code);
       })
       .catch((e) => setError(e?.response?.data?.detail || "Impossible de charger le résultat d'analyse"))
       .finally(() => setLoading(false));
   }, [open, docId]);
 
   const setRow = (field, patch) => setRows((r) => ({ ...r, [field]: { ...r[field], ...patch } }));
+  const isFacture = data?.document_type === "facture";
+  const visibleFields = (data?.fields || []).filter((f) => f.field !== CATEGORY_FIELD);
 
   const buildPayload = () => {
     const fields = {};
-    (data?.fields || []).forEach((f) => {
+    visibleFields.forEach((f) => {
       const row = rows[f.field];
       if (!row?.apply || row.value === "" || row.value === null || isVinLocked(f)) return;
       fields[f.field] = row.value;
@@ -72,21 +86,33 @@ export default function ExtractionReviewDialog({ docId, open, onOpenChange, read
 
   const selectedCount = data ? Object.keys(buildPayload()).length : 0;
 
-  const confirm = async () => {
+  const confirm = async (duplicateOverride = false) => {
     setValidating(true);
     try {
-      const res = await validateScannedDocument(docId, { document_type: data.document_type, fields: buildPayload() });
+      const payload = { document_type: data.document_type, fields: buildPayload(), duplicate_override: duplicateOverride };
+      if (isFacture || bizCat) payload.business_category = bizCat || null;
+      const res = await validateScannedDocument(docId, payload);
       if (res.skipped_fields?.length) {
         res.skipped_fields.forEach((s) => toast.warning(s.detail || `Champ ${s.field} non appliqué (${s.reason})`));
       }
-      toast.success(res.applied > 0
-        ? `${res.applied} champ(s) appliqué(s) sur la fiche véhicule`
-        : "Aucun nouveau champ à appliquer — fiche déjà à jour");
+      (res.warnings || []).forEach((w) => toast.warning(w.detail, { duration: 9000 }));
+      if (res.cost) {
+        toast.success(`Coût enregistré : ${res.cost.montant} ${res.cost.devise} · ${res.cost.category_label}`);
+      } else {
+        toast.success(res.applied > 0
+          ? `${res.applied} champ(s) appliqué(s) sur la fiche véhicule`
+          : "Aucun nouveau champ à appliquer — fiche déjà à jour");
+      }
       notifyNavixyPush(res.navixy_push, res.vehicle?.id);
       onValidated?.();
       onOpenChange(false);
     } catch (e) {
-      toast.error(e?.response?.data?.detail || "Erreur lors de la confirmation");
+      const detail = e?.response?.data?.detail;
+      if (e?.response?.status === 409 && detail?.code === "DUPLICATE_SUSPECTED") {
+        setDupInfo(detail);
+      } else {
+        toast.error((typeof detail === "string" && detail) || detail?.message || "Erreur lors de la confirmation");
+      }
     } finally {
       setValidating(false);
     }
@@ -132,7 +158,10 @@ export default function ExtractionReviewDialog({ docId, open, onOpenChange, read
 
         {data && data.fields?.length > 0 && (
           <div className="space-y-2.5">
-            {data.fields.map((f) => {
+            {isFacture && (
+              <BusinessCategoryPicker value={bizCat} onChange={setBizCat} suggestion={suggestion} disabled={readOnly} />
+            )}
+            {visibleFields.map((f) => {
               const st = fieldState(f);
               const badge = STATE_BADGE[st];
               const row = rows[f.field] || {};
@@ -178,7 +207,8 @@ export default function ExtractionReviewDialog({ docId, open, onOpenChange, read
                       VIN détecté invalide ou incomplet ({String(f.value).length}/17) — vérifiez et corrigez manuellement si besoin.
                     </p>
                   )}
-                  {st === "CONFLIT" && !locked && (
+                  {isDocPlateMismatch(f) && <PlateMismatchNote />}
+                  {st === "CONFLIT" && !locked && !isDocPlateMismatch(f) && (
                     <p className="mt-2 flex items-start gap-1.5 text-xs text-red-600">
                       <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                       Valeur différente de la fiche — cochez uniquement si vous voulez remplacer la valeur actuelle.
@@ -212,17 +242,19 @@ export default function ExtractionReviewDialog({ docId, open, onOpenChange, read
           </div>
         )}
 
+        <DuplicateSuspectedBox info={dupInfo} onConfirmAnyway={() => confirm(true)} busy={validating} />
+
         <div className="flex flex-col-reverse items-center justify-end gap-2 border-t border-slate-100 pt-4 sm:flex-row">
           <Button variant="outline" data-testid="extraction-close-btn" onClick={() => onOpenChange(false)}>Fermer</Button>
           {!readOnly && data && data.fields?.length > 0 && (
             <Button
               data-testid="extraction-confirm-btn"
-              onClick={confirm}
+              onClick={() => confirm(false)}
               disabled={validating}
               className="gap-2 bg-emerald-600 hover:bg-emerald-700"
             >
               {validating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              Confirmer et compléter le véhicule{selectedCount > 0 ? ` (${selectedCount})` : ""}
+              {isFacture ? "Confirmer et enregistrer le coût" : "Confirmer et compléter le véhicule"}{selectedCount > 0 ? ` (${selectedCount})` : ""}
             </Button>
           )}
         </div>

@@ -11,6 +11,7 @@ import json
 import asyncio
 import calendar
 import io
+import hashlib
 import requests
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -19,8 +20,8 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime, timezone, date, timedelta
 
-from extraction import (DOC_TYPES, FIELD_DEFS, check_image_quality, enhance_and_pdf, get_provider,
-                        pdf_to_images_b64, prepare_image_b64, normalize_value)
+from extraction import (DOC_TYPES, FIELD_DEFS, BUSINESS_CATEGORIES, check_image_quality, enhance_and_pdf,
+                        get_provider, pdf_to_images_b64, prepare_image_b64, normalize_value)
 from reports import build_conformity_pdf, build_costs_csv, build_vehicle_pdf
 from technical_data import TECH_FIELD_DEFS
 import astra_data
@@ -1477,7 +1478,73 @@ REQUIRED_FOLDERS = ["Carte grise", "Leasing", "Assurance", "Contrôle technique"
 # ---------------------------------------------------------------------------
 DOC_STATUTS = ["VALIDE", "EXPIRE_BIENTOT", "EXPIRE", "A_VERIFIER", "EN_RENOUVELLEMENT", "ARCHIVE"]
 DOC_FREQUENCES = ["unique", "mensuel", "trimestriel", "semestriel", "annuel"]
+BUSINESS_CATEGORY_LABELS = dict(BUSINESS_CATEGORIES)
+COST_UNCLASSIFIED_LABEL = "Non classé"
 DEFAULT_DOC_PREAVIS_JOURS = 30
+
+
+def _file_sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+async def _same_file_duplicate(tenant_id: str, vehicle_id: str, sha256: str, exclude_id: str = None):
+    """Fichier strictement identique déjà présent (même tenant + véhicule) → référence, jamais de blocage."""
+    if not sha256:
+        return None
+    q = {"tenant_id": tenant_id, "vehicle_id": vehicle_id, "sha256": sha256, "is_deleted": False}
+    if exclude_id:
+        q["id"] = {"$ne": exclude_id}
+    d = await db.documents.find_one(q, {"_id": 0, "id": 1, "original_filename": 1, "created_at": 1, "folder": 1})
+    if not d:
+        return None
+    return {"document_id": d["id"], "original_filename": d.get("original_filename"),
+            "created_at": d.get("created_at"), "folder": d.get("folder")}
+
+
+def _norm_key(s) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(s or "").casefold())
+
+
+async def _business_duplicate(tenant_id: str, vehicle_id: str, exclude_id: str, fournisseur, numero,
+                              date_debut, montant):
+    """Doublon métier probable : même véhicule + fournisseur + n° + date + montant (normalisés)."""
+    if montant is None or not date_debut:
+        return None
+    cands = await db.documents.find(
+        {"tenant_id": tenant_id, "vehicle_id": vehicle_id, "is_deleted": False,
+         "id": {"$ne": exclude_id}, "montant": round(float(montant), 2)},
+        {"_id": 0, "id": 1, "original_filename": 1, "fournisseur": 1, "numero": 1, "date_debut": 1}).to_list(None)
+    for c in cands:
+        if (str(c.get("date_debut") or "")[:10] == str(date_debut)[:10]
+                and _norm_key(c.get("fournisseur")) == _norm_key(fournisseur)
+                and _norm_key(c.get("numero")) == _norm_key(numero)):
+            return {"document_id": c["id"], "original_filename": c.get("original_filename")}
+    return None
+
+
+def _facture_to_v2(doc_data: dict) -> dict:
+    """Pont facture validée → champs V2 consommés par collect_costs (le document EST le coût)."""
+    v2 = {"frequence": "unique"}
+    if doc_data.get("montant_chf") is not None:
+        v2["montant"] = round(float(doc_data["montant_chf"]), 2)
+    dev = (doc_data.get("devise") or "").strip().upper()
+    v2["devise"] = dev if re.fullmatch(r"[A-Z]{3}", dev) else "CHF"
+    for src, dst in (("date_facture", "date_debut"), ("fournisseur", "fournisseur"),
+                     ("numero_facture", "numero"), ("montant_ht", "montant_ht"), ("tva_chf", "tva_chf"),
+                     ("kilometrage_releve", "kilometrage_releve"), ("plaque", "plaque_mentionnee")):
+        if doc_data.get(src) not in (None, ""):
+            v2[dst] = doc_data[src]
+    return v2
+
+
+def _cost_category(d: dict):
+    """(label, code, source) — business_category confirmée > clé présente mais nulle = Non classé > dossier legacy."""
+    code = d.get("business_category")
+    if code:
+        return BUSINESS_CATEGORY_LABELS.get(code, code), code, "business"
+    if "business_category" in d:
+        return COST_UNCLASSIFIED_LABEL, None, "unclassified"
+    return d.get("folder"), None, "folder"
 DOC_PROFILS = ["base", "achete", "leasing", "thermique", "electrique", "hybride"]
 DEFAULT_DOC_REQUIREMENTS = {
     "base": ["Carte grise", "Assurance", "Contrôle technique"],
@@ -1944,7 +2011,8 @@ async def collect_costs(tenant_id: str) -> dict:
         {"tenant_id": tenant_id, "is_deleted": False, "archived": {"$ne": True},
          "montant": {"$gt": 0}},
         {"_id": 0, "id": 1, "vehicle_id": 1, "folder": 1, "label": 1, "original_filename": 1,
-         "montant": 1, "devise": 1, "frequence": 1, "date_debut": 1, "date_expiration": 1}
+         "montant": 1, "devise": 1, "frequence": 1, "date_debut": 1, "date_expiration": 1,
+         "business_category": 1, "fournisseur": 1, "numero": 1}
     ).to_list(None)
     vmap = {v["id"]: v for v in vehicles}
     items, covered = [], set()
@@ -1955,13 +2023,15 @@ async def collect_costs(tenant_id: str) -> dict:
         factor = COST_FREQ_FACTOR.get(freq, 0)
         recurrent = factor > 0
         annuel = round(float(d["montant"]) * (factor or 1), 2)
-        # Équivalent V2 avec montant : masque la source de coût legacy de la catégorie
+        # Équivalent V2 avec montant : masque la source de coût legacy de la catégorie (clé = dossier)
         covered.add((d.get("vehicle_id"), d.get("folder")))
+        cat_label, cat_code, cat_source = _cost_category(d)
         items.append({
             "key": f"doc:{d['id']}", "source": "document", "document_id": d["id"],
             "vehicle_id": d.get("vehicle_id"), "plaque": v.get("plaque"),
             "marque": v.get("marque"), "modele": v.get("modele"),
-            "category": d.get("folder"),
+            "category": cat_label, "business_category": cat_code, "category_source": cat_source,
+            "fournisseur": d.get("fournisseur"), "numero": d.get("numero"),
             "label": d.get("label") or d.get("original_filename") or "Document",
             "montant": round(float(d["montant"]), 2), "devise": d.get("devise") or "CHF",
             "frequence": freq, "recurrent": recurrent, "cout_annuel": annuel,
@@ -1978,7 +2048,8 @@ async def collect_costs(tenant_id: str) -> dict:
                 "key": f"legacy:{v['id']}:leasing", "source": "legacy", "document_id": None,
                 "vehicle_id": v["id"], "plaque": v.get("plaque"),
                 "marque": v.get("marque"), "modele": v.get("modele"),
-                "category": "Leasing", "label": "Mensualité leasing",
+                "category": "Leasing", "business_category": "LEASING", "category_source": "legacy",
+                "label": "Mensualité leasing",
                 "montant": round(float(mens), 2), "devise": "CHF",
                 "frequence": "mensuel", "recurrent": True,
                 "cout_annuel": round(float(mens) * 12, 2),
@@ -1993,7 +2064,8 @@ async def collect_costs(tenant_id: str) -> dict:
                 "key": f"legacy:{v['id']}:assurance", "source": "legacy", "document_id": None,
                 "vehicle_id": v["id"], "plaque": v.get("plaque"),
                 "marque": v.get("marque"), "modele": v.get("modele"),
-                "category": "Assurance", "label": "Prime annuelle assurance",
+                "category": "Assurance", "business_category": "ASSURANCE", "category_source": "legacy",
+                "label": "Prime annuelle assurance",
                 "montant": round(float(prime), 2), "devise": "CHF",
                 "frequence": "annuel", "recurrent": True,
                 "cout_annuel": round(float(prime), 2),
@@ -2032,6 +2104,11 @@ async def collect_costs(tenant_id: str) -> dict:
                    "postes_actifs": len(actifs)},
         "year": cur,
     }
+
+
+@api_router.get("/business-categories")
+async def list_business_categories():
+    return [{"code": c, "label": l} for c, l in BUSINESS_CATEGORIES]
 
 
 @api_router.get("/costs")
@@ -2073,6 +2150,10 @@ class DocumentUpdate(BaseModel):
     archived: Optional[bool] = None
     en_renouvellement: Optional[bool] = None
     a_verifier: Optional[bool] = None
+    business_category: Optional[str] = None
+    montant_ht: Optional[float] = None
+    tva_chf: Optional[float] = None
+    kilometrage_releve: Optional[int] = None
 
 
 @api_router.patch("/documents/{doc_id}")
@@ -2093,8 +2174,11 @@ async def update_document(doc_id: str, payload: DocumentUpdate, request: Request
         raise HTTPException(status_code=422, detail="Catégorie inconnue")
     if updates.get("preavis_jours") is not None and not (0 <= updates["preavis_jours"] <= 730):
         raise HTTPException(status_code=422, detail="Préavis : 0 à 730 jours")
-    if updates.get("montant") is not None and updates["montant"] < 0:
-        raise HTTPException(status_code=422, detail="Montant invalide")
+    for f in ("montant", "montant_ht", "tva_chf", "kilometrage_releve"):
+        if updates.get(f) is not None and updates[f] < 0:
+            raise HTTPException(status_code=422, detail="Montant invalide")
+    if updates.get("business_category") and updates["business_category"] not in BUSINESS_CATEGORY_LABELS:
+        raise HTTPException(status_code=422, detail="Catégorie métier inconnue")
     if updates.get("frequence") and updates["frequence"] not in DOC_FREQUENCES:
         raise HTTPException(status_code=422, detail="Fréquence inconnue")
     if updates.get("tags") is not None:
@@ -2192,6 +2276,8 @@ async def add_document(vehicle_id: str, request: Request, file: UploadFile = Fil
     except Exception as e:
         logger.error(f"Document upload failed: {e}")
         raise HTTPException(status_code=502, detail="Échec du téléversement")
+    sha256 = _file_sha256(data)
+    duplicate_of = await _same_file_duplicate(tid(request), vehicle_id, sha256)
     record = {
         "id": str(uuid.uuid4()),
         "vehicle_id": vehicle_id,
@@ -2201,13 +2287,16 @@ async def add_document(vehicle_id: str, request: Request, file: UploadFile = Fil
         "storage_path": result["path"],
         "content_type": content_type,
         "size": result.get("size", len(data)),
+        "sha256": sha256,
         "is_deleted": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.documents.insert_one(dict(record))
     await audit("create", "document", request, record["id"], vehicle_id,
                 f"Téléversement document « {file.filename} » — dossier {record['folder']}")
-    return with_statut(clean(record), (await th_for(request))["urgent_days"])
+    out = with_statut(clean(record), (await th_for(request))["urgent_days"])
+    out["duplicate_of"] = duplicate_of
+    return out
 
 
 @api_router.delete("/documents/{doc_id}")
@@ -2756,7 +2845,8 @@ def _get_current(v: dict, target: str, field: str):
     if target == "root":
         return v.get(field)
     if target == "document":
-        return None
+        # Plaque mentionnée sur un justificatif : comparée à celle du véhicule (avertissement, jamais de réaffectation)
+        return v.get("plaque") if field == "plaque" else None
     return (v.get(target) or {}).get(field)
 
 
@@ -2883,6 +2973,7 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
 
     images_b64 = []
     quality_warnings = []
+    duplicate_of = None
     if document_id:
         # Ré-analyse d'un document déjà téléversé (changement de type, nouvel essai)
         record = await db.documents.find_one(
@@ -2935,6 +3026,7 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
                 raise HTTPException(status_code=422, detail="Image illisible")
             images_b64 = [prepare_image_b64(j) for j in jpegs]
             filename = f"scan-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.pdf"
+            sha256 = _file_sha256(b"".join(d for _, d, _ in inputs))
             path = f"{APP_NAME}/uploads/{vehicle_id}/{uuid.uuid4()}.pdf"
             try:
                 stored = put_object(path, pdf_bytes, "application/pdf")
@@ -2967,8 +3059,11 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
                     logger.error("Scan upload failed: %s", e)
                     raise HTTPException(status_code=502, detail="Échec du téléversement")
                 pages.append({"storage_path": stored["path"], "original_filename": f.filename,
-                              "content_type": content_type, "size": stored.get("size", len(data))})
+                              "content_type": content_type, "size": stored.get("size", len(data)),
+                              "sha256": _file_sha256(data)})
                 total_size += len(data)
+            sha256 = _file_sha256(b"".join(d for _, d, _ in inputs))
+        duplicate_of = await _same_file_duplicate(tid(request), vehicle_id, sha256)
         record = {
             "id": str(uuid.uuid4()), "vehicle_id": vehicle_id,
             "tenant_id": tid(request),
@@ -2976,7 +3071,7 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
             "original_filename": pages[0]["original_filename"],
             "storage_path": pages[0]["storage_path"],
             "content_type": pages[0]["content_type"],
-            "size": total_size, "pages": pages,
+            "size": total_size, "pages": pages, "sha256": sha256,
             "document_type": document_type, "extraction_status": "processing",
             "a_verifier": True,
             "source": "scan", "imported_by": "utilisateur", "is_deleted": False,
@@ -3033,7 +3128,7 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
             "document_type": dtype, "type_confidence": result.get("type_confidence"),
             "detected_type": detected, "type_mismatch": type_mismatch,
             "quality_warnings": quality_warnings, "missing_fields": missing_fields,
-            "pages_count": len(images_b64), "fields": fields}
+            "pages_count": len(images_b64), "fields": fields, "duplicate_of": duplicate_of}
 
 
 @api_router.get("/documents/{doc_id}/extraction")
@@ -3073,6 +3168,8 @@ async def get_document_extraction(doc_id: str, request: Request):
 class DocumentValidate(BaseModel):
     document_type: str
     fields: dict = Field(default_factory=dict)
+    business_category: Optional[str] = None
+    duplicate_override: bool = False
 
 
 @api_router.post("/documents/{doc_id}/validate")
@@ -3084,6 +3181,8 @@ async def validate_scanned_document(doc_id: str, payload: DocumentValidate, requ
     dtype = payload.document_type
     if dtype not in DOC_TYPES:
         raise HTTPException(status_code=400, detail="Type de document inconnu")
+    if payload.business_category and payload.business_category not in BUSINESS_CATEGORY_LABELS:
+        raise HTTPException(status_code=422, detail="Catégorie métier inconnue")
     vehicle = await find_tenant_vehicle(request, docrec["vehicle_id"])
 
     defs = {d["key"]: d for d in FIELD_DEFS.get(dtype, [])}
@@ -3140,13 +3239,41 @@ async def validate_scanned_document(doc_id: str, payload: DocumentValidate, requ
         await audit("modify", "vehicle", request, vehicle["id"], vehicle["id"],
                     f"{fd['label']}: {old_txt} → {new} (source: {type_label})")
 
-    await db.documents.update_one({"id": doc_id}, {"$set": {
+    # Pont métier : la facture validée alimente les champs V2 lus par collect_costs (le document EST le coût)
+    doc_set = {
         "document_type": dtype, "folder": DOC_TYPES[dtype]["folder"],
         "validated_at": now, "validated_by": "utilisateur", "validated_fields": payload.fields,
         "document_data": doc_data, "extraction_status": "validated", "a_verifier": False,
-    }})
+    }
+    warnings = []
+    if payload.business_category or dtype == "facture":
+        doc_set["business_category"] = payload.business_category or None
+    if dtype == "facture":
+        v2 = _facture_to_v2(doc_data)
+        dup = await _business_duplicate(tid(request), vehicle["id"], doc_id, v2.get("fournisseur"),
+                                        v2.get("numero"), v2.get("date_debut"), v2.get("montant"))
+        if dup and not payload.duplicate_override:
+            raise HTTPException(status_code=409, detail={
+                "code": "DUPLICATE_SUSPECTED",
+                "message": "Doublon probable : une facture du même fournisseur, même numéro, même date et "
+                           "même montant existe déjà pour ce véhicule.",
+                "existing_document_id": dup["document_id"],
+                "existing_filename": dup.get("original_filename")})
+        if dup:
+            warnings.append({"code": "DUPLICATE_OVERRIDDEN", "existing_document_id": dup["document_id"],
+                             "detail": "Doublon probable confirmé manuellement."})
+        doc_set.update(v2)
+    plaque_doc = doc_data.get("plaque")
+    if plaque_doc and vehicle.get("plaque") and _norm_plate(plaque_doc) != _norm_plate(vehicle.get("plaque")):
+        warnings.append({"code": "PLATE_MISMATCH", "document_plate": plaque_doc, "vehicle_plate": vehicle.get("plaque"),
+                         "detail": f"La plaque mentionnée sur le document ({plaque_doc}) diffère de celle du véhicule "
+                                   f"({vehicle.get('plaque')}) — vérifiez le rattachement. Aucune réaffectation automatique."})
+    await db.documents.update_one({"id": doc_id}, {"$set": doc_set})
     await audit("validate", "document", request, doc_id, vehicle["id"],
-                f"Validation {type_label} — {len(applied) + len(doc_data)} champ(s) appliqué(s)")
+                f"Validation {type_label} — {len(applied) + len(doc_data)} champ(s) appliqué(s)"
+                + (f" — coût {doc_set['montant']} {doc_set.get('devise')} "
+                   f"({BUSINESS_CATEGORY_LABELS.get(doc_set.get('business_category'), COST_UNCLASSIFIED_LABEL)})"
+                   if doc_set.get("montant") is not None else ""))
 
     fresh = await db.vehicles.find_one({"id": vehicle["id"]}, {"_id": 0})
     navixy_push = None
@@ -3154,8 +3281,14 @@ async def validate_scanned_document(doc_id: str, payload: DocumentValidate, requ
     if NAVIXY_PUSH_KEYS & push_keys:
         navixy_push = await push_vehicle_to_navixy(fresh, request)
     fresh["metrics"] = compute_metrics(fresh, await th_for(request))
+    cost = None
+    if doc_set.get("montant") is not None:
+        cost = {"document_id": doc_id, "montant": doc_set["montant"], "devise": doc_set.get("devise"),
+                "frequence": "unique", "business_category": doc_set.get("business_category"),
+                "category_label": BUSINESS_CATEGORY_LABELS.get(doc_set.get("business_category"), COST_UNCLASSIFIED_LABEL)}
     return {"ok": True, "applied": len(applied) + len(doc_data), "document_id": doc_id,
-            "skipped_fields": skipped, "vehicle": fresh, "navixy_push": navixy_push}
+            "skipped_fields": skipped, "vehicle": fresh, "navixy_push": navixy_push,
+            "warnings": warnings, "cost": cost}
 
 
 @api_router.get("/vehicles/{vehicle_id}/field-meta")

@@ -21,6 +21,15 @@ DOC_TYPES = {
     "autre": {"label": "Autre document", "folder": "Divers"},
 }
 
+# Catégories métier (codes stables) — confirmées humainement en review, jamais par défaut.
+BUSINESS_CATEGORIES = [
+    ("ENTRETIEN", "Entretien"), ("REPARATION", "Réparation"), ("PNEUS", "Pneus"),
+    ("CARBURANT", "Carburant"), ("ENERGIE_ELECTRIQUE", "Énergie électrique"), ("LAVAGE", "Lavage"),
+    ("PEAGE_VIGNETTE", "Péage / Vignette"), ("AMENDE", "Amende"), ("ASSURANCE", "Assurance"),
+    ("LEASING", "Leasing"), ("TAXES", "Taxes"), ("AUTRE", "Autre"),
+]
+_BC_CODES = ", ".join(c for c, _ in BUSINESS_CATEGORIES)
+
 # target: root (fiche véhicule) | carte_grise | assurance | leasing | controle_technique | document
 FIELD_DEFS = {
     "permis_circulation": [
@@ -98,7 +107,13 @@ FIELD_DEFS = {
         {"key": "fournisseur", "label": "Fournisseur", "target": "document", "kind": "str"},
         {"key": "numero_facture", "label": "N° de facture", "target": "document", "kind": "str"},
         {"key": "date_facture", "label": "Date de facture", "target": "document", "kind": "date"},
-        {"key": "montant_chf", "label": "Montant (CHF)", "target": "document", "kind": "float"},
+        {"key": "montant_chf", "label": "Montant total TTC", "target": "document", "kind": "float"},
+        {"key": "montant_ht", "label": "Montant HT", "target": "document", "kind": "float"},
+        {"key": "tva_chf", "label": "TVA (montant)", "target": "document", "kind": "float"},
+        {"key": "devise", "label": "Devise (code ISO : CHF, EUR…)", "target": "document", "kind": "str"},
+        {"key": "kilometrage_releve", "label": "Kilométrage relevé sur le document", "target": "document", "kind": "int"},
+        {"key": "categorie_suggeree", "label": f"Catégorie métier suggérée (un code parmi : {_BC_CODES})",
+         "target": "document", "kind": "str"},
         {"key": "plaque", "label": "Immatriculation mentionnée", "target": "document", "kind": "str"},
     ],
     "amende": [
@@ -224,6 +239,10 @@ def build_prompt(document_type: str = None) -> str:
         "- VIN en MAJUSCULES, SANS espaces (17 caractères pour un VIN standard) — recopie exacte, "
         "n'essaie JAMAIS de corriger un caractère douteux (0/O, 1/I, 5/S, 8/B) : baisse la confidence.\n"
         "- N° de matricule suisse recopié tel qu'imprimé (p.ex. 123.456.789).\n"
+        "- Factures/tickets : montant_chf = TOTAL TTC réellement payé ; montant_ht et tva_chf uniquement s'ils sont "
+        "imprimés ; devise = code ISO imprimé (CHF si francs suisses) ; categorie_suggeree = code métier le plus "
+        "probable (plein de carburant → CARBURANT, recharge → ENERGIE_ELECTRIQUE, lavage → LAVAGE, service/vidange/"
+        "révision → ENTRETIEN, réparation/carrosserie → REPARATION, pneus → PNEUS, sinon AUTRE).\n"
         "- Aucun texte hors JSON, aucune balise de code."
     )
 

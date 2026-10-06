@@ -14,6 +14,11 @@ import { notifyNavixyPush } from "@/lib/navixyFeedback";
 import { cn } from "@/lib/utils";
 import { loadDocScanner } from "@/lib/docScanner";
 import DocumentCropper from "@/components/DocumentCropper";
+import {
+  BusinessCategoryPicker, DuplicateSuspectedBox, SameFileNotice, PlateMismatchNote, isDocPlateMismatch,
+} from "@/components/documents/BusinessCategoryPicker";
+
+const CATEGORY_FIELD = "categorie_suggeree";
 
 export const DOC_TYPE_OPTIONS = [
   { key: "permis_circulation", label: "Permis de circulation" },
@@ -130,6 +135,9 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
   const [cameraError, setCameraError] = useState(null);
   const [failedDocId, setFailedDocId] = useState(null);
   const [validating, setValidating] = useState(false);
+  const [bizCat, setBizCat] = useState(null);
+  const [suggestion, setSuggestion] = useState(null);
+  const [dupInfo, setDupInfo] = useState(null);
   const [cropFile, setCropFile] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const scannerRef = useRef(null);
@@ -162,6 +170,9 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
     setCameraError(null);
     setFailedDocId(null);
     setCropFile(null);
+    setBizCat(null);
+    setSuggestion(null);
+    setDupInfo(null);
     setDocType(forcedType || "autre");
     validatedRef.current = false;
   };
@@ -384,6 +395,11 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
     setResult(res);
     setDocType(res.document_type);
     setRows(Object.fromEntries((res.fields || []).map((f) => [f.field, { value: f.value ?? "", apply: !f.conflict, useNew: false }])));
+    const sug = (res.fields || []).find((f) => f.field === CATEGORY_FIELD);
+    const code = sug?.value ? String(sug.value).trim().toUpperCase() : null;
+    setSuggestion(code ? { code, confidence: sug.confidence } : null);
+    setBizCat(code);
+    setDupInfo(null);
     setStep("review");
   };
 
@@ -442,11 +458,12 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
   const setRow = (field, patch) => setRows((r) => ({ ...r, [field]: { ...r[field], ...patch } }));
 
   const conflicts = (result?.fields || []).filter((f) => f.conflict);
-  const normals = (result?.fields || []).filter((f) => !f.conflict);
+  const normals = (result?.fields || []).filter((f) => !f.conflict && f.field !== CATEGORY_FIELD);
 
   const buildPayload = () => {
     const fields = {};
     (result?.fields || []).forEach((f) => {
+      if (f.field === CATEGORY_FIELD) return;
       const row = rows[f.field];
       if (!row || row.value === "" || row.value === null) return;
       if (f.conflict ? row.useNew : row.apply) fields[f.field] = row.value;
@@ -454,22 +471,34 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
     return fields;
   };
 
-  const validate = async () => {
+  const validate = async (duplicateOverride = false) => {
     setValidating(true);
     try {
       const fields = buildPayload();
-      const res = await validateScannedDocument(result.document_id, { document_type: docType, fields });
+      const payload = { document_type: docType, fields, duplicate_override: duplicateOverride };
+      if (docType === "facture" || bizCat) payload.business_category = bizCat || null;
+      const res = await validateScannedDocument(result.document_id, payload);
       validatedRef.current = true;
-      toast.success(
-        res.applied > 0
-          ? `Document validé · ${res.applied} champ(s) mis à jour sur la fiche véhicule`
-          : "Document validé et classé"
-      );
+      (res.warnings || []).forEach((w) => toast.warning(w.detail, { duration: 9000 }));
+      if (res.cost) {
+        toast.success(`Document validé · coût enregistré : ${res.cost.montant} ${res.cost.devise} · ${res.cost.category_label}`);
+      } else {
+        toast.success(
+          res.applied > 0
+            ? `Document validé · ${res.applied} champ(s) mis à jour sur la fiche véhicule`
+            : "Document validé et classé"
+        );
+      }
       notifyNavixyPush(res.navixy_push, res.vehicle?.id);
       onValidated?.();
       close(false);
     } catch (e) {
-      toast.error(e?.response?.data?.detail || "Erreur lors de la validation");
+      const detail = e?.response?.data?.detail;
+      if (e?.response?.status === 409 && detail?.code === "DUPLICATE_SUSPECTED") {
+        setDupInfo(detail);
+      } else {
+        toast.error((typeof detail === "string" && detail) || detail?.message || "Erreur lors de la validation");
+      }
     } finally {
       setValidating(false);
     }
@@ -769,6 +798,7 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
                 Qualité de l'image limitée ({result.quality_warnings.join(", ")}) — vérifiez attentivement les valeurs extraites.
               </div>
             )}
+            <SameFileNotice dup={result.duplicate_of} />
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Type de document détecté</p>
@@ -846,6 +876,7 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
                             <p className="mt-0.5 text-sm font-medium text-slate-800">{String(f.value)}</p>
                           </button>
                         </div>
+                        {isDocPlateMismatch(f) && <PlateMismatchNote />}
                         {row.useNew && (
                           <Input
                             data-testid={`conflict-input-${f.field}`}
@@ -860,6 +891,10 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
                   })}
                 </div>
               </div>
+            )}
+
+            {docType === "facture" && (
+              <BusinessCategoryPicker value={bizCat} onChange={setBizCat} suggestion={suggestion} />
             )}
 
             {normals.length > 0 ? (
@@ -927,13 +962,15 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
               </p>
             )}
 
+            <DuplicateSuspectedBox info={dupInfo} onConfirmAnyway={() => validate(true)} busy={validating} />
+
             <div className="flex flex-col-reverse justify-between gap-2 border-t border-slate-100 pt-4 sm:flex-row">
               <Button variant="ghost" onClick={() => setStep("capture")} className="gap-1.5 text-slate-500">
                 <ArrowLeft className="h-4 w-4" /> Pages
               </Button>
               <div className="flex justify-end gap-2">
                 <Button variant="outline" data-testid="scan-review-cancel" onClick={() => close(false)}>Annuler</Button>
-                <Button data-testid="scan-validate-btn" onClick={validate} disabled={validating} className="gap-2 bg-emerald-600 hover:bg-emerald-700">
+                <Button data-testid="scan-validate-btn" onClick={() => validate(false)} disabled={validating} className="gap-2 bg-emerald-600 hover:bg-emerald-700">
                   {validating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                   Valider et enregistrer{appliedCount > 0 ? ` (${appliedCount})` : ""}
                 </Button>

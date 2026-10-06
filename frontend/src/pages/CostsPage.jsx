@@ -155,11 +155,21 @@ export default function CostsPage() {
                 </TableCell>
                 <TableCell>
                   <p className="max-w-[220px] truncate text-sm text-slate-700">{i.label}</p>
+                  {(i.fournisseur || i.numero) && (
+                    <p className="max-w-[220px] truncate text-[11px] text-slate-400" data-testid={`cost-supplier-${i.key}`}>
+                      {i.fournisseur}{i.numero ? ` · n° ${i.numero}` : ""}
+                    </p>
+                  )}
                   {i.source === "legacy" && (
                     <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Fiche véhicule</span>
                   )}
                 </TableCell>
-                <TableCell><span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">{i.category}</span></TableCell>
+                <TableCell>
+                  <span data-testid={`cost-category-${i.key}`} className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                    i.category_source === "unclassified" ? "bg-amber-50 text-amber-700 ring-1 ring-amber-200" : "bg-slate-100 text-slate-700")}>
+                    {i.category}
+                  </span>
+                </TableCell>
                 <TableCell className="text-sm text-slate-600">{chf(i.montant)}</TableCell>
                 <TableCell className="text-sm text-slate-600">{FREQ_FR[i.frequence] || i.frequence}</TableCell>
                 <TableCell className="text-sm font-semibold text-slate-900">

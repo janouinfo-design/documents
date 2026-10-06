@@ -70,7 +70,10 @@ export default function DocFolderSection({ vehicleId, folder, docs = [], onChang
     setBusy(true);
     try {
       for (const f of files) {
-        await uploadDocument(vehicleId, f, folder);
+        const r = await uploadDocument(vehicleId, f, folder);
+        if (r?.duplicate_of) {
+          toast.warning(`« ${f.name} » est identique à « ${r.duplicate_of.original_filename} » déjà présent (${r.duplicate_of.folder || "Documents"}).`, { duration: 9000 });
+        }
       }
       toast.success(`${files.length} fichier(s) ajouté(s) · ${folder}`);
       onChange?.();

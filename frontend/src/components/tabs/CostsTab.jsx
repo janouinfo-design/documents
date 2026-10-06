@@ -40,7 +40,9 @@ export default function CostsTab({ vehicle }) {
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-slate-800">{i.label}</p>
                 <p className="text-xs text-slate-400">
-                  {i.category} · {FREQ_FR[i.frequence] || i.frequence}
+                  <span className={i.category_source === "unclassified" ? "font-semibold text-amber-600" : ""}>{i.category}</span>
+                  {" · "}{FREQ_FR[i.frequence] || i.frequence}
+                  {i.fournisseur ? ` · ${i.fournisseur}` : ""}
                   {i.source === "legacy" ? " · Fiche véhicule" : ""}
                   {i.date_debut || i.date_expiration ? ` · ${i.date_debut || "…"} → ${i.date_expiration || "…"}` : ""}
                 </p>
