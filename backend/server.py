@@ -1545,6 +1545,205 @@ def _cost_category(d: dict):
     if "business_category" in d:
         return COST_UNCLASSIFIED_LABEL, None, "unclassified"
     return d.get("folder"), None, "folder"
+
+
+# ---------------------------------------------------------------------------
+# Énergie & carburant : fuel_transactions dérivées des tickets validés.
+# Le document reste la source canonique (fichier + montant pour Coûts) ;
+# la transaction porte UNIQUEMENT les données énergie et n'est JAMAIS resommée
+# dans collect_costs (anti double comptage).
+# ---------------------------------------------------------------------------
+COST_DOC_TYPES = {"facture", "ticket_carburant"}
+_ELECTRIC_HINTS = ("lectr", "kwh", "recharge", "electric")
+
+
+def _energy_kind(type_carburant, litres, kwh) -> str:
+    t = (type_carburant or "").lower()
+    if kwh and not litres:
+        return "electrique"
+    if any(h in t for h in _ELECTRIC_HINTS):
+        return "electrique"
+    return "thermique"
+
+
+def _last4(s) -> Optional[str]:
+    digits = re.sub(r"\D", "", str(s or ""))
+    return digits[-4:] if len(digits) >= 4 else None
+
+
+def _suggest_business_category(dtype: str, values: dict) -> Optional[str]:
+    """Suggestion seulement — la catégorie finale est TOUJOURS confirmée humainement."""
+    if dtype == "ticket_carburant":
+        kind = _energy_kind(values.get("type_carburant"), values.get("litres"), values.get("energie_kwh"))
+        return "ENERGIE_ELECTRIQUE" if kind == "electrique" else "CARBURANT"
+    if dtype == "facture":
+        c = str(values.get("categorie_suggeree") or "").strip().upper()
+        return c if c in BUSINESS_CATEGORY_LABELS else None
+    return {"assurance": "ASSURANCE", "leasing": "LEASING", "vignette": "PEAGE_VIGNETTE", "amende": "AMENDE"}.get(dtype)
+
+
+def _ticket_checks(vals: dict, vehicle: dict) -> list:
+    """Cohérence d'un ticket : avertissements UNIQUEMENT, jamais bloquants."""
+    w = []
+    m, l, p = vals.get("montant"), vals.get("litres"), vals.get("prix_litre")
+    if m and l and p:
+        calc = l * p
+        if abs(calc - m) > max(0.10, 0.02 * m):
+            w.append({"code": "AMOUNT_MISMATCH",
+                      "detail": f"Litres × prix/L = {calc:.2f} ≠ montant {m:.2f} — vérifiez les valeurs."})
+    k, pk = vals.get("energie_kwh"), vals.get("prix_kwh")
+    if m and k and pk:
+        calc = k * pk
+        if abs(calc - m) > max(0.10, 0.02 * m):
+            w.append({"code": "AMOUNT_MISMATCH",
+                      "detail": f"kWh × prix/kWh = {calc:.2f} ≠ montant {m:.2f} — vérifiez les valeurs."})
+    km, vkm = vals.get("kilometrage"), vehicle.get("kilometrage") or 0
+    if km and vkm and km > vkm * 1.05 + 500:
+        w.append({"code": "ODOMETER_INCONSISTENT",
+                  "detail": f"Kilométrage du ticket ({km}) supérieur à l'odomètre télématique ({vkm}) — "
+                            "la valeur reste celle de la transaction, l'odomètre du véhicule n'est pas modifié."})
+    return w
+
+
+def _ticket_to_v2(doc_data: dict) -> dict:
+    """Ticket validé → champs V2 du document (coût porté UNE fois par le document)."""
+    v2 = {"frequence": "unique"}
+    if doc_data.get("montant") is not None:
+        v2["montant"] = round(float(doc_data["montant"]), 2)
+    dev = (doc_data.get("devise") or "").strip().upper()
+    v2["devise"] = dev if re.fullmatch(r"[A-Z]{3}", dev) else "CHF"
+    for src, dst in (("date", "date_debut"), ("station", "fournisseur"),
+                     ("kilometrage", "kilometrage_releve"), ("plaque", "plaque_mentionnee")):
+        if doc_data.get(src) not in (None, ""):
+            v2[dst] = doc_data[src]
+    return v2
+
+
+async def _transaction_duplicate(tenant_id: str, vehicle_id: str, exclude_doc_id: str, date_, montant, litres):
+    """Doublon probable de transaction : même véhicule + date + montant + litres (confirmation requise)."""
+    if montant is None or not date_:
+        return None
+    q = {"tenant_id": tenant_id, "vehicle_id": vehicle_id, "is_deleted": False,
+         "source_document_id": {"$ne": exclude_doc_id}, "date": str(date_)[:10],
+         "montant": round(float(montant), 2),
+         "litres": round(float(litres), 2) if litres is not None else None}
+    t = await db.fuel_transactions.find_one(q, {"_id": 0, "id": 1, "source_document_id": 1})
+    if not t:
+        return None
+    d = await db.documents.find_one({"id": t.get("source_document_id")}, {"_id": 0, "original_filename": 1})
+    return {"transaction_id": t["id"], "document_id": t.get("source_document_id"),
+            "original_filename": (d or {}).get("original_filename")}
+
+
+async def _upsert_fuel_transaction(doc_id: str, doc_data: dict, vehicle: dict, tenant_id: str, user: str) -> dict:
+    """1 document validé = au plus 1 fuel_transaction (upsert par source_document_id)."""
+    now = datetime.now(timezone.utc).isoformat()
+    kind = _energy_kind(doc_data.get("type_carburant"), doc_data.get("litres"), doc_data.get("energie_kwh"))
+    dt, heure = doc_data.get("date"), (doc_data.get("heure") or "").strip()
+    m = re.fullmatch(r"(\d{1,2})[:h.](\d{2})", heure)
+    heure = f"{int(m.group(1)):02d}:{m.group(2)}" if m and int(m.group(1)) < 24 else None
+    dev = (doc_data.get("devise") or "").strip().upper()
+    rec = {
+        "tenant_id": tenant_id, "vehicle_id": vehicle["id"], "source_document_id": doc_id,
+        "date": dt, "heure": heure, "date_heure": f"{dt}T{heure}:00" if dt and heure else dt,
+        "station": doc_data.get("station"),
+        "montant": round(float(doc_data["montant"]), 2) if doc_data.get("montant") is not None else None,
+        "devise": dev if re.fullmatch(r"[A-Z]{3}", dev) else "CHF",
+        "litres": round(float(doc_data["litres"]), 2) if doc_data.get("litres") is not None else None,
+        "prix_litre": doc_data.get("prix_litre"), "type_carburant": doc_data.get("type_carburant"),
+        "energie": kind, "energie_kwh": doc_data.get("energie_kwh"), "prix_kwh": doc_data.get("prix_kwh"),
+        "kilometrage": doc_data.get("kilometrage"), "carte_last4": _last4(doc_data.get("carte_last4")),
+        "plaque_mentionnee": doc_data.get("plaque"),
+        "created_from": "document", "validated_by": user, "validated_at": now, "updated_at": now,
+        "is_deleted": False,
+    }
+    existing = await db.fuel_transactions.find_one({"tenant_id": tenant_id, "source_document_id": doc_id},
+                                                   {"_id": 0, "id": 1, "created_at": 1})
+    if existing:
+        await db.fuel_transactions.update_one({"id": existing["id"]}, {"$set": rec})
+        rec.update({"id": existing["id"], "created_at": existing.get("created_at")})
+        return rec
+    rec.update({"id": str(uuid.uuid4()), "created_at": now})
+    await db.fuel_transactions.insert_one(dict(rec))
+    rec.pop("_id", None)
+    return rec
+
+
+def _conso_from_transactions(txs: list) -> Optional[dict]:
+    """Conso réelle MESURÉE par tickets thermiques : Σ litres des pleins suivants / Δ km (≥ 100 km, 2–60 L/100).
+    Jamais d'estimation ; None si données insuffisantes."""
+    pts = sorted([t for t in txs if not t.get("is_deleted") and t.get("energie") == "thermique"
+                  and t.get("kilometrage") and t.get("litres")],
+                 key=lambda t: (t["kilometrage"], t.get("date_heure") or ""))
+    if len(pts) < 2:
+        return None
+    dkm = pts[-1]["kilometrage"] - pts[0]["kilometrage"]
+    if dkm < 100:
+        return None
+    litres = sum(float(t["litres"]) for t in pts[1:])
+    conso = litres / dkm * 100
+    if not 2 <= conso <= 60:
+        return None
+    return {"value": round(conso, 1), "unit": "L/100km", "km": dkm, "litres": round(litres, 1),
+            "n": len(pts), "from": pts[0].get("date"), "to": pts[-1].get("date"), "source": "fuel_transactions"}
+
+
+def _conso_kwh_from_transactions(txs: list) -> Optional[dict]:
+    pts = sorted([t for t in txs if not t.get("is_deleted") and t.get("energie") == "electrique"
+                  and t.get("kilometrage") and t.get("energie_kwh")],
+                 key=lambda t: (t["kilometrage"], t.get("date_heure") or ""))
+    if len(pts) < 2:
+        return None
+    dkm = pts[-1]["kilometrage"] - pts[0]["kilometrage"]
+    if dkm < 100:
+        return None
+    kwh = sum(float(t["energie_kwh"]) for t in pts[1:])
+    conso = kwh / dkm * 100
+    if not 5 <= conso <= 60:
+        return None
+    return {"value": round(conso, 1), "unit": "kWh/100km", "km": dkm, "kwh": round(kwh, 1),
+            "n": len(pts), "from": pts[0].get("date"), "to": pts[-1].get("date"), "source": "fuel_transactions"}
+
+
+async def _apply_transaction_conso(vehicle_id: str, tenant_id: str) -> dict:
+    """Priorité des sources : CAN (mesure embarquée) > fuel_transactions > manuel. Aucune écriture si CAN."""
+    txs = await db.fuel_transactions.find({"tenant_id": tenant_id, "vehicle_id": vehicle_id, "is_deleted": False},
+                                          {"_id": 0}).to_list(None)
+    conso = _conso_from_transactions(txs)
+    v = await db.vehicles.find_one({"id": vehicle_id}, {"_id": 0, "conso_reelle_source": 1, "type_carburant": 1})
+    if not conso:
+        return {"applied": False, "reason": "INSUFFICIENT_DATA"}
+    if (v or {}).get("conso_reelle_source") == "can":
+        return {"applied": False, "reason": "CAN_PRIORITY", "conso_tickets": conso}
+    if ((v or {}).get("type_carburant") or "").lower().startswith(("électr", "electr")):
+        return {"applied": False, "reason": "ELECTRIC_VEHICLE", "conso_tickets": conso}
+    iso = datetime.now(timezone.utc).isoformat()
+    await db.vehicles.update_one({"id": vehicle_id}, {"$set": {
+        "conso_reelle_l_100km": conso["value"], "conso_reelle_source": "fuel_transactions", "updated_at": iso}})
+    await db.vehicle_field_meta.update_one(
+        {"vehicle_id": vehicle_id, "field": "conso_reelle_l_100km"},
+        {"$set": {"label": "Consommation réelle (L/100 km)", "source": "fuel_transactions",
+                  "provider": "fuel_transactions", "confidence": None, "measurement_type": "measured",
+                  "tenant_id": tenant_id, "validated_by": "système", "validated_at": iso, "updated_at": iso,
+                  "detail": f"{conso['n']} pleins · {conso['km']} km · {conso['litres']} L"}},
+        upsert=True)
+    return {"applied": True, "conso": conso}
+
+
+def _energy_totals(txs: list) -> dict:
+    thermal = [t for t in txs if t.get("energie") == "thermique"]
+    elec = [t for t in txs if t.get("energie") == "electrique"]
+    litres = round(sum(float(t["litres"]) for t in thermal if t.get("litres")), 2)
+    kwh = round(sum(float(t["energie_kwh"]) for t in elec if t.get("energie_kwh")), 2)
+    dep_l = sum(float(t["montant"]) for t in thermal if t.get("montant") and t.get("litres"))
+    dep_k = sum(float(t["montant"]) for t in elec if t.get("montant") and t.get("energie_kwh"))
+    return {
+        "depenses": round(sum(float(t["montant"]) for t in txs if t.get("montant")), 2),
+        "litres": litres, "energie_kwh": kwh, "transactions": len(txs),
+        "prix_moyen_l": round(dep_l / litres, 3) if litres else None,
+        "prix_moyen_kwh": round(dep_k / kwh, 3) if kwh else None,
+        "derniere": max((t.get("date_heure") or t.get("date") or "" for t in txs), default=None) or None,
+    }
 DOC_PROFILS = ["base", "achete", "leasing", "thermique", "electrique", "hybride"]
 DEFAULT_DOC_REQUIREMENTS = {
     "base": ["Carte grise", "Assurance", "Contrôle technique"],
@@ -2111,6 +2310,68 @@ async def list_business_categories():
     return [{"code": c, "label": l} for c, l in BUSINESS_CATEGORIES]
 
 
+def _in_range(d: str, date_from: Optional[str], date_to: Optional[str]) -> bool:
+    d = str(d or "")[:10]
+    if date_from and d < date_from[:10]:
+        return False
+    if date_to and d > date_to[:10]:
+        return False
+    return True
+
+
+@api_router.get("/energy")
+async def energy_overview(request: Request, vehicle_id: Optional[str] = None,
+                          date_from: Optional[str] = None, date_to: Optional[str] = None):
+    """Énergie & carburant du tenant — LECTURE SEULE, dérivé des fuel_transactions (jamais resommé dans Coûts)."""
+    t = tid(request)
+    q = {"tenant_id": t, "is_deleted": False}
+    if vehicle_id:
+        q["vehicle_id"] = vehicle_id
+    all_tx = await db.fuel_transactions.find(q, {"_id": 0}).to_list(None)
+    vmap = {v["id"]: v for v in await db.vehicles.find(
+        {"tenant_id": t}, {"_id": 0, "id": 1, "plaque": 1, "marque": 1, "modele": 1,
+                           "conso_reelle_l_100km": 1, "conso_reelle_source": 1}).to_list(None)}
+    all_tx = [x for x in all_tx if x["vehicle_id"] in vmap]
+    txs = [x for x in all_tx if _in_range(x.get("date"), date_from, date_to)]
+    for x in txs:
+        v = vmap.get(x["vehicle_id"]) or {}
+        x["plaque"], x["marque"], x["modele"] = v.get("plaque"), v.get("marque"), v.get("modele")
+    txs.sort(key=lambda x: (x.get("date_heure") or x.get("date") or "", x.get("created_at") or ""), reverse=True)
+    by_vehicle, fleet_l, fleet_km = [], 0.0, 0
+    for vid in {x["vehicle_id"] for x in all_tx}:
+        vt = [x for x in all_tx if x["vehicle_id"] == vid]
+        v = vmap.get(vid) or {}
+        conso = _conso_from_transactions(vt)
+        if conso:
+            fleet_l += conso["litres"]
+            fleet_km += conso["km"]
+        by_vehicle.append({"vehicle_id": vid, "plaque": v.get("plaque"), "marque": v.get("marque"),
+                           "modele": v.get("modele"),
+                           **_energy_totals([x for x in vt if _in_range(x.get("date"), date_from, date_to)]),
+                           "conso_tickets": conso, "conso_kwh_tickets": _conso_kwh_from_transactions(vt),
+                           "conso_reelle_l_100km": v.get("conso_reelle_l_100km") or None,
+                           "conso_reelle_source": v.get("conso_reelle_source")})
+    by_vehicle.sort(key=lambda b: -b["depenses"])
+    totals = _energy_totals(txs)
+    totals["conso_reelle_l_100km"] = round(fleet_l / fleet_km * 100, 1) if fleet_km >= 100 else None
+    totals["vehicules_avec_conso"] = sum(1 for b in by_vehicle if b["conso_tickets"])
+    return {"transactions": txs, "totals": totals, "by_vehicle": by_vehicle}
+
+
+@api_router.get("/vehicles/{vehicle_id}/energy")
+async def vehicle_energy(vehicle_id: str, request: Request):
+    v = await find_tenant_vehicle(request, vehicle_id, {"_id": 0, "conso_reelle_l_100km": 1,
+                                                        "conso_reelle_source": 1, "kilometrage": 1, "type_carburant": 1})
+    txs = await db.fuel_transactions.find({"tenant_id": tid(request), "vehicle_id": vehicle_id, "is_deleted": False},
+                                          {"_id": 0}).to_list(None)
+    txs.sort(key=lambda x: (x.get("date_heure") or x.get("date") or "", x.get("created_at") or ""), reverse=True)
+    return {"transactions": txs, "totals": _energy_totals(txs),
+            "conso_tickets": _conso_from_transactions(txs), "conso_kwh_tickets": _conso_kwh_from_transactions(txs),
+            "conso_reelle_l_100km": v.get("conso_reelle_l_100km") or None,
+            "conso_reelle_source": v.get("conso_reelle_source"),
+            "kilometrage_vehicule": v.get("kilometrage"), "type_carburant": v.get("type_carburant")}
+
+
 @api_router.get("/costs")
 async def list_costs(request: Request, vehicle_id: Optional[str] = None):
     data = await collect_costs(tid(request))
@@ -2305,6 +2566,14 @@ async def delete_document(doc_id: str, request: Request):
                                       {"_id": 0, "vehicle_id": 1, "original_filename": 1})
     if not doc:
         raise HTTPException(status_code=404, detail="Document introuvable")
+    # Pièce justificative d'une transaction énergie : suppression bloquée (traçabilité), jamais de cascade
+    linked = await db.fuel_transactions.count_documents(
+        {"tenant_id": tid(request), "source_document_id": doc_id, "is_deleted": False})
+    if linked:
+        raise HTTPException(status_code=409, detail={
+            "code": "SOURCE_OF_FUEL_TRANSACTION",
+            "message": "Ce document est la pièce justificative d'une transaction énergie — suppression impossible "
+                       "pour préserver la traçabilité."})
     await db.documents.update_one({"id": doc_id, "tenant_id": tid(request)},
                                   {"$set": {"is_deleted": True}})
     await audit("delete", "document", request, doc_id, doc.get("vehicle_id"),
@@ -3113,6 +3382,7 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
     defs_labels = {d["key"]: d["label"] for d in FIELD_DEFS.get(dtype, [])}
     missing_fields = [defs_labels[k] for k, v in (result.get("fields") or {}).items()
                       if k in defs_labels and isinstance(v, dict) and v.get("status") == "missing"]
+    values = {f["field"]: f["value"] for f in fields}
     await db.documents.update_one({"id": record["id"]}, {"$set": {
         "extraction_status": "done", "document_type": dtype,
         "type_confidence": result.get("type_confidence"),
@@ -3128,7 +3398,9 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
             "document_type": dtype, "type_confidence": result.get("type_confidence"),
             "detected_type": detected, "type_mismatch": type_mismatch,
             "quality_warnings": quality_warnings, "missing_fields": missing_fields,
-            "pages_count": len(images_b64), "fields": fields, "duplicate_of": duplicate_of}
+            "pages_count": len(images_b64), "fields": fields, "duplicate_of": duplicate_of,
+            "suggested_business_category": _suggest_business_category(dtype, values),
+            "coherence_warnings": _ticket_checks(values, vehicle) if dtype == "ticket_carburant" else []}
 
 
 @api_router.get("/documents/{doc_id}/extraction")
@@ -3155,6 +3427,7 @@ async def get_document_extraction(doc_id: str, request: Request):
     order = [d["key"] for d in FIELD_DEFS.get(dtype, [])]
     fields.sort(key=lambda x: order.index(x["field"]))
     await _apply_vin_guard(fields, vehicle, tid(request))
+    values = {f["field"]: f["value"] for f in fields}
     return {"document_id": doc_id, "vehicle_id": vehicle["id"],
             "vehicle_plaque": vehicle.get("plaque"),
             "document_type": dtype, "document_type_label": DOC_TYPES[dtype]["label"],
@@ -3162,7 +3435,10 @@ async def get_document_extraction(doc_id: str, request: Request):
             "analyzed_at": doc.get("analyzed_at"), "validated_at": doc.get("validated_at"),
             "type_confidence": doc.get("type_confidence"),
             "quality_warnings": doc.get("quality_warnings") or [],
-            "fields": fields, "fields_count": len(fields)}
+            "fields": fields, "fields_count": len(fields),
+            "business_category": doc.get("business_category"),
+            "suggested_business_category": doc.get("business_category") or _suggest_business_category(dtype, values),
+            "coherence_warnings": _ticket_checks(values, vehicle) if dtype == "ticket_carburant" else []}
 
 
 class DocumentValidate(BaseModel):
@@ -3246,7 +3522,8 @@ async def validate_scanned_document(doc_id: str, payload: DocumentValidate, requ
         "document_data": doc_data, "extraction_status": "validated", "a_verifier": False,
     }
     warnings = []
-    if payload.business_category or dtype == "facture":
+    fuel_tx = None
+    if payload.business_category or dtype in COST_DOC_TYPES:
         doc_set["business_category"] = payload.business_category or None
     if dtype == "facture":
         v2 = _facture_to_v2(doc_data)
@@ -3263,6 +3540,29 @@ async def validate_scanned_document(doc_id: str, payload: DocumentValidate, requ
             warnings.append({"code": "DUPLICATE_OVERRIDDEN", "existing_document_id": dup["document_id"],
                              "detail": "Doublon probable confirmé manuellement."})
         doc_set.update(v2)
+    if dtype == "ticket_carburant":
+        v2 = _ticket_to_v2(doc_data)
+        dup = await _transaction_duplicate(tid(request), vehicle["id"], doc_id, doc_data.get("date"),
+                                           doc_data.get("montant"), doc_data.get("litres"))
+        if dup and not payload.duplicate_override:
+            raise HTTPException(status_code=409, detail={
+                "code": "DUPLICATE_SUSPECTED", "kind": "transaction",
+                "message": "Doublon probable : une transaction carburant du même véhicule, même date, même montant "
+                           "et même quantité existe déjà.",
+                "existing_document_id": dup.get("document_id"),
+                "existing_filename": dup.get("original_filename")})
+        if dup:
+            warnings.append({"code": "DUPLICATE_OVERRIDDEN", "existing_document_id": dup.get("document_id"),
+                             "detail": "Doublon probable de transaction confirmé manuellement."})
+        warnings.extend(_ticket_checks(doc_data, vehicle))
+        doc_set.update(v2)
+        if any(doc_data.get(k) is not None for k in ("montant", "litres", "energie_kwh")):
+            fuel_tx = await _upsert_fuel_transaction(
+                doc_id, doc_data, vehicle, tid(request),
+                (getattr(request.state, "user", None) or {}).get("email") or "utilisateur")
+        else:
+            warnings.append({"code": "TRANSACTION_SKIPPED",
+                             "detail": "Ni montant, ni litres, ni kWh validés — aucune transaction énergie créée."})
     plaque_doc = doc_data.get("plaque")
     if plaque_doc and vehicle.get("plaque") and _norm_plate(plaque_doc) != _norm_plate(vehicle.get("plaque")):
         warnings.append({"code": "PLATE_MISMATCH", "document_plate": plaque_doc, "vehicle_plate": vehicle.get("plaque"),
@@ -3280,6 +3580,14 @@ async def validate_scanned_document(doc_id: str, payload: DocumentValidate, requ
     push_keys = {(k if fd["target"] == "root" else f"{fd['target']}.{k}") for k, fd, _, _ in applied}
     if NAVIXY_PUSH_KEYS & push_keys:
         navixy_push = await push_vehicle_to_navixy(fresh, request)
+    conso_update = None
+    if fuel_tx:
+        await audit("create", "fuel_transaction", request, fuel_tx["id"], vehicle["id"],
+                    f"Transaction énergie depuis ticket validé — {fuel_tx.get('station') or '—'} · "
+                    f"{fuel_tx.get('montant')} {fuel_tx.get('devise')} · "
+                    + (f"{fuel_tx.get('litres')} L" if fuel_tx.get("litres") else f"{fuel_tx.get('energie_kwh')} kWh"))
+        conso_update = await _apply_transaction_conso(vehicle["id"], tid(request))
+        fresh = await db.vehicles.find_one({"id": vehicle["id"]}, {"_id": 0})
     fresh["metrics"] = compute_metrics(fresh, await th_for(request))
     cost = None
     if doc_set.get("montant") is not None:
@@ -3288,7 +3596,7 @@ async def validate_scanned_document(doc_id: str, payload: DocumentValidate, requ
                 "category_label": BUSINESS_CATEGORY_LABELS.get(doc_set.get("business_category"), COST_UNCLASSIFIED_LABEL)}
     return {"ok": True, "applied": len(applied) + len(doc_data), "document_id": doc_id,
             "skipped_fields": skipped, "vehicle": fresh, "navixy_push": navixy_push,
-            "warnings": warnings, "cost": cost}
+            "warnings": warnings, "cost": cost, "fuel_transaction": fuel_tx, "conso_update": conso_update}
 
 
 @api_router.get("/vehicles/{vehicle_id}/field-meta")
@@ -4726,6 +5034,10 @@ async def startup():
         await db.vehicles.create_index([("tenant_id", 1), ("id", 1)])
         await db.vehicles.create_index([("tenant_id", 1), ("navixy_tracker_id", 1)])
         await db.documents.create_index([("tenant_id", 1), ("vehicle_id", 1)])
+        await db.fuel_transactions.create_index([("tenant_id", 1), ("vehicle_id", 1), ("date_heure", -1)])
+        await db.fuel_transactions.create_index(
+            [("tenant_id", 1), ("source_document_id", 1)], unique=True,
+            partialFilterExpression={"source_document_id": {"$type": "string"}})
         await db.tenant_integrations.create_index([("tenant_id", 1), ("provider", 1)], unique=True)
         await db.tenant_settings.create_index("tenant_id", unique=True)
         await db.alerts.create_index([("vehicle_id", 1), ("type", 1), ("document_id", 1),

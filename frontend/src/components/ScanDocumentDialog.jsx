@@ -15,7 +15,8 @@ import { cn } from "@/lib/utils";
 import { loadDocScanner } from "@/lib/docScanner";
 import DocumentCropper from "@/components/DocumentCropper";
 import {
-  BusinessCategoryPicker, DuplicateSuspectedBox, SameFileNotice, PlateMismatchNote, isDocPlateMismatch,
+  BusinessCategoryPicker, DuplicateSuspectedBox, SameFileNotice, PlateMismatchNote, CoherenceWarnings,
+  isDocPlateMismatch, COST_DOC_TYPES,
 } from "@/components/documents/BusinessCategoryPicker";
 
 const CATEGORY_FIELD = "categorie_suggeree";
@@ -27,12 +28,13 @@ export const DOC_TYPE_OPTIONS = [
   { key: "controle_technique", label: "Expertise / Contrôle technique" },
   { key: "vignette", label: "Vignette autoroutière" },
   { key: "facture", label: "Facture véhicule" },
+  { key: "ticket_carburant", label: "Ticket carburant / recharge" },
   { key: "amende", label: "Amende" },
   { key: "autre", label: "Autre document" },
 ];
 
 const typeLabel = (key) => DOC_TYPE_OPTIONS.find((t) => t.key === key)?.label || key;
-const inputType = (kind) => (kind === "date" ? "date" : kind === "int" || kind === "float" ? "number" : "text");
+const inputType = (kind) => (kind === "date" ? "date" : ["int", "float", "float3"].includes(kind) ? "number" : "text");
 const isMobileDevice = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
 // WebView intégrée (hub mobile) : le sélecteur de fichiers/caméra y est souvent bloqué par l'app hôte.
@@ -396,8 +398,8 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
     setDocType(res.document_type);
     setRows(Object.fromEntries((res.fields || []).map((f) => [f.field, { value: f.value ?? "", apply: !f.conflict, useNew: false }])));
     const sug = (res.fields || []).find((f) => f.field === CATEGORY_FIELD);
-    const code = sug?.value ? String(sug.value).trim().toUpperCase() : null;
-    setSuggestion(code ? { code, confidence: sug.confidence } : null);
+    const code = res.suggested_business_category || (sug?.value ? String(sug.value).trim().toUpperCase() : null);
+    setSuggestion(code ? { code, confidence: sug?.confidence } : null);
     setBizCat(code);
     setDupInfo(null);
     setStep("review");
@@ -476,11 +478,15 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
     try {
       const fields = buildPayload();
       const payload = { document_type: docType, fields, duplicate_override: duplicateOverride };
-      if (docType === "facture" || bizCat) payload.business_category = bizCat || null;
+      if (COST_DOC_TYPES.includes(docType) || bizCat) payload.business_category = bizCat || null;
       const res = await validateScannedDocument(result.document_id, payload);
       validatedRef.current = true;
       (res.warnings || []).forEach((w) => toast.warning(w.detail, { duration: 9000 }));
-      if (res.cost) {
+      if (res.fuel_transaction) {
+        const tx = res.fuel_transaction;
+        const qty = tx.litres ? `${tx.litres} L` : tx.energie_kwh ? `${tx.energie_kwh} kWh` : "quantité non lue";
+        toast.success(`Ticket validé · transaction énergie : ${tx.station || "station inconnue"} · ${qty} · ${tx.montant ?? "—"} ${tx.devise}`);
+      } else if (res.cost) {
         toast.success(`Document validé · coût enregistré : ${res.cost.montant} ${res.cost.devise} · ${res.cost.category_label}`);
       } else {
         toast.success(
@@ -893,9 +899,10 @@ export default function ScanDocumentDialog({ open, onOpenChange, vehicle, initia
               </div>
             )}
 
-            {docType === "facture" && (
+            {COST_DOC_TYPES.includes(docType) && (
               <BusinessCategoryPicker value={bizCat} onChange={setBizCat} suggestion={suggestion} />
             )}
+            <CoherenceWarnings warnings={result.coherence_warnings} />
 
             {normals.length > 0 ? (
               <div className="space-y-3">

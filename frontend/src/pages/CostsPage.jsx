@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { Wallet, Banknote, Layers, PieChart as PieIcon } from "lucide-react";
 import { getCosts, getVehicles, getDocCategories } from "@/lib/api";
-import { chf } from "@/lib/format";
+import { chf, chfExact } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import KpiCard from "@/components/KpiCard";
 import QueryErrorState from "@/components/QueryErrorState";
@@ -170,10 +170,10 @@ export default function CostsPage() {
                     {i.category}
                   </span>
                 </TableCell>
-                <TableCell className="text-sm text-slate-600">{chf(i.montant)}</TableCell>
+                <TableCell className="text-sm text-slate-600">{chfExact(i.montant, i.devise)}</TableCell>
                 <TableCell className="text-sm text-slate-600">{FREQ_FR[i.frequence] || i.frequence}</TableCell>
                 <TableCell className="text-sm font-semibold text-slate-900">
-                  {chf(i.cout_annuel)}
+                  {chfExact(i.cout_annuel, i.devise)}
                   {!i.recurrent && <span className="ml-1 text-[10px] font-normal text-slate-400">(unique)</span>}
                   {!i.actif && <span className="ml-1 text-[10px] font-normal text-amber-600">(hors {year})</span>}
                 </TableCell>

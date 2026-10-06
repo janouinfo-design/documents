@@ -47,8 +47,9 @@ export function BusinessCategoryPicker({ value, onChange, suggestion, disabled =
 export function DuplicateSuspectedBox({ info, onConfirmAnyway, busy }) {
   if (!info) return null;
   return (
-    <div data-testid="duplicate-suspected" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-      <p className="flex items-start gap-2 font-semibold"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> Doublon probable</p>
+    <div data-testid="duplicate-suspected" data-kind={info.kind || "document"} className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+      <p className="flex items-start gap-2 font-semibold"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+        {info.kind === "transaction" ? "Transaction énergie en doublon probable" : "Doublon probable"}</p>
       <p className="mt-1 text-xs">{info.message}{info.existing_filename ? ` Document existant : « ${info.existing_filename} ».` : ""}</p>
       <Button size="sm" variant="outline" data-testid="duplicate-confirm-anyway" onClick={onConfirmAnyway} disabled={busy}
               className="mt-2 gap-1.5 border-amber-300 bg-white text-amber-900 hover:bg-amber-100">
@@ -71,6 +72,23 @@ export function SameFileNotice({ dup }) {
 
 // Plaque d'un justificatif ≠ plaque du véhicule : avertissement, jamais de réaffectation.
 export const isDocPlateMismatch = (f) => f.target === "document" && f.field === "plaque" && f.conflict;
+
+// Types documentaires qui portent un coût (document = enregistrement de coût).
+export const COST_DOC_TYPES = ["facture", "ticket_carburant"];
+
+// Cohérence ticket (litres × prix ≈ montant, odomètre) : avertissements, jamais bloquants.
+export function CoherenceWarnings({ warnings }) {
+  if (!warnings?.length) return null;
+  return (
+    <div data-testid="coherence-warnings" className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+      {warnings.map((w, i) => (
+        <p key={`${w.code}-${i}`} className="flex items-start gap-1.5" data-testid={`coherence-${w.code}`}>
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {w.detail}
+        </p>
+      ))}
+    </div>
+  );
+}
 
 export function PlateMismatchNote() {
   return (

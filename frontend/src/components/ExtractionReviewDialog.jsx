@@ -9,10 +9,10 @@ import { getDocumentExtraction, validateScannedDocument } from "@/lib/api";
 import { notifyNavixyPush } from "@/lib/navixyFeedback";
 import { cn } from "@/lib/utils";
 import {
-  BusinessCategoryPicker, DuplicateSuspectedBox, PlateMismatchNote, isDocPlateMismatch,
+  BusinessCategoryPicker, DuplicateSuspectedBox, PlateMismatchNote, CoherenceWarnings, isDocPlateMismatch, COST_DOC_TYPES,
 } from "@/components/documents/BusinessCategoryPicker";
 
-const inputType = (kind) => (kind === "date" ? "date" : kind === "int" || kind === "float" ? "number" : "text");
+const inputType = (kind) => (kind === "date" ? "date" : ["int", "float", "float3"].includes(kind) ? "number" : "text");
 const CATEGORY_FIELD = "categorie_suggeree";
 
 const fieldState = (f) => {
@@ -62,8 +62,8 @@ export default function ExtractionReviewDialog({ docId, open, onOpenChange, read
           return [f.field, { value: f.value ?? "", apply: st === "COMPLETER" && !isVinLocked(f) }];
         })));
         const sug = (d.fields || []).find((f) => f.field === CATEGORY_FIELD);
-        const code = sug?.value ? String(sug.value).trim().toUpperCase() : null;
-        setSuggestion(code ? { code, confidence: sug.confidence } : null);
+        const code = d.suggested_business_category || (sug?.value ? String(sug.value).trim().toUpperCase() : null);
+        setSuggestion(code ? { code, confidence: sug?.confidence } : null);
         setBizCat(code);
       })
       .catch((e) => setError(e?.response?.data?.detail || "Impossible de charger le résultat d'analyse"))
@@ -71,7 +71,7 @@ export default function ExtractionReviewDialog({ docId, open, onOpenChange, read
   }, [open, docId]);
 
   const setRow = (field, patch) => setRows((r) => ({ ...r, [field]: { ...r[field], ...patch } }));
-  const isFacture = data?.document_type === "facture";
+  const isCostDoc = COST_DOC_TYPES.includes(data?.document_type);
   const visibleFields = (data?.fields || []).filter((f) => f.field !== CATEGORY_FIELD);
 
   const buildPayload = () => {
@@ -90,13 +90,17 @@ export default function ExtractionReviewDialog({ docId, open, onOpenChange, read
     setValidating(true);
     try {
       const payload = { document_type: data.document_type, fields: buildPayload(), duplicate_override: duplicateOverride };
-      if (isFacture || bizCat) payload.business_category = bizCat || null;
+      if (isCostDoc || bizCat) payload.business_category = bizCat || null;
       const res = await validateScannedDocument(docId, payload);
       if (res.skipped_fields?.length) {
         res.skipped_fields.forEach((s) => toast.warning(s.detail || `Champ ${s.field} non appliqué (${s.reason})`));
       }
       (res.warnings || []).forEach((w) => toast.warning(w.detail, { duration: 9000 }));
-      if (res.cost) {
+      if (res.fuel_transaction) {
+        const tx = res.fuel_transaction;
+        const qty = tx.litres ? `${tx.litres} L` : tx.energie_kwh ? `${tx.energie_kwh} kWh` : "quantité non lue";
+        toast.success(`Transaction énergie enregistrée : ${tx.station || "station inconnue"} · ${qty} · ${tx.montant ?? "—"} ${tx.devise}`);
+      } else if (res.cost) {
         toast.success(`Coût enregistré : ${res.cost.montant} ${res.cost.devise} · ${res.cost.category_label}`);
       } else {
         toast.success(res.applied > 0
@@ -158,9 +162,10 @@ export default function ExtractionReviewDialog({ docId, open, onOpenChange, read
 
         {data && data.fields?.length > 0 && (
           <div className="space-y-2.5">
-            {isFacture && (
+            {isCostDoc && (
               <BusinessCategoryPicker value={bizCat} onChange={setBizCat} suggestion={suggestion} disabled={readOnly} />
             )}
+            <CoherenceWarnings warnings={data.coherence_warnings} />
             {visibleFields.map((f) => {
               const st = fieldState(f);
               const badge = STATE_BADGE[st];
@@ -254,7 +259,7 @@ export default function ExtractionReviewDialog({ docId, open, onOpenChange, read
               className="gap-2 bg-emerald-600 hover:bg-emerald-700"
             >
               {validating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              {isFacture ? "Confirmer et enregistrer le coût" : "Confirmer et compléter le véhicule"}{selectedCount > 0 ? ` (${selectedCount})` : ""}
+              {isCostDoc ? "Confirmer et enregistrer le coût" : "Confirmer et compléter le véhicule"}{selectedCount > 0 ? ` (${selectedCount})` : ""}
             </Button>
           )}
         </div>

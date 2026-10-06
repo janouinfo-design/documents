@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Wallet, Loader2 } from "lucide-react";
 import { getVehicleCosts } from "@/lib/api";
-import { chf } from "@/lib/format";
+import { chf, chfExact } from "@/lib/format";
 import { SectionCard, Stat } from "@/components/Field";
 import QueryErrorState from "@/components/QueryErrorState";
 
@@ -48,9 +48,9 @@ export default function CostsTab({ vehicle }) {
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-sm font-semibold text-slate-900">{chf(i.cout_annuel)}<span className="text-xs font-normal text-slate-400">/an</span></p>
+                <p className="text-sm font-semibold text-slate-900">{chfExact(i.cout_annuel, i.devise)}<span className="text-xs font-normal text-slate-400">/an</span></p>
                 <p className="text-[11px] text-slate-400">
-                  {chf(i.montant)} {FREQ_FR[i.frequence]?.toLowerCase() || ""}
+                  {chfExact(i.montant, i.devise)} {FREQ_FR[i.frequence]?.toLowerCase() || ""}
                   {!i.actif && <span className="ml-1 text-amber-600">· hors {data?.year}</span>}
                 </p>
               </div>

@@ -17,6 +17,7 @@ DOC_TYPES = {
     "controle_technique": {"label": "Expertise / Contrôle technique", "folder": "Contrôle technique"},
     "vignette": {"label": "Vignette autoroutière", "folder": "Vignette"},
     "facture": {"label": "Facture véhicule", "folder": "Factures"},
+    "ticket_carburant": {"label": "Ticket carburant / recharge", "folder": "Factures"},
     "amende": {"label": "Amende", "folder": "Divers"},
     "autre": {"label": "Autre document", "folder": "Divers"},
 }
@@ -116,6 +117,22 @@ FIELD_DEFS = {
          "target": "document", "kind": "str"},
         {"key": "plaque", "label": "Immatriculation mentionnée", "target": "document", "kind": "str"},
     ],
+    "ticket_carburant": [
+        {"key": "station", "label": "Station / enseigne", "target": "document", "kind": "str"},
+        {"key": "date", "label": "Date", "target": "document", "kind": "date"},
+        {"key": "heure", "label": "Heure (HH:MM)", "target": "document", "kind": "str"},
+        {"key": "montant", "label": "Montant total TTC payé", "target": "document", "kind": "float"},
+        {"key": "devise", "label": "Devise (code ISO : CHF, EUR…)", "target": "document", "kind": "str"},
+        {"key": "litres", "label": "Quantité (litres)", "target": "document", "kind": "float"},
+        {"key": "prix_litre", "label": "Prix au litre", "target": "document", "kind": "float3"},
+        {"key": "type_carburant", "label": "Type d'énergie (Essence, Diesel, Électricité, GNC, GPL, Hydrogène…)",
+         "target": "document", "kind": "str"},
+        {"key": "energie_kwh", "label": "Énergie rechargée (kWh) — recharge électrique uniquement", "target": "document", "kind": "float"},
+        {"key": "prix_kwh", "label": "Prix au kWh — recharge électrique uniquement", "target": "document", "kind": "float3"},
+        {"key": "kilometrage", "label": "Kilométrage indiqué sur le ticket", "target": "document", "kind": "int"},
+        {"key": "carte_last4", "label": "Carte de paiement / carburant : 4 DERNIERS chiffres uniquement", "target": "document", "kind": "str"},
+        {"key": "plaque", "label": "Immatriculation mentionnée", "target": "document", "kind": "str"},
+    ],
     "amende": [
         {"key": "autorite", "label": "Autorité", "target": "document", "kind": "str"},
         {"key": "numero_amende", "label": "N° de l'amende", "target": "document", "kind": "str"},
@@ -169,11 +186,13 @@ def normalize_value(value, kind: str):
         return None
     if kind == "date":
         return _norm_date(value)
-    if kind in ("int", "float"):
+    if kind in ("int", "float", "float3"):
         n = float(value) if isinstance(value, (int, float)) else _norm_number(value)
         if n is None:
             return None
-        return int(round(n)) if kind == "int" else round(n, 2)
+        if kind == "int":
+            return int(round(n))
+        return round(n, 3) if kind == "float3" else round(n, 2)
     s = str(value).strip()
     return s or None
 
@@ -243,6 +262,10 @@ def build_prompt(document_type: str = None) -> str:
         "imprimés ; devise = code ISO imprimé (CHF si francs suisses) ; categorie_suggeree = code métier le plus "
         "probable (plein de carburant → CARBURANT, recharge → ENERGIE_ELECTRIQUE, lavage → LAVAGE, service/vidange/"
         "révision → ENTRETIEN, réparation/carrosserie → REPARATION, pneus → PNEUS, sinon AUTRE).\n"
+        "- Ticket de station-service ou de recharge (plein, carburant, kWh, borne) → type \"ticket_carburant\" et NON "
+        "\"facture\" : litres et prix_litre uniquement s'ils sont imprimés (jamais déduits) ; recharge électrique → "
+        "energie_kwh et prix_kwh, litres null ; heure au format HH:MM ; carte_last4 = UNIQUEMENT les 4 derniers "
+        "chiffres de la carte (jamais le numéro complet) ; kilometrage seulement s'il est imprimé sur le ticket.\n"
         "- Aucun texte hors JSON, aucune balise de code."
     )
 

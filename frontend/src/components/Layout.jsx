@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutDashboard, Truck, CalendarClock, Bell, Layers3, UserCircle2, KeyRound, LogOut, ShieldCheck, Building2, Eye, FolderOpen, Wallet } from "lucide-react";
+import { LayoutDashboard, Truck, CalendarClock, Bell, Layers3, UserCircle2, KeyRound, LogOut, ShieldCheck, Building2, Eye, FolderOpen, Wallet, Fuel } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getActingTenant, setActingTenant, getPendingReviewCount } from "@/lib/api";
 import {
@@ -17,6 +17,7 @@ const NAV = [
   { to: "/documents", label: "Documents", icon: FolderOpen, testId: "nav-documents" },
   { to: "/timeline", label: "Échéances", icon: CalendarClock, testId: "nav-timeline" },
   { to: "/couts", label: "Coûts", icon: Wallet, testId: "nav-costs" },
+  { to: "/energie", label: "Énergie", icon: Fuel, testId: "nav-energy" },
   { to: "/alertes", label: "Alertes", icon: Bell, testId: "nav-alerts" },
   { to: "/integrite", label: "Intégrité", icon: ShieldCheck, testId: "nav-integrity" },
 ];

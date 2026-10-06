@@ -10,6 +10,7 @@ import Dashboard from "@/pages/Dashboard";
 import Vehicles from "@/pages/Vehicles";
 import TimelinePage from "@/pages/TimelinePage";
 import CostsPage from "@/pages/CostsPage";
+import EnergyPage from "@/pages/EnergyPage";
 import AlertsPage from "@/pages/AlertsPage";
 import Login from "@/pages/Login";
 import IntegrityPage from "@/pages/IntegrityPage";
@@ -57,6 +58,7 @@ function App() {
                           <Route path="/documents" element={<DocumentsPage />} />
                           <Route path="/timeline" element={<TimelinePage />} />
                           <Route path="/couts" element={<CostsPage />} />
+                          <Route path="/energie" element={<EnergyPage />} />
                           <Route path="/alertes" element={<AlertsPage />} />
                           <Route path="/integrite" element={<IntegrityPage />} />
                           <Route path="/admin" element={<AdminPage />} />

@@ -90,7 +90,8 @@ export default function DocFolderSection({ vehicleId, folder, docs = [], onChang
       toast.success("Document supprimé");
       onChange?.();
     } catch (e) {
-      toast.error(e?.response?.data?.detail || "Échec de la suppression");
+      const detail = e?.response?.data?.detail;
+      toast.error((typeof detail === "string" && detail) || detail?.message || "Échec de la suppression", { duration: 8000 });
     }
   };
 

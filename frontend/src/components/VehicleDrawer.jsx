@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Car, FileText, ShieldCheck, ScrollText, Images, ClipboardCheck, FolderTree,
-  Gauge, MapPin, User, Radio, Loader2, Hash, FileDown, Wallet, Unlink,
+  Gauge, MapPin, User, Radio, Loader2, Hash, FileDown, Wallet, Unlink, Fuel,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -22,6 +22,7 @@ import InspectionTab from "@/components/tabs/InspectionTab";
 import ControleTab from "@/components/tabs/ControleTab";
 import DocumentsTab from "@/components/tabs/DocumentsTab";
 import CostsTab from "@/components/tabs/CostsTab";
+import EnergyTab from "@/components/tabs/EnergyTab";
 
 const TABS = [
   { key: "general", label: "Général", icon: Car },
@@ -32,6 +33,7 @@ const TABS = [
   { key: "controle", label: "Contrôles", icon: ClipboardCheck },
   { key: "documents", label: "Documents", icon: FolderTree },
   { key: "couts", label: "Coûts", icon: Wallet },
+  { key: "energie", label: "Énergie", icon: Fuel },
 ];
 
 function Chip({ icon: Icon, children }) {
@@ -193,6 +195,7 @@ export default function VehicleDrawer({ open, onOpenChange, vehicleId, initialTa
                 <TabsContent value="controle" className="mt-0"><ControleTab {...tabProps} /></TabsContent>
                 <TabsContent value="documents" className="mt-0"><DocumentsTab {...tabProps} /></TabsContent>
                 <TabsContent value="couts" className="mt-0"><CostsTab {...tabProps} /></TabsContent>
+                <TabsContent value="energie" className="mt-0"><EnergyTab {...tabProps} /></TabsContent>
               </div>
             </Tabs>
           </>

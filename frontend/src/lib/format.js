@@ -5,6 +5,20 @@ export const chf = (n) =>
     maximumFractionDigits: 0,
   }).format(Number(n) || 0);
 
+// Montants financiers exacts (lignes de coûts / transactions) : 510.77 CHF, jamais arrondi au franc
+export const chfExact = (n, currency = "CHF") =>
+  new Intl.NumberFormat("fr-CH", {
+    style: "currency",
+    currency: currency || "CHF",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(n) || 0);
+
+export const fmtQty = (n, unit, digits = 2) =>
+  n === null || n === undefined
+    ? "—"
+    : `${new Intl.NumberFormat("fr-CH", { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(Number(n))} ${unit}`;
+
 export const chfShort = (n) => {
   const v = Number(n) || 0;
   if (v >= 1000) return `${(v / 1000).toLocaleString("fr-CH", { maximumFractionDigits: 1 })}k`;

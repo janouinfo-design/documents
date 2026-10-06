@@ -167,6 +167,10 @@ export const getCosts = (params = {}) => http.get("/costs", { params }).then((r)
 export const getVehicleCosts = (id) => http.get(`/vehicles/${id}/costs`).then((r) => r.data);
 export const getBusinessCategories = () => http.get("/business-categories").then((r) => r.data);
 
+// Énergie & carburant — fuel_transactions dérivées des tickets validés (jamais resommées dans Coûts)
+export const getEnergy = (params = {}) => http.get("/energy", { params }).then((r) => r.data);
+export const getVehicleEnergy = (id) => http.get(`/vehicles/${id}/energy`).then((r) => r.data);
+
 // Synchronisation télématique
 export const getNavixyStatus = () => http.get("/navixy/status").then((r) => r.data);
 export const navixySync = () => http.post("/navixy/sync").then((r) => r.data);
