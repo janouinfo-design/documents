@@ -1,0 +1,28 @@
+{
+  "summary": "Phase 4C Lot A — Correspondances legacy frontend E2E (10 steps). All flows PASS: nav visibility, preview analysis (strong_candidate/candidate_warning/manual_review/not_found all = 1, 0 écriture), staging (4 pending rows + tracker warning + plate radio + no-radio manual select for not_found), confirm ui-vin-1 (via VIN), confirm ui-plate-1 (via manuel), conflict override on ui-trk-1 → LU 11111 (no-reason rejected, with-reason accepted, audited), reject ui-none-1 (no-reason blocked, with-reason recorded), read-only user (note visible, input/analyze/stage disabled, confirmed rows readable, no confirm buttons), superadmin tenant-map (section mentions 'Legacy UI Test (777001)', ui-jrn-tenant found→Legacy UI Test with confirm btn, ui-nokey no confirm btn, confirmation toast + confirmed row + revoke btn), regression on default admin (Dashboard/Vehicles/Documents/Energy/Costs load, 0 console errors, nav-legacy visible as expected).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "LegacyRow.jsx manual-select <option>", "issues": ["Hydration warning: <span> cannot be a child of <option>. Line 96 uses <option>{v.plaque} · {[v.marque, v.modele].filter(Boolean).join(' ')}</option> which is fine as text, but a span appears somewhere in option children per React warning. Non-blocking, cosmetic SSR warning only."]}
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_40.json"],
+  "action_items": [
+    "Optional cleanup: delete legacy_vehicle_map rows for tenant legacy-ui-test (ui-vin-1, ui-trk-1, ui-plate-1, ui-none-1) and legacy_tenant_map row journal:ui-jrn-tenant created during this test run.",
+    "Optional: fix minor React hydration warning in LegacyRow.jsx about <span> inside <option> (does not affect behavior)."
+  ],
+  "critical_code_review_comments": [
+    "LegacyRow.jsx: toast on reject() fires outside act(); if the inner call errors, both success and warning toasts can appear briefly (observed in logs: ['Correspondance rejetée (quarantaine)', 'Motif de rejet obligatoire']) — purely due to the previous invalid-attempt toast lingering; not a functional bug.",
+    "LegacyOverrideDialog: motif obligatoire enforced client-side only via toast.warning — backend also validates (403/409 chain works, override confirmed with reason)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped per instructions)", "frontend": "100% (10/10 scenarios)"},
+  "test_credentials": "legacy-ui-admin@logitrak-test.ch / LegacyUi-2026! ; legacy-ui-ro@logitrak-test.ch / LegacyUi-2026! ; superadmin@logitrak.ch / 8129413106bcdc0b11dcfa1c7dc9b5e5 ; admin@logitrak.ch / 3a9218d1606b52e003383e52d7aea3d6",
+  "seed_data_creation": "Created via test for tenant legacy-ui-test: legacy_vehicle_map rows ui-vin-1(confirmed→LU 11111 via VIN), ui-plate-1(confirmed→LU 33333 manuel), ui-trk-1(confirmed→LU 11111 manuel override w/ reason), ui-none-1(rejected). Superadmin: legacy_tenant_map journal:ui-jrn-tenant→legacy-ui-test confirmed. Not cleaned by this testing agent — main agent should purge.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 4C Lot A frontend fully green. Default tenant (admin@logitrak.ch) has nav-legacy visible but no legacy rows (not touched). Backend pytest 20/20 already green per prior iteration. If re-running step 9, the ui-jrn-tenant row will show as already confirmed and confirm button hidden — reset via DB cleanup.",
+  "rca of the issue": "N/A — no issues found."
+}
