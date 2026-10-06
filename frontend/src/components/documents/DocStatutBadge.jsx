@@ -7,6 +7,10 @@ export const DOC_STATUT_META = {
   A_VERIFIER: { label: "À vérifier", cls: "bg-violet-50 text-violet-700 border-violet-200" },
   EN_RENOUVELLEMENT: { label: "En renouvellement", cls: "bg-sky-50 text-sky-700 border-sky-200" },
   ARCHIVE: { label: "Archivé", cls: "bg-slate-100 text-slate-500 border-slate-200" },
+  // Amendes (statut de paiement — une amende en retard reste à traiter, jamais « expirée »)
+  A_PAYER: { label: "À payer", cls: "bg-amber-50 text-amber-700 border-amber-200" },
+  EN_RETARD: { label: "En retard", cls: "bg-red-50 text-red-700 border-red-200" },
+  PAYEE: { label: "Payée", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
 };
 
 export const DocStatutBadge = ({ statut }) => {

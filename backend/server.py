@@ -1553,8 +1553,46 @@ def _cost_category(d: dict):
 # la transaction porte UNIQUEMENT les données énergie et n'est JAMAIS resommée
 # dans collect_costs (anti double comptage).
 # ---------------------------------------------------------------------------
-COST_DOC_TYPES = {"facture", "ticket_carburant"}
+COST_DOC_TYPES = {"facture", "ticket_carburant", "amende"}
 _ELECTRIC_HINTS = ("lectr", "kwh", "recharge", "electric")
+
+
+def _is_fine(d: dict) -> bool:
+    return d.get("document_type") == "amende" or d.get("business_category") == "AMENDE"
+
+
+def _amende_to_v2(doc_data: dict) -> dict:
+    """Amende validée → champs V2 : montant (Coûts), date_expiration = délai de paiement (Échéances)."""
+    v2 = {"frequence": "unique"}
+    if doc_data.get("montant_chf") is not None:
+        v2["montant"] = round(float(doc_data["montant_chf"]), 2)
+    dev = (doc_data.get("devise") or "").strip().upper()
+    v2["devise"] = dev if re.fullmatch(r"[A-Z]{3}", dev) else "CHF"
+    for src, dst in (("numero_amende", "numero"), ("date_infraction", "date_debut"),
+                     ("delai_paiement", "date_expiration"), ("autorite", "fournisseur"),
+                     ("plaque", "plaque_mentionnee")):
+        if doc_data.get(src) not in (None, ""):
+            v2[dst] = doc_data[src]
+    return v2
+
+
+async def _fine_duplicate(tenant_id: str, vehicle_id: str, exclude_id: str, numero, autorite, date_infraction, montant):
+    """Doublon d'amende probable : même véhicule + n° d'amende ; sans n° : autorité + date + montant."""
+    q = {"tenant_id": tenant_id, "vehicle_id": vehicle_id, "is_deleted": False, "id": {"$ne": exclude_id},
+         "$or": [{"document_type": "amende"}, {"business_category": "AMENDE"}]}
+    proj = {"_id": 0, "id": 1, "original_filename": 1, "fournisseur": 1, "numero": 1, "date_debut": 1, "montant": 1}
+    if _norm_key(numero):
+        for c in await db.documents.find(q, proj).to_list(None):
+            if _norm_key(c.get("numero")) == _norm_key(numero):
+                return {"document_id": c["id"], "original_filename": c.get("original_filename")}
+        return None
+    if montant is None or not date_infraction or not _norm_key(autorite):
+        return None
+    for c in await db.documents.find({**q, "montant": round(float(montant), 2)}, proj).to_list(None):
+        if (str(c.get("date_debut") or "")[:10] == str(date_infraction)[:10]
+                and _norm_key(c.get("fournisseur")) == _norm_key(autorite)):
+            return {"document_id": c["id"], "original_filename": c.get("original_filename")}
+    return None
 
 
 def _energy_kind(type_carburant, litres, kwh) -> str:
@@ -1760,6 +1798,11 @@ def doc_statut(d: dict, default_preavis: int = None) -> str:
     if d.get("a_verifier"):
         return "A_VERIFIER"
     days = days_until(d.get("date_expiration"))
+    if _is_fine(d):
+        # Amende : payée → PAYEE ; sinon à payer, « en retard » si le délai est dépassé (jamais « expirée »)
+        if d.get("payee"):
+            return "PAYEE"
+        return "EN_RETARD" if days is not None and days < 0 else "A_PAYER"
     if days is not None:
         if days < 0:
             return "EXPIRE"
@@ -2041,9 +2084,12 @@ async def collect_deadlines(tenant_id: str, th: dict = None) -> dict:
          "assurance": 1, "controle_technique": 1, "prochaine_expertise": 1,
          "prochaine_maintenance": 1}).to_list(None)
     docs = await db.documents.find(
-        {"tenant_id": tenant_id, "is_deleted": False, "archived": {"$ne": True}},
+        {"tenant_id": tenant_id, "is_deleted": False, "archived": {"$ne": True},
+         "payee": {"$ne": True}},
         {"_id": 0, "id": 1, "vehicle_id": 1, "folder": 1, "label": 1,
-         "original_filename": 1, "date_expiration": 1, "responsable": 1}).to_list(None)
+         "original_filename": 1, "date_expiration": 1, "responsable": 1,
+         "document_type": 1, "business_category": 1, "fournisseur": 1, "numero": 1,
+         "montant": 1, "devise": 1}).to_list(None)
     vmap = {v["id"]: v for v in vehicles}
     items, covered = [], set()
 
@@ -2059,12 +2105,20 @@ async def collect_deadlines(tenant_id: str, th: dict = None) -> dict:
         if exp and days is not None:
             # Équivalent V2 daté valide : masque la source legacy de cette catégorie
             covered.add((d.get("vehicle_id"), d.get("folder")))
+        fine = _is_fine(d)
+        label = d.get("label") or d.get("original_filename") or "Document"
+        if fine:
+            # Amende non payée : échéance de paiement active jusqu'au paiement (« En retard » si dépassée)
+            label = d.get("label") or " ".join(x for x in [
+                "Amende", d.get("fournisseur"), f"n° {d['numero']}" if d.get("numero") else None,
+                f"· {d['montant']:.2f} {d.get('devise') or 'CHF'}" if d.get("montant") is not None else None] if x)
         push({"key": f"doc:{d['id']}", "source": "document", "is_document_deadline": True,
               "document_id": d["id"], "vehicle_id": d.get("vehicle_id"),
               "plaque": v.get("plaque"), "marque": v.get("marque"), "modele": v.get("modele"),
-              "type": _DEADLINE_CATEGORY_TYPE.get(d.get("folder"), "document"),
-              "category": d.get("folder"),
-              "label": d.get("label") or d.get("original_filename") or "Document",
+              "type": "amende" if fine else _DEADLINE_CATEGORY_TYPE.get(d.get("folder"), "document"),
+              "category": "Amende" if fine else d.get("folder"),
+              "is_fine": fine,
+              "label": label,
               "date": str(exp)[:10] if exp else None,
               "days_remaining": days,
               "responsable": (d.get("responsable") or "").strip() or None})
@@ -2455,6 +2509,32 @@ async def update_document(doc_id: str, payload: DocumentUpdate, request: Request
     return with_statut({**doc, **updates}, preavis)
 
 
+class DocumentPaid(BaseModel):
+    payee: bool = True
+
+
+@api_router.post("/documents/{doc_id}/paid")
+async def set_document_paid(doc_id: str, payload: DocumentPaid, request: Request):
+    """Amende : « Marquer comme payée » / annulation explicite. Rien n'est supprimé (document + coût conservés)."""
+    t = tid(request)
+    doc = await db.documents.find_one({"id": doc_id, "tenant_id": t, "is_deleted": False},
+                                      {"_id": 0, "pages": 0, "extracted_fields": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    if not _is_fine(doc):
+        raise HTTPException(status_code=422, detail="Seule une amende peut être marquée comme payée")
+    now = datetime.now(timezone.utc).isoformat()
+    user = (getattr(request.state, "user", None) or {}).get("email") or "utilisateur"
+    upd = {"payee": payload.payee, "paid_at": now if payload.payee else None,
+           "paid_by": user if payload.payee else None, "updated_at": now}
+    await db.documents.update_one({"id": doc_id, "tenant_id": t}, {"$set": upd})
+    await audit("modify", "document", request, doc_id, doc.get("vehicle_id"),
+                (f"Amende marquée payée — {doc.get('fournisseur') or '—'} n° {doc.get('numero') or '—'} · "
+                 f"{doc.get('montant')} {doc.get('devise') or 'CHF'}") if payload.payee
+                else f"Statut « payée » annulé — amende n° {doc.get('numero') or '—'} à nouveau à payer")
+    return with_statut({**doc, **upd}, (await th_for(request))["urgent_days"])
+
+
 @api_router.get("/documents/pending-review-count")
 async def pending_review_count(request: Request):
     """Scans analysés en attente de validation humaine (badge menu Documents)."""
@@ -2501,7 +2581,7 @@ async def list_all_documents(request: Request,
             if term not in haystack and not any(term in (tg or "").lower() for tg in d.get("tags") or []):
                 continue
         if echeance:
-            days = days_until(d.get("date_expiration"))
+            days = None if d.get("payee") else days_until(d.get("date_expiration"))
             if echeance == "expired" and not (days is not None and days < 0):
                 continue
             if echeance == "30" and not (days is not None and 0 <= days <= th["urgent_days"]):
@@ -2563,7 +2643,8 @@ async def add_document(vehicle_id: str, request: Request, file: UploadFile = Fil
 @api_router.delete("/documents/{doc_id}")
 async def delete_document(doc_id: str, request: Request):
     doc = await db.documents.find_one({"id": doc_id, "tenant_id": tid(request)},
-                                      {"_id": 0, "vehicle_id": 1, "original_filename": 1})
+                                      {"_id": 0, "vehicle_id": 1, "original_filename": 1,
+                                       "document_type": 1, "business_category": 1, "extraction_status": 1})
     if not doc:
         raise HTTPException(status_code=404, detail="Document introuvable")
     # Pièce justificative d'une transaction énergie : suppression bloquée (traçabilité), jamais de cascade
@@ -2574,6 +2655,11 @@ async def delete_document(doc_id: str, request: Request):
             "code": "SOURCE_OF_FUEL_TRANSACTION",
             "message": "Ce document est la pièce justificative d'une transaction énergie — suppression impossible "
                        "pour préserver la traçabilité."})
+    if _is_fine(doc) and doc.get("extraction_status") == "validated":
+        raise HTTPException(status_code=409, detail={
+            "code": "VALIDATED_FINE",
+            "message": "Amende validée (présente dans Coûts et Échéances) — suppression impossible pour préserver "
+                       "la traçabilité. Marquez-la comme payée ou archivez sa fiche."})
     await db.documents.update_one({"id": doc_id, "tenant_id": tid(request)},
                                   {"$set": {"is_deleted": True}})
     await audit("delete", "document", request, doc_id, doc.get("vehicle_id"),
@@ -3563,6 +3649,27 @@ async def validate_scanned_document(doc_id: str, payload: DocumentValidate, requ
         else:
             warnings.append({"code": "TRANSACTION_SKIPPED",
                              "detail": "Ni montant, ni litres, ni kWh validés — aucune transaction énergie créée."})
+    if dtype == "amende":
+        v2 = _amende_to_v2(doc_data)
+        dup = await _fine_duplicate(tid(request), vehicle["id"], doc_id, v2.get("numero"), v2.get("fournisseur"),
+                                    v2.get("date_debut"), v2.get("montant"))
+        if dup and not payload.duplicate_override:
+            raise HTTPException(status_code=409, detail={
+                "code": "DUPLICATE_SUSPECTED", "kind": "amende",
+                "message": "Doublon probable : une amende du même véhicule avec le même n° (ou même autorité, "
+                           "date et montant) existe déjà.",
+                "existing_document_id": dup["document_id"], "existing_filename": dup.get("original_filename")})
+        if dup:
+            warnings.append({"code": "DUPLICATE_OVERRIDDEN", "existing_document_id": dup["document_id"],
+                             "detail": "Doublon probable d'amende confirmé manuellement."})
+        if v2.get("montant") is None:
+            warnings.append({"code": "AMOUNT_MISSING", "detail": "Montant non lu : l'amende n'apparaîtra pas dans Coûts."})
+        if not v2.get("date_expiration"):
+            warnings.append({"code": "DEADLINE_MISSING",
+                             "detail": "Délai de paiement non lu : aucune échéance de paiement ne sera suivie."})
+        doc_set.update(v2)
+        if not docrec.get("payee"):
+            doc_set.update({"payee": False, "paid_at": None})  # statut de paiement conservé en cas de revalidation
     plaque_doc = doc_data.get("plaque")
     if plaque_doc and vehicle.get("plaque") and _norm_plate(plaque_doc) != _norm_plate(vehicle.get("plaque")):
         warnings.append({"code": "PLATE_MISMATCH", "document_plate": plaque_doc, "vehicle_plate": vehicle.get("plaque"),

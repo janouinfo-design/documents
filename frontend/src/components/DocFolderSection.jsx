@@ -13,6 +13,8 @@ import { dateFr } from "@/lib/format";
 import DropZone from "@/components/DropZone";
 import FilePreview from "@/components/FilePreview";
 import ExtractionReviewDialog from "@/components/ExtractionReviewDialog";
+import { FineSummary, FinePaidButton } from "@/components/documents/FineMeta";
+import { DocStatutBadge } from "@/components/documents/DocStatutBadge";
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
 
@@ -178,9 +180,12 @@ export default function DocFolderSection({ vehicleId, folder, docs = [], onChang
                         <Loader2 className="h-2.5 w-2.5 animate-spin" /> Analyse en cours…
                       </span>
                     )}
+                    {["A_PAYER", "EN_RETARD", "PAYEE"].includes(d.statut) && <DocStatutBadge statut={d.statut} />}
                   </p>
+                  <FineSummary doc={d} className="mt-0.5 block" />
                 </div>
                 <div className="flex items-center gap-1">
+                  <FinePaidButton doc={d} disabled={readOnly} onChanged={onChange} />
                   {canAnalyze && (
                     <button
                       onClick={() => analyzeDoc(d)}

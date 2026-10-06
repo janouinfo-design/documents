@@ -49,7 +49,8 @@ export function DuplicateSuspectedBox({ info, onConfirmAnyway, busy }) {
   return (
     <div data-testid="duplicate-suspected" data-kind={info.kind || "document"} className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
       <p className="flex items-start gap-2 font-semibold"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-        {info.kind === "transaction" ? "Transaction énergie en doublon probable" : "Doublon probable"}</p>
+        {info.kind === "transaction" ? "Transaction énergie en doublon probable"
+          : info.kind === "amende" ? "Amende en doublon probable" : "Doublon probable"}</p>
       <p className="mt-1 text-xs">{info.message}{info.existing_filename ? ` Document existant : « ${info.existing_filename} ».` : ""}</p>
       <Button size="sm" variant="outline" data-testid="duplicate-confirm-anyway" onClick={onConfirmAnyway} disabled={busy}
               className="mt-2 gap-1.5 border-amber-300 bg-white text-amber-900 hover:bg-amber-100">
@@ -74,7 +75,7 @@ export function SameFileNotice({ dup }) {
 export const isDocPlateMismatch = (f) => f.target === "document" && f.field === "plaque" && f.conflict;
 
 // Types documentaires qui portent un coût (document = enregistrement de coût).
-export const COST_DOC_TYPES = ["facture", "ticket_carburant"];
+export const COST_DOC_TYPES = ["facture", "ticket_carburant", "amende"];
 
 // Cohérence ticket (litres × prix ≈ montant, odomètre) : avertissements, jamais bloquants.
 export function CoherenceWarnings({ warnings }) {

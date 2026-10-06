@@ -61,6 +61,7 @@ export const EVENT_TYPES = {
   expertise: { label: "Expertise", color: "#8b5cf6", bg: "bg-violet-50", text: "text-violet-700", border: "border-violet-200" },
   maintenance: { label: "Maintenance", color: "#10b981", bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
   document: { label: "Document", color: "#64748b", bg: "bg-slate-100", text: "text-slate-700", border: "border-slate-200" },
+  amende: { label: "Amende", color: "#e11d48", bg: "bg-rose-50", text: "text-rose-700", border: "border-rose-200" },
 };
 
 // Statuts du moteur central d'échéances (étape 4)

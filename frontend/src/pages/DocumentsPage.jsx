@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import QueryErrorState from "@/components/QueryErrorState";
 import { DocStatutBadge, DOC_STATUT_META } from "@/components/documents/DocStatutBadge";
 import DocumentEditDialog from "@/components/documents/DocumentEditDialog";
+import { FineSummary, FinePaidButton, isFineDoc } from "@/components/documents/FineMeta";
 import DocCategoriesDialog from "@/components/documents/DocCategoriesDialog";
 import DocRequirementsDialog from "@/components/documents/DocRequirementsDialog";
 import { useAuth } from "@/context/AuthContext";
@@ -178,7 +179,7 @@ export default function DocumentsPage() {
                 <TableCell>
                   <p className="max-w-[220px] truncate text-sm font-semibold text-slate-800">{d.label || d.original_filename}</p>
                   <p className="text-xs text-slate-400">
-                    {d.numero ? `N° ${d.numero}` : d.sub_category || ""}
+                    {isFineDoc(d) && d.extraction_status === "validated" ? "" : d.numero ? `N° ${d.numero}` : d.sub_category || ""}
                     {(d.tags || []).length > 0 && ` · ${d.tags.join(", ")}`}
                   </p>
                   {d.extraction_status === "done" && (
@@ -186,6 +187,7 @@ export default function DocumentsPage() {
                       Analysé — à valider
                     </span>
                   )}
+                  <FineSummary doc={d} className="mt-0.5 block max-w-[320px]" />
                 </TableCell>
                 <TableCell>
                   <button onClick={() => openVehicle(d.vehicle_id, "documents")} className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline" data-testid={`doc-open-vehicle-${d.id}`}>
@@ -201,6 +203,7 @@ export default function DocumentsPage() {
                 <TableCell><DocStatutBadge statut={d.statut} /></TableCell>
                 <TableCell>
                   <div className="flex justify-end gap-1">
+                    <FinePaidButton doc={d} disabled={!isAdmin} />
                     <button
                       onClick={() => window.open(fileUrl(d.storage_path, { download: true, filename: d.original_filename }), "_blank", "noopener")}
                       data-testid={`doc-page-download-${d.id}`}

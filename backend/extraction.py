@@ -137,8 +137,9 @@ FIELD_DEFS = {
         {"key": "autorite", "label": "Autorité", "target": "document", "kind": "str"},
         {"key": "numero_amende", "label": "N° de l'amende", "target": "document", "kind": "str"},
         {"key": "date_infraction", "label": "Date de l'infraction", "target": "document", "kind": "date"},
-        {"key": "montant_chf", "label": "Montant (CHF)", "target": "document", "kind": "float"},
-        {"key": "delai_paiement", "label": "Délai de paiement", "target": "document", "kind": "date"},
+        {"key": "montant_chf", "label": "Montant à payer (total, frais inclus)", "target": "document", "kind": "float"},
+        {"key": "devise", "label": "Devise (code ISO : CHF, EUR…)", "target": "document", "kind": "str"},
+        {"key": "delai_paiement", "label": "Délai / date limite de paiement", "target": "document", "kind": "date"},
         {"key": "plaque", "label": "Immatriculation mentionnée", "target": "document", "kind": "str"},
     ],
     "autre": [
@@ -266,6 +267,9 @@ def build_prompt(document_type: str = None) -> str:
         "\"facture\" : litres et prix_litre uniquement s'ils sont imprimés (jamais déduits) ; recharge électrique → "
         "energie_kwh et prix_kwh, litres null ; heure au format HH:MM ; carte_last4 = UNIQUEMENT les 4 derniers "
         "chiffres de la carte (jamais le numéro complet) ; kilometrage seulement s'il est imprimé sur le ticket.\n"
+        "- Amende / contravention / ordonnance pénale : montant_chf = total à payer imprimé (frais inclus) ; "
+        "delai_paiement = date limite de paiement si imprimée (sinon null, ne jamais la calculer) ; numero_amende = "
+        "n° de référence/ordonnance imprimé ; autorite = organe émetteur.\n"
         "- Aucun texte hors JSON, aucune balise de code."
     )
 

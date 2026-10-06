@@ -166,6 +166,8 @@ export const putDeadlineSettings = (data) => http.put("/settings/deadlines", dat
 export const getCosts = (params = {}) => http.get("/costs", { params }).then((r) => r.data);
 export const getVehicleCosts = (id) => http.get(`/vehicles/${id}/costs`).then((r) => r.data);
 export const getBusinessCategories = () => http.get("/business-categories").then((r) => r.data);
+// Amende : marquer payée / annuler (action explicite auditée, rien n'est supprimé)
+export const setDocumentPaid = (id, payee) => http.post(`/documents/${id}/paid`, { payee }).then((r) => r.data);
 
 // Énergie & carburant — fuel_transactions dérivées des tickets validés (jamais resommées dans Coûts)
 export const getEnergy = (params = {}) => http.get("/energy", { params }).then((r) => r.data);
