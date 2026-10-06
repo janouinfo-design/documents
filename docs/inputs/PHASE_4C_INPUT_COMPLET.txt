@@ -1,0 +1,1144 @@
+=== 1. PROMPT PHASE 4C — SPÉCIFICATION UNIQUEMENT ===
+
+PHASE 4B JOURNAL = TERMINÉE.
+
+Le rapport Journal réel est maintenant disponible et vérifié en READ-ONLY.
+
+État Journal :
+- HEAD = 4f007f8
+- FILES MODIFIED BY PHASE 4B = 0
+- FILES CREATED BY PHASE 4B = 0
+- DB WRITES = 0
+- API WRITES = 0
+- MIGRATION = NONE
+- DEPLOYMENT = NONE
+
+Verdict Phase 4B :
+- JOURNAL SOURCE AUDIT = COMPLETE
+- ENERGY JOURNAL SOURCE = VERIFIED
+- FINES JOURNAL SOURCE = VERIFIED
+- 31 FUNCTION PARITY = INCOMPLETE
+- B1–B8 = PARTIAL (1 RESOLVED / 7 PARTIAL / 0 BLOCKED)
+- PHASE 4C SPECIFICATION = CAN START
+- HISTORICAL MIGRATION = NOT STARTED
+- JOURNAL MODULE REMOVAL = NOT AUTHORIZED
+
+IMPORTANT :
+READY_FOR_GAP_IMPLEMENTATION signifie uniquement :
+les preuves sont suffisantes pour préparer la spécification Phase 4C.
+
+CE N'EST PAS UN GO DÉVELOPPEMENT.
+
+OBJECTIF :
+Préparer maintenant PHASE 4C — SPECIFICATION COMPLETE dans Documents/FLEET ADMIN, AUCUN CODE.
+
+La spécification doit reprendre TOUTES les fonctions utiles confirmées dans Journal, pas seulement B1–B8.
+Le but final reste que Documents reprenne complètement Énergie/Carburant et Amendes, puis permette à terme le retrait de ces modules du Journal.
+Toute fédération via Journal doit être TRANSITOIRE.
+
+ORDRE :
+4C-0 — AUDIT CIBLE DOCUMENTS READ-ONLY
+- vehicle_id canonique
+- tenant_id canonique
+- modèle conducteur actuel
+- modèle fuel actuel
+- modèle amendes actuel
+- indexes
+- audit
+- RBAC
+- tenant isolation
+- stockage fichiers
+- possibilités actuelles sans document source
+- dictionnaire cible Documents pour mapping Journal → Documents
+- aucune écriture
+
+4C-1 — CONDUCTEURS
+- entité drivers cible
+- driver_id sur fuel_transactions
+- driver_id sur amendes/documents
+- mapping legacy Journal drivers.id
+- RBAC
+- vues chauffeur
+- audit
+- jamais de mapping automatique par nom/prénom
+
+4C-2 — CARTES CARBURANT
+- fuel_cards cible
+- fuel_card_assignments cible
+- valid_from / valid_to
+- véhicule / conducteur
+- statut
+- expiration
+- historique
+- audit
+- indexes
+- ne pas importer/exporter le fingerprint HMAC Journal comme donnée métier portable
+
+4C-3 — DONNÉES SANS JUSTIFICATIF
+Preuve Phase 4B :
+- fuel : 61/62 sans document
+- amendes : 47/49 sans fichier
+Spécifier :
+fuel : created_from=legacy_import, source_document_id nullable
+amendes : source=legacy_import, fichier/storage nullable, aperçu/téléchargement désactivé proprement si absent
+Prévoir future saisie manuelle métier si nécessaire.
+
+4C-4 — IDENTITÉS / MAPPING / IDEMPOTENCE
+- mapping journal_vehicle_id → documents.vehicle_id
+- mapping journal tenant → documents tenant_id
+- aucune correspondance automatique par plaque
+- aucun tracker comme identité historique stable
+- mapping humain obligatoire pour cas ambigus
+- legacy_source
+- legacy_id
+- migration_version
+- index unique tenant_id + legacy_source + legacy_id
+- aucun script de migration maintenant
+
+4C-5 — AMENDES
+Journal possède 10 statuts :
+received, to_analyze, driver_to_identify, awaiting_driver, disputed, to_pay, paid, recharged, closed, cancelled.
+Documents en possède actuellement 3.
+Spécifier le mapping sans perte sémantique.
+Inclure : conducteur, pièces jointes multiples typées, historique fiche amende, filtres, reporting, export CSV/XLSX/PDF, formulaire manuel sans fichier.
+Paiement :
+- paid_on = date métier réelle, P1
+- paid_at = timestamp technique
+- payment_ref = amélioration P2, car absent du Journal
+
+4C-6 — FUEL MÉTIER
+- imports CSV/XLSX
+- mapping colonnes
+- preview import
+- contrôle doublons
+- validation/forçage motivé
+- rapprochement transaction → véhicule
+- rapprochement transaction → conducteur
+- matching explicable
+- validation manuelle
+- anomalies persistées
+- résolution anomalies
+- rapprochement achats ↔ consommation Energy
+- décomptes périodiques
+- verrouillage/clôture
+- historique
+IMPORTANT : fuel_transactions ne doit JAMAIS être resommé dans Coûts.
+
+4C-7 — UI / EXPLOITATION
+ENERGY :
+- filtres complets
+- pagination/périodes
+- cartes
+- anomalies
+- imports
+- rapprochements
+- exports
+- reporting
+- vue chauffeur
+AMENDES :
+- vue dédiée
+- filtres
+- KPIs
+- conducteur
+- pièces jointes
+- historique
+- export
+- vue chauffeur
+
+4C-8 — PLAN DE TESTS
+NON-RÉGRESSION :
+- Phases 1–3
+- Costs
+- Energy Phase 2
+- Fines Phase 3
+SÉCURITÉ :
+- cross-tenant
+- read_only 403
+- admin/manager/driver
+- accès chauffeur limité à ses données
+IDENTITÉ :
+- vehicle mapping
+- tenant mapping
+- conducteur UUID
+- aucune résolution automatique plaque/tracker/nom
+LEGACY :
+- fuel sans fichier
+- amende sans fichier
+- legacy IDs
+- import rejoué deux fois = aucune duplication
+FUEL :
+- cartes
+- affectations datées
+- imports
+- rapprochement
+- anomalies
+- anti-double-counting
+AMENDES :
+- 10 statuts
+- mapping statuts
+- paid_on
+- pièces jointes
+- conducteur
+- exports
+
+FORMAT DU LIVRABLE :
+Pour chaque lot 4C-0 → 4C-8 fournir :
+1. Objectif
+2. Fonctions Journal couvertes (E#/A#/G#)
+3. Situation Documents actuelle
+4. Gap exact
+5. Modèle cible
+6. Collections/champs
+7. Indexes
+8. Endpoints à créer/modifier
+9. Fichiers backend concernés
+10. Fichiers frontend concernés
+11. RBAC
+12. Tenant isolation
+13. Audit
+14. Compatibilité legacy
+15. Tests backend
+16. Tests frontend
+17. Tests de non-régression
+18. Critères d'acceptation
+19. Dépendances
+20. Risques
+21. Ordre d'implémentation
+
+Puis produire PHASE 4C IMPLEMENTATION ORDER avec lots séparés et GO indépendant possible par lot.
+
+CONTRAINTES :
+- Aucun code
+- Aucun fichier applicatif modifié
+- Aucun fichier créé
+- Aucun DB write
+- Aucun script de migration
+- Aucun déploiement
+- Phases 1–3 restent figées
+- Journal reste inchangé
+- données Phase 4B majoritairement de test : ne PAS utiliser les volumes actuels pour décider une migration historique réelle
+
+À la fin :
+FILES MODIFIED = 0
+FILES CREATED = 0
+DB WRITES = 0
+MIGRATION = NONE
+DEPLOYMENT = NONE
+PHASE 4C = SPECIFICATION ONLY
+
+STOP.
+Attendre mon GO explicite avant toute ligne de code.
+
+
+=== 2. RAPPORT PHASE 4B COMPLET ===
+
+# PHASE 4B — JOURNAL SOURCE AUDIT
+## Journal-de-bord → Documents
+### Énergie & Carburant + Amendes
+
+**Date :** 2026-10-06 (horloge pod, UTC)
+**Repository :** `/app` (LOGITRAK / Journal-de-bord — FastAPI + MongoDB + React + Expo)
+**Branch :** `main`
+**HEAD :** `4f007f84e6c2335c11eb2ff60797a768cc96c0b0`
+**Mode :** READ-ONLY (grep/view code ; Mongo `find/findOne/countDocuments/aggregate/index_information` uniquement)
+**Scope :** Énergie & Carburant (`routes/energy.py`, `routes/fuel.py`, `routes/fuel_statements.py` + moteurs) — Amendes (`routes/fines.py`, `fines_engine.py`, `fines_exporter.py`, `ocr_engine.py`)
+**Annexe Documents :** fournie (statuts par ID). Incohérence interne signalée par le fournisseur de l'annexe : détail E1–E16 = 4 OK / 6 PARTIEL / 5 MANQUANT / 1 N/A ≠ total §6 = 4 / 7 / 4 / 1. **Ce rapport utilise les statuts individuels et ne résout pas la contradiction.**
+
+Conventions : `fichier:ligne` = preuve code ; `[DB]` = requête read-only exécutée ; **NON VÉRIFIÉ** = aucune preuve suffisante. Identifiants anonymisés (`TENANT_1(default)`, `VEHICLE_n`, `DRIVER_n`, `CARD_n`, `TX_n`, `FINE_n`, `USER_n`).
+
+---
+
+## SECTION 1 — EXECUTIVE SUMMARY
+
+**Vérifié** : 4 fichiers de routes (3 937 lignes, **76 endpoints** : fuel 37, fuel_statements 9, energy 14, fines 16), 9 modules métier, 2 helpers d'audit, proxy d'isolation tenant (`db.py`), auth (`auth.py:61-136`), 15 pages/composants UI, 21 collections Mongo (champs, indexes, volumes, échantillons anonymisés), stockage fichiers (Object Storage + disque).
+
+**Ce qui existe réellement dans Journal** : un module Carburant complet (cartes avec affectations datées, transactions manuelles + import CSV/XLSX avec mapping, anti-doublons HMAC/dedup_key, rattachement véhicule scoré et explicable, 4 anomalies persistées, FX BCE, décomptes mensuels clôturables/verrouillants, exports PDF/XLSX/CSV), une couche Énergie **consommatrice** du module Energy externe (fail-closed, rapprochement achats↔consommation, exports), et un module Amendes (CRUD, 10 statuts, identification conducteur BLE/GPS/affectation, OCR Gemini pré-remplissage, pièces jointes Object Storage, exports CSV/XLSX/PDF, KPIs).
+
+**Fonctions Journal** : Énergie **13 PRESENT / 3 PARTIAL / 0 ABSENT** ; Amendes **9 PRESENT / 5 PARTIAL / 1 ABSENT** (A13 doublons).
+
+**Principaux écarts Documents (annexe)** : Énergie — E3 cartes, E5 rapprochements, E7 imports, E10 exports, E16 conducteur MANQUANT ; Amendes — A6 conducteur, A12 exports MANQUANT. Documents est supérieur sur A13 (dédup SHA-256) et A9 (OCR + review).
+
+**Qualité des données** : ~96–98 % des enregistrements sont des données de test (fuel : 56/62 `manual_reason`≈"test", 56 `TEST_FX` ; fines : 47/49 `ref_fine`≈"TEST"). Les volumes ne sont **pas** représentatifs d'une migration production.
+
+**B1–B8** : 0 RESOLVED complet, **7 PARTIAL**, 0 BLOCKED, B4 RESOLVED (quantification).
+
+```
+JOURNAL SOURCE AUDIT = COMPLETE (périmètre Énergie/Carburant + Amendes)
+ENERGY PARITY        = NOT READY   (5 MANQUANT + 6 PARTIEL côté Documents)
+FINES PARITY         = NOT READY   (2 MANQUANT + 5 PARTIEL côté Documents)
+HISTORICAL MIGRATION = NOT READY   (données test, clés véhicule/tenant non confirmées côté Documents, fichiers fuel pod-local)
+PHASE 4C             = READY_FOR_SPECIFICATION
+```
+*READY_FOR_SPECIFICATION ≠ autorisation de coder.*
+
+---
+
+## SECTION 2 — ARCHITECTURE JOURNAL
+
+| Élément | Technologie / modèle | Fichier / collection | Preuve | Statut |
+|---|---|---|---|---|
+| Frontend Énergie | React, routes `/livre/energie/*` (aperçu, consommations, rapprochement, anomalies, approvisionnements/*) | `frontend/src/pages/energy/*.jsx` (4), `pages/fuel/*.jsx` (11), `components/fuel/*` (3), `components/energy/*` (2) | `App.js:134-165`, nav `AppLayout.jsx:39` (`nav-energy`) | VERIFIED |
+| Frontend Amendes | routes `/livre/amendes`, `/amendes/dashboard`, `/mes-amendes` | `FinesPage.jsx`, `FinesDashboardPage.jsx`, `DriverFinesPage.jsx`, `components/fines/FineFormDialog.jsx` | `App.js:118-128`, `AppLayout.jsx:43` (`nav-fines`) | VERIFIED |
+| Backend | FastAPI, préfixe `/api/livre` | `server.py:27-45`, `routes/__init__.py:38-51` | include `_fines:47`, `_fuel_statements:49`, `_fuel:50`, `_energy:51` | VERIFIED |
+| Routes Énergie | `/api/livre/energy/*` 14 endpoints | `routes/energy.py` (669 l.) | `energy.py:25` | VERIFIED |
+| Routes Fuel | `/api/livre/fuel/*` 37 endpoints ; `/fuel/statements/*` 9 | `routes/fuel.py` (1 333 l.), `routes/fuel_statements.py` (315 l.) | `fuel.py:30`, `fuel_statements.py:26` | VERIFIED |
+| Routes Amendes | `/api/livre/fines/*` 16 endpoints | `routes/fines.py` (921 l.) | `fines.py:39` | VERIFIED |
+| Moteurs | matching/score, import, FX, anomalies, décomptes, identification conducteur, OCR | `fuel_engine.py`, `fuel_import.py`, `fuel_fx.py`, `fuel_anomalies.py`, `fuel_statements.py`, `fines_engine.py`, `ocr_engine.py` | lus | VERIFIED |
+| Energy externe | client HTTP contrat v1, fail-closed | `energy_client.py:22` (`CONTRACT_VERSION="1.0"`), `energy_cache.py` | `energy.py:81-87` (`_resolve_energy_tenant`) | VERIFIED |
+| DB | MongoDB via `MONGO_URL`/`DB_NAME` | `db.py:99-103` | — | VERIFIED |
+| Collections (périmètre) | `fuel_cards`, `fuel_card_assignments`, `fuel_transactions`, `fuel_transaction_matches`, `fuel_anomalies`, `fuel_import_jobs/rows/mappings`, `fuel_statements`, `fuel_statement_lines`, `fuel_exchange_rates` (globale), `reconciliation_alert_candidates`, `fines`, `settings`, `audit_log`, `tenants`, `vehicles`, `drivers`, `trips`, `driver_sessions`, `assignments` | [DB] `list_collection_names` | VERIFIED |
+| Auth | JWT access (Bearer ou cookie), refresh cookie | `auth.py:61-101` | — | VERIFIED |
+| Isolation tenant | contextvar + proxy `_ScopedCollection` : filtre forcé `tenant_id` sur toutes les lectures/écritures, collections globales exclues | `db.py:15-16, 19-96`, `tenant_context.py` ; tenant posé par `auth.py:92-96` | — | VERIFIED |
+| RBAC | `require_roles(*roles)` serveur ; superadmin bypass ; `lecture_seule` bloqué sur POST/PUT/PATCH/DELETE globalement | `auth.py:129-136`, `:81-84` | — | VERIFIED |
+| Audit | 2 helpers → même collection `audit_log` (2 schémas) | `audit.py:6-29`, `fines.py:162-167` | [DB] 22 894 docs (16 707 schéma A / 6 187 schéma B) | VERIFIED |
+| Stockage fichiers | fines : Emergent Object Storage (écriture) + fallback disque lecture ; fuel : disque pod-local uniquement | `object_storage.py`, `fines.py:61-62, 699-705, 745-766`, `fuel.py:35, 640-671` | FS : fines 1 fichier orphelin, fuel 45 fichiers | VERIFIED |
+| Tests | 15 fichiers pytest sur le périmètre | `backend/tests/test_energy_*.py` (7), `test_fines_*.py` (3), `test_fuel_*.py` (2), autres (3) | `ls` | VERIFIED (inventaire fichiers ; nombre de tests par fichier NON VÉRIFIÉ) |
+
+---
+
+## SECTION 3 — ENERGY FEATURE INVENTORY E1–E16
+
+| ID | Fonction | Journal | Preuve Journal | Notes |
+|---|---|---|---|---|
+| E1 | Consommation | PRESENT | `energy.py:135-184` (`POST /energy/trips`), `:187-221` (`/overview`), `energy_client.py` | Consommateur du module Energy ; UNAVAILABLE si non mappé, jamais 0 |
+| E2 | Approvisionnements | PRESENT | `fuel.py:442-498` (saisie manuelle, motif obligatoire), `:682-947` (import) | Saisie sans justificatif autorisée (admin) |
+| E3 | Cartes carburant | PRESENT | `fuel.py:65-305`, `fuel_engine.py:47,62-65` | 22 champs, HMAC, statuts, affectations datées |
+| E4 | Transactions | PRESENT | `fuel.py:311-637` | Pas de PATCH générique ni DELETE (voir E4 détail) |
+| E5 | Rapprochements | PRESENT | `fuel_engine.py:107-295`, `fuel.py:508-576` ; `energy.py:224-370` | Deux rapprochements distincts : tx↔véhicule (scoré) et achats↔consommation Energy |
+| E6 | Anomalies | PRESENT | `fuel_anomalies.py` (243 l.), `fuel.py:1141-1220` | 4 règles, persistées, dédup unique, décision auditée |
+| E7 | Imports CSV/XLSX | PRESENT | `fuel_import.py`, `fuel.py:677-955` | Mapping générique sauvegardable, file de vérification |
+| E8 | Historique | PRESENT | `fuel.py:368-384` (pagination/dates), `fuel_transaction_matches.history`, `fuel_cards.history` | — |
+| E9 | Reporting | PRESENT | `fuel.py:1026-1135` (overview, widget M vs M-1), `fuel_statements.py` | — |
+| E10 | Exports | PRESENT | `fuel_statements.py:285-315` (PDF/XLSX/CSV lignes décompte), `energy.py:583-669` (XLSX/PDF) | **Aucun export brut de la liste transactions** (grep `export` dans `fuel.py` : 0) |
+| E11 | Filtres / recherche | PRESENT | `fuel.py:336-356` | date, carte, véhicule, chauffeur, statut, source, station (regex), fx_status |
+| E12 | Intégration coûts | PARTIAL | `fuel_fx.py` (CHF), `fuel.py:1036-1051` (répartition pro/perso), décomptes | Pas de module « Coûts » central dans Journal |
+| E13 | Échéances | PARTIAL | `fuel_engine.py:233-239` (pénalité carte expirée), `fuel_anomalies.py:34-44,120-142` (statut carte à date), décomptes par période | Pas de moteur d'échéances dédié |
+| E14 | RBAC | PRESENT | `fuel.py:32-33`, `require_roles` partout, `auth.py:81-84` | — |
+| E15 | Audit | PARTIAL | 27/31 actions d'écriture auditées (§14) | Non audités : mapping import, affectation initiale carte, match auto implicite, création d'anomalie |
+| E16 | Conducteur | PRESENT | `fuel.py:387-415` (`/my-transactions`), `:106-111` (affectation driver), `driver_hint`, `fuel_engine.py:147-166` | — |
+
+### E1 — Consommation
+Frontend : `pages/energy/EnergyConsumptionPage.jsx`, `EnergyOverviewPage.jsx`, `components/energy/TripEnergyBlock.jsx`, `EnergyBadge.jsx`. Backend : `routes/energy.py`. Route : `POST /api/livre/energy/trips` (`:135`), `GET /energy/overview` (`:187`), `GET /energy/status` (`:90`), `GET/PUT /energy/tenant-mapping` (`:103,110`). Collection : aucune donnée de consommation stockée ; lecture `trips`, `vehicles`, `settings.energy_tenant_id`. Fonctionnement : Journal envoie `vehicle_id/plate/navixy_tracker_id/vin/start/end` au module Energy (`:155-164`) ; sans `energy_tenant_id` → `UNAVAILABLE`, `reason=energy_tenant_not_configured` (`:165-173`). RBAC : `TRIP_ROLES` incl. `driver` (`:28`) filtré par `filter_trips_query` ; overview `READ_ROLES`. Tenant : `_tenant_or_400` + proxy. Preuve DB : `settings.energy_tenant_id` présent sur 2 docs settings. Conclusion : **PRESENT** — Journal ne calcule rien ; invariant « Energy consommé via Journal uniquement » respecté.
+
+### E2 — Approvisionnements
+Frontend : `components/fuel/ManualTxDialog.jsx`, `pages/fuel/FuelTransactionsPage.jsx`, `FuelImportsPage.jsx`. Route : `POST /fuel/transactions` (`fuel.py:442`, admin, `reason` obligatoire `:446-447`, anti-doublon `dedup_key` + `force` `:453-458`, FX `:460`, matching auto si pas de véhicule `:490-491`, détection anomalies `:492`) ; import §6. Collection : `fuel_transactions`. RBAC : admin (création) ; driver upload justificatif sur ses tx (`:579-593`). Preuve DB : 62 tx (56 `manual`, 6 `csv`). Conclusion : **PRESENT**.
+
+### E3 — Cartes carburant
+Frontend : `pages/fuel/FuelCardsPage.jsx`. Routes : `GET/POST /fuel/cards` (`:114,142`), `GET/PATCH /fuel/cards/{id}` (`:196,208`), `POST …/status` (`:232`), `POST …/assignments` (`:257`), `POST/GET …/documents` (`:288,298`). Collections : `fuel_cards`, `fuel_card_assignments`. Fonctionnement : n° complet → `last4` + `fingerprint` HMAC (`fuel_engine.py:58-65`, secret `FUEL_CARD_HMAC_SECRET`), unicité `(tenant_id, fingerprint)` ; statuts `active|suspended|expired|blocked|replaced` ; affectations `vehicle|driver|pool|other` à période `valid_from/valid_to`, clôture automatique de la précédente (`:272-274`). RBAC : admin écriture, `READ_ROLES` lecture. Preuve DB : 1 carte (`suspended`, `expires_at=2027-12-31`), 1 affectation véhicule. Conclusion : **PRESENT** (modèle complet, données minimales).
+
+### E4 — Transactions
+Routes : `GET /fuel/transactions` (`:368`), `GET /fuel/my-transactions` (`:399`), `GET /fuel/transactions/{id}` (`:418`, inclut `match_detail`), `POST …/documents` (`:579`), `GET …/documents/{doc}/download` (`:596`), `POST …/report-issue` (`:614`). **Absents** : `PATCH` générique (seul `PATCH …/match` `:508`), `DELETE`, annulation. Verrou `locked` par décompte clôturé (`:517-519`, `fuel_statements.py:205-208`). Collection : `fuel_transactions` (§4). Conclusion : **PRESENT** avec limites : pas d'édition de champs, pas de suppression/annulation.
+
+### E5 — Rapprochements
+(a) tx↔véhicule : `fuel_engine.match_transaction` (`:107-272`) — règles carte affectée (50), hint véhicule (40), véhicule proche station (30), chauffeur sur véhicule (20), trajet compatible (15), carburant compatible (+10/−40), carte inactive (−50) ; seuils `score_auto=90`, `score_review=70` (`:14-19`) ; statuts `auto_matched|matched_review|unmatched|manual` (`:48`) ; persistance `fuel_transaction_matches` avec `breakdown`, `candidates`, `history` (`:275-295`) ; manuel `PATCH …/match` (`fuel.py:508-550`, motif obligatoire) ; run global `POST /fuel/match/run` (`:558`). (b) achats↔consommation : `energy.py:224-370`, statuts `OK|A_CONTROLER|INDICATIF|IMPOSSIBLE` (`:38-71`), alerting `disabled`, cache 60 s. Preuve DB : 56 matches (3 `manual`, 53 `unmatched` ; méthode `card_assignment` ×4) ; `reconciliation_alert_candidates` = 0. Conclusion : **PRESENT**.
+
+### E6 — Anomalies
+Frontend : `pages/fuel/FuelAnomaliesPage.jsx`. Routes : `GET /fuel/anomalies` (`:1141`), `POST /fuel/anomalies/scan` (`:1177`), `POST …/{id}/decide` (`:1195`, `justify|correct|reject`, motif). Collection : `fuel_anomalies`, index unique `(tenant_id, transaction_id, type)`. Règles : `tank_overflow`, `card_inactive` (critical), `double_fill`, `amount_unusual` (warning) (`fuel_anomalies.py:16-21`), seuils dans `settings.fuel.anomalies` ; données manquantes → règle muette (`:100-106,184-185`). Notification in-app critique (`:52-72`). Preuve DB : 8 anomalies (4/1/2/1 ; 6 open, 2 justified). Conclusion : **PRESENT**.
+
+### E7 — Imports
+Frontend : `FuelImportsPage.jsx`. Routes : `GET /fuel/import-fields` (`:677`), `POST /fuel/imports` (`:682`), `POST …/{job}/mapping` (`:753`), `GET …/rows` (`:819`), `POST …/confirm` (`:884`), `POST …/rows/{row}/force` (`:925`), `GET /fuel/imports` (`:950`). Collections : `fuel_import_jobs`, `fuel_import_rows`, `fuel_import_mappings`. Détail §6. Preuve DB : 1 job `confirmed` (7 lignes : ok 3, duplicate 1, unknown_card 1, invalid 1, amount_mismatch 1 ; 6 importées dont 1 forcée). Conclusion : **PRESENT**.
+
+### E8 — Historique
+Liste paginée triée `tx_datetime` desc avec bornes (`:336-343, 378-382`) ; historique de matching (`fuel_transaction_matches.history`), historique carte (`fuel_cards.history`), versions de décomptes (`fuel_statements.versions`, `fuel_statements.py:245-259`). Conclusion : **PRESENT**.
+
+### E9 — Reporting
+`GET /fuel/overview` (`:1026`, par devise/statut/classification, quantités L et kWh séparées `:1036`), `GET /fuel/widget` (`:1076`, mois courant vs précédent `delta_pct`, files à traiter), décomptes (`fuel_statements`), `GET /energy/overview`. Conclusion : **PRESENT**.
+
+### E10 — Exports
+Décomptes : `GET /fuel/statements/{id}/export?fmt=pdf|excel|csv` (`fuel_statements.py:285-315`, sha256 audité) ; rapprochement Energy : `GET /energy/reconciliation/export.xlsx|.pdf` (`energy.py:583,639`). Pas d'export de la liste brute des transactions. Conclusion : **PRESENT** (périmètre décomptes/rapprochement), gap mineur export brut.
+
+### E11 — Filtres
+`_tx_query` (`:336-356`) : `date_from/date_to`, `card_id`, `vehicle_id`, `driver_id`, `match_status`, `source`, `q` (station regex), `fx_status` ; anomalies : `status/severity/type` (`:1142`). Conclusion : **PRESENT**.
+
+### E12 — Intégration coûts
+Conversion CHF (`fuel_fx.compute_fx`, `fuel.py:460,837`, statuts `fx_status` `converted|pending|not_needed`), `amount_by_classification` (`:1037,1050-1051`), totaux décomptes. Aucun module de coûts central ni coût/km. Conclusion : **PARTIAL**.
+
+### E13 — Échéances
+`expires_at` carte → pénalité matching (`fuel_engine.py:235-239`) et statut carte à date (`fuel_anomalies.py:34-44`) ; décomptes : clôture par période, « transactions tardives » (`fuel_statements.py:121`). Pas de moteur d'échéances. Conclusion : **PARTIAL**.
+
+### E14 — RBAC
+`READ_ROLES=(admin, manager, lecture_seule)`, `MATCH_ROLES=(admin, manager)` (`fuel.py:32-33`) ; admin seul : cartes, saisie manuelle, imports, settings, FX sync, capacités (`:143,443,678-685,985,1227,1300`) ; driver : ses transactions/justificatifs/signalements (`:399-415, 587-592, 624-630`) ; `lecture_seule` écriture bloquée globalement (`auth.py:81-84`). Energy : driver autorisé sur `/energy/trips` (`energy.py:28`). Conclusion : **PRESENT**.
+
+### E15 — Audit
+§14. Conclusion : **PARTIAL** (27/31).
+
+### E16 — Conducteur
+`driver_id` sur tx (`:329,479`), résolution serveur `_driver_id_of` (`:387-396`), affectation carte `type=driver` (`:106-111`), règle 3 matching (`fuel_engine.py:147-166`), `driver_hint` import. Preuve DB : 1 tx avec `driver_id` (résolu dans `drivers`), 0 affectation carte chauffeur. Conclusion : **PRESENT**.
+
+---
+
+## SECTION 4 — FUEL TRANSACTION MODEL
+
+Collection `fuel_transactions` — 62 docs. Preuves : création manuelle `fuel.py:461-488`, import `:846-877`, matching `fuel_engine.py:279-284`, décomptes `fuel_statements.py:198-208, 251-253`, FX `fuel_fx.compute_fx` (clés observées), union DB.
+
+| Champ | Type | Req/Opt | Signification | Exemple anonymisé | Preuve |
+|---|---|---|---|---|---|
+| `id` | str UUID4 | REQ | **ID stable applicatif** | `TX_1` | `:462`, DB 62 distincts |
+| `tenant_id` | str | REQ (stamp) | **clé tenant** | `TENANT_1(default)` | `db.py:27` |
+| `external_transaction_id` | str\|null | OPT | n° fournisseur ; unique `(tenant, provider, ext_id)` partiel ; suffixe `#dup-N` si forcé | `<ext-id>` | `:463,848`, `fuel_engine.py:300-303` ; DB 6 |
+| `forced_duplicate_of` | str\|null | OPT | ext_id d'origine si import forcé | — | `:841-845,849` ; DB 1 |
+| `provider` | str | REQ | fournisseur (`manuel` si saisie sans carte) | `Migrol` / `manuel` | `:464,850` |
+| `card_id` | str\|null | OPT | **clé carte** → `fuel_cards.id` | `CARD_1` | `:465,851` ; DB 6 |
+| `card_last4` | str\|null | OPT | 4 derniers chiffres | `****` | `:466,852` ; DB 7 |
+| `tx_datetime` | str ISO (tz parfois absente) | REQ | **date/heure** ; borne `date_to+T23:59:59` | `2026-07-15T08:32:00+00:00` ; manuel `2026-07-28T09:00:00` (sans tz) | `:467,853` |
+| `accounting_date` | str\|null | OPT | date comptable (base décompte si présente) | null (62/62) | `:468,853`, `fuel.py:1083` |
+| `station_name` / `station_address` / `country` / `station_lat` / `station_lng` | str/str/ISO2/float/float \|null | OPT | lieu | `<station>`, `CH` | `:469-471` ; lat/lng null 62/62 |
+| `product_type` | enum `diesel\|essence\|adblue\|electric\|other`\|null | OPT | **type carburant** | `diesel` | `fuel_engine.py:45` ; DB null 56 |
+| `quantity` | float\|null | OPT | **litres ou kWh selon `unit`** | `45.5` | `:473` ; DB 57 |
+| `unit` | enum `L\|kWh\|unit` | REQ (déf. `L`) | unité | `L` (62/62) | `fuel_engine.py:46`, `fuel_import.py:226-227` |
+| `unit_price` | float\|null | OPT | **prix/unité** | `1.82` | DB 6 |
+| `amount_net` / `vat_amount` / `vat_rate` | float\|null | OPT | HT / TVA / taux % | null | DB null 62 |
+| `amount_total` | float | REQ | **montant TTC** devise d'origine | `82.81` | `:476` |
+| `currency` | str ISO3 upper | REQ (déf. CHF) | devise | `CHF` (59), `EUR`, `USD`, `XXX` | `:476` |
+| `amount_chf` | float\|null | OPT | montant converti CHF (null si FX pending) | `82.81` | `**fx` ; DB 61 |
+| `fx_rate` / `fx_rate_date` / `fx_source` / `fx_status` | float/str/str/enum `converted\|pending\|not_needed` | OPT | conversion BCE | `not_needed` (51) | `fuel_fx` ; DB |
+| `mileage` | float\|null | OPT | **odomètre déclaré au terminal** | null (62/62) | `:478` |
+| `vehicle_hint` / `driver_hint` | str\|null | OPT | indices import (plaque/nom) | `<hint>` | `:865` |
+| `vehicle_id` | str\|null | OPT | **clé véhicule** → `vehicles.id` | `VEHICLE_1` | DB 14 (2 distincts, 2/2 résolus) |
+| `driver_id` | str\|null | OPT | **clé conducteur** → `drivers.id` | `DRIVER_1` | DB 1 (résolu) |
+| `trip_id` | str\|null | OPT | trajet rattaché → `trips.id` | null (62/62) | `:479` |
+| `classification` | enum `professional\|personal\|unclassified` | REQ | héritée du trajet | `unclassified` (62) | `fuel_engine.py:251-256` |
+| `match_status` | enum `auto_matched\|matched_review\|unmatched\|manual` | REQ | statut rattachement | `manual` 10 / `unmatched` 52 | `fuel_engine.py:48` |
+| `match_score` | int\|null | OPT | score 0–100 | `50` | DB 55 |
+| `source` | enum `manual\|csv\|xlsx` | REQ | origine | `manual` 56 / `csv` 6 | `:483,869` |
+| `invoice_ref` | str\|null | OPT | n° facture/relevé | null (62/62) | — |
+| `documents[]` | list[{id, filename, content_type, size_bytes, uploaded_at, uploaded_by}] | REQ `[]` | **justificatifs (disque local, pas de `storage_path`)** | 45 entrées sur TX_3 | `:654-657` |
+| `issues[]` | list[{id, message, reported_by, reported_at, status}] | OPT | signalements | 46 sur TX_3 | `:631-634` |
+| `comment` / `manual_reason` / `forced_import_reason` / `amount_check_warning` | str/str/str/bool | OPT | motifs/alertes | `<text>` | `:484-485,872-873` |
+| `dedup_key` | str sha256 | REQ | `tenant\|card\|datetime\|station\|qty\|amount\|currency` | `<sha256>` | `fuel_engine.py:68-71` ; DB **17 distincts / 62** (tests `force=true`) |
+| `import_job_id` | str\|null | OPT | → `fuel_import_jobs.id` | `JOB_1` | DB 6 |
+| `locked` / `statement_id` / `deferred_from_statement_id` | bool/str/str | OPT | verrou décompte clôturé / report | `locked` 0, `deferred` 9 | `fuel_statements.py:198-208` |
+| `created_at` / `created_by` / `updated_at` / `updated_by` | str ISO / e-mail | REQ | **audit timestamps** | `USER_1` | `:487` |
+
+Absents du modèle (vérifié) : `odometer` (c'est `mileage`), `source_file` (indirect via `import_job_id` → `fuel_import_jobs.filename`), `storage_path` sur documents fuel.
+
+---
+
+## SECTION 5 — FUEL CARDS MODEL
+
+```
+FUEL_CARDS_EXIST        = YES
+FUEL_CARD_COLLECTION    = fuel_cards  (+ fuel_card_assignments)
+FUEL_CARD_STABLE_ID     = fuel_cards.id (UUID4, fuel.py:159) ; unicité métier = (tenant_id, fingerprint) index unique partiel
+CARD_TO_VEHICLE_CURRENT = YES  (fuel_card_assignments.type="vehicle" & valid_to=null — fuel.py:122-124)
+CARD_TO_VEHICLE_HISTORY = YES par conception (clôture datée fuel.py:272-274, résolution à date fuel_engine.py:96-104) — 0 clôture observée en DB
+CARD_TO_DRIVER_CURRENT  = YES  (type="driver") — 0 ligne observée
+CARD_TO_DRIVER_HISTORY  = YES par conception — 0 donnée
+```
+
+| Champ (`fuel_cards`) | Type | Usage | Nullable | Preuve |
+|---|---|---|---|---|
+| `id` | UUID4 str | identifiant stable | non | `fuel.py:159` |
+| `tenant_id` | str | isolation | non | `db.py:27` |
+| `provider` | str | émetteur/réseau | non | `:160` ; DB `Migrol` |
+| `provider_account` | str | compte fournisseur | oui | `:161` |
+| `last4` | str(4) | affichage/rapprochement last4 unique | non | `:162` |
+| `fingerprint` | hex64 HMAC-SHA256 | unicité, résolution import par n° complet (`:730-733`) ; jamais exposé (`:59`) | non | `fuel_engine.py:62-65` |
+| `external_card_id` | str | id fournisseur | oui | `:164` |
+| `assignment_type` | enum vehicle/driver/pool/other | type d'usage | non | `:39,165` |
+| `allowed_products` | list[enum] | restriction produits | non (liste) | `:154-156` |
+| `limit_per_tx` / `limit_daily` / `limit_monthly` | float | plafonds déclaratifs (non contrôlés par le moteur — grep `limit_` hors modèle : 0) | oui | `:167-169` |
+| `allowed_countries` / `allowed_networks` | list[str] | restrictions déclaratives | non | `:170-171` |
+| `activated_at` / `expires_at` | ISO str | validité ; `expires_at` utilisé par matching/anomalies | oui | `:172-173`, `fuel_engine.py:235` |
+| `status` | enum active/suspended/expired/blocked/replaced | cycle de vie | non | `fuel_engine.py:47`, `fuel.py:232-254` |
+| `replaced_by` | str → `fuel_cards.id` | remplacement | oui | `:243-244` |
+| `notes` | str | — | oui | `:176` |
+| `documents[]` | list méta (disque local) | pièces (contrat, etc.) | non (liste) | `:288-305, 640-671` |
+| `history[]` | list {at, by, action, before, after, reason} | historique embarqué create/update/status | non | `:178,225,248` |
+| `created_at` / `created_by` / `updated_at` | ISO / e-mail | audit | non | `:179` |
+
+| Champ (`fuel_card_assignments`) | Type | Usage | Nullable | Preuve |
+|---|---|---|---|---|
+| `id` | UUID4 | — | non | `:185,275` |
+| `tenant_id` | str | — | non | stamp |
+| `card_id` | str → `fuel_cards.id` | — | non | `:185,275` |
+| `type` | enum vehicle/driver/pool/other | — | non | `:261` |
+| `vehicle_id` | str → `vehicles.id` (validé `:265`) | — | oui | — |
+| `driver_id` | str → `drivers.id` (validé `:267`) | — | oui | — |
+| `valid_from` | ISO str | début ; **null possible** (affectation initiale avec `activated_at` null `:187`) → `_active_assignment` traite null = toujours valide | oui | `fuel_engine.py:100-102` |
+| `valid_to` | ISO str | fin ; null = courante | oui | `:273-274` |
+| `created_by` / `closed_by` | e-mail | — | `closed_by` absent tant qu'ouverte | `:188,274,278` |
+| `reason` | str | motif | oui | — |
+
+Absents : `created_at`, `source`, `active`, index unique. Index : `(tenant_id, card_id)` seul.
+
+---
+
+## SECTION 6 — IMPORTS
+
+Formats : CSV (encodages utf-8-sig/utf-8/latin-1, délimiteurs `; , \t` sniffés, `fuel_import.py:86-111`) et XLSX/XLS (`openpyxl`, première feuille, `:114-137`). **Aucun format fournisseur codé en dur** (`:1-4`) : mapping colonne→champ interne par l'admin, auto-suggestion par mots-clés FR/DE/EN (`_GUESS`, `:40-59`), mapping sauvegardable par `provider` (`fuel_import_mappings`, `fuel.py:812-815`, réutilisé `:712-714`).
+
+Pipeline : `POST /fuel/imports` (≤30 MB, ≤20 000 lignes, `:688-699`) → job `status=mapping` + lignes `pending` → `POST …/mapping` (minimum `tx_datetime` + `amount_total`, `:762-764`) → normalisation (`normalize_row`, `:196-249`) → statut ligne `ok|invalid|duplicate|unknown_card|amount_mismatch` (`:777-805`) → job `preview` → `POST …/confirm` importe `ok+amount_mismatch+unknown_card` (`:893-896`), `duplicate`/`invalid` mis de côté → forçage ligne par ligne avec motif (`:925-947`). **Pas de rollback** d'import (aucun endpoint ; NOT IMPLEMENTED). Historique : `fuel_import_jobs` (`counts`, `confirmed_at`, `imported_count`), `fuel_import_rows` (`raw`, `normalized`, `errors`, `imported`, `transaction_id`). Utilisateur : `created_by`. Audit : upload/confirm/force oui, mapping non (§14).
+
+Doublons (3 niveaux, `:788-800`) : `external_transaction_id` par provider en base ; `dedup_key` en base ; intra-fichier.
+
+| Colonne source (mapping libre) | Champ Journal | Type | Obligatoire | Transformation (`fuel_import.py`) |
+|---|---|---|---|---|
+| ex. « N Transaction » | `external_transaction_id` | str | non | strip, vide→null (`:206`) |
+| ex. « Numero de carte » | `card_number` → **jamais persisté** | str | non | HMAC → `card_id` (`fuel.py:730-733, 776`) |
+| « last4 » | `card_last4` | str(4) | non | 4 derniers chiffres des digits (`:208-210`) ; résolution carte si last4 unique (`fuel.py:734-738`) |
+| « Date transaction » | `tx_datetime` | ISO UTC | **oui** | ISO ou 11 formats `_DT_FORMATS` (`:61-66,171-185`) → tz UTC forcée |
+| « Date comptable » | `accounting_date` | ISO | non | idem |
+| « Station » / « Adresse » / « Pays » | `station_name` / `station_address` / `country` | str / str / ISO2 | non | strip ; pays upper[:2] |
+| lat / lng | `station_lat` / `station_lng` | float | non | `_num` |
+| « Produit » | `product_type` | enum | non | `_PRODUCT_MAP` FR/DE/EN (`:68-75`), inconnu→`other` |
+| « Quantite » | `quantity` | float | non | `_num` (apostrophes, espaces, virgule décimale `:156-168`) |
+| « Unité » | `unit` | L/kWh/unit | non | kWh si `kwh` ou produit électrique, sinon L (`:225-227`) |
+| « Prix unitaire » / « HT » / « TVA » / « Taux » | `unit_price` / `amount_net` / `vat_amount` / `vat_rate` | float | non | `_num` |
+| « Montant TTC » | `amount_total` | float | **oui** | `_num` ; contrôle qté×prix ±5 % → `amount_mismatch` (`:242-247`) |
+| « Devise » | `currency` | ISO3 | non (déf. CHF) | upper |
+| « km » | `mileage` | float | non | `_num` |
+| « Immatriculation » | `vehicle_hint` | str | non | strip ; utilisé par règle 2 matching (plaque normalisée ou id) |
+| « Chauffeur » | `driver_hint` | str | non | strip ; **non utilisé par le matching** (grep `driver_hint` dans `fuel_engine.py` : 0) |
+| « Facture » / « Commentaire » | `invoice_ref` / `comment` | str | non | strip |
+
+Preuve DB : 1 job `Migrol` confirmé, mapping observé de 11 colonnes (dont `Numero de carte`→`card_number`, `Immatriculation`→`vehicle_hint`), 7 lignes, `imported_count=5` (+1 forcée = 6 tx `csv`), 1 mapping sauvegardé.
+
+---
+
+## SECTION 7 — RECONCILIATION
+
+**RECONCILIATION_MODEL = PRESENT**
+
+| Relation | Méthode | Auto/manuel | Historique | Audit | Preuve |
+|---|---|---|---|---|---|
+| transaction → carte | import : HMAC n° complet, sinon `last4` unique ; manuel : `card_id` choisi | auto (import) / manuel | non (champ) | via `fuel.import_confirm` | `fuel.py:728-739, 449-452` |
+| transaction → véhicule | score explicable (règles 1,2,3,5 + compat. carburant + pénalité carte) seuils 90/70 ; manuel avec motif | auto + manuel | `fuel_transaction_matches.history` (`by:"auto"` / e-mail) | run/manual audités ; auto implicite non | `fuel_engine.py:107-295`, `fuel.py:508-576` |
+| transaction → conducteur | `driver_id` fourni, ou affectation carte `type=driver` à date, ou chauffeur du trajet | auto/manuel | idem | idem | `fuel_engine.py:118,147-166` |
+| transaction → trajet | trajet véhicule couvrant `tx_datetime` (ou proche station) → `trip_id`, `classification` héritée | auto/manuel (`trip_id` dans PATCH match) | idem | idem | `:168-217, 251-256`, `fuel.py:523-528` |
+| carte → véhicule | `fuel_card_assignments` période | manuel | lignes successives `valid_to` | `fuel.card_assignment` | `fuel.py:257-285` |
+| carte → conducteur | idem `type=driver` | manuel | idem | idem | idem |
+| tx importée → record Journal | `fuel_import_rows.transaction_id` ↔ `fuel_transactions.import_job_id` | auto | job/rows conservés | `fuel.import_confirm` | `fuel.py:875-880` |
+| achats ↔ consommation Energy | somme L/kWh/CHF par véhicule vs `energy_client.vehicle_energy_summary` ; statuts OK/A_CONTROLER/INDICATIF/IMPOSSIBLE ; seuils % / L | auto (preview, pas d'alerte) | `reconciliation_alert_candidates` (dédup véhicule+période) | settings/config/generate/export audités | `energy.py:224-370, 491-552` |
+
+Preuve DB : 56 matches (méthodes : `manual` 3, `card_assignment` 4, null 49) ; incohérence observée `fuel_transactions.match_status=manual`=10 vs `matches.status=manual`=3 → **NON VÉRIFIÉ** (données de test probables).
+
+---
+
+## SECTION 8 — ANOMALIES
+
+| Code | Déclencheur | Persistée ? | Résolution | Audit | UI | Preuve |
+|---|---|---|---|---|---|---|
+| `tank_overflow` (critical) | `quantity` > capacité (`tank_capacity_l` si L / `battery_capacity_kwh` si kWh) × `tank_tolerance_pct` ; muette si capacité inconnue | oui | `justify\|correct\|reject` + motif | décision oui ; création non | `FuelAnomaliesPage.jsx` | `fuel_anomalies.py:95-117` ; DB 4 |
+| `card_inactive` (critical) | statut carte ≠ `active` **à la date de la tx** (via `fuel_cards.history`) | oui | idem | idem | idem | `:34-44, 120-142` ; DB 1 |
+| `double_fill` (warning) | 2 tx même carte ou même véhicule dans `double_window_min` (déf. 60) ; `related_transaction_id` | oui | idem | idem | idem | `:145-177` ; DB 2 |
+| `amount_unusual` (warning) | `amount_chf` > `amount_multiplier` (déf. 3×) × médiane des ≥ `amount_min_history` (déf. 5) tx du véhicule | oui | idem | idem | idem | `:180-204` ; DB 1 |
+
+Dédup : index unique `(tenant_id, transaction_id, type)` + `_exists` ; jamais recréée après décision (`:5, 47-49, 86-89`). Notification in-app critique vers `notify_roles` (`:52-72`). Déclenchement : à la création manuelle, au confirm/force import, au match manuel/run, au scan global (`fuel.py:492,549,574,907,943,1183`). Statuts : `open|justified|corrected|rejected` (`:22`). Champs : `id, type, severity, status, transaction_id, related_transaction_id, vehicle_id, card_id, explanation, context{}, detected_at, decided_by, decided_at, decision_reason, tenant_id` (DB confirmé). Preuve DB : 8 (6 open / 2 justified ; 5 critical / 3 warning).
+
+---
+
+## SECTION 9 — FINES FEATURE INVENTORY A1–A15
+
+| ID | Fonction | Journal | Preuve Journal | Notes |
+|---|---|---|---|---|
+| A1 | Liste / recherche | PRESENT | `fines.py:384-460` | vue dédiée, tri, pagination, totaux filtrés |
+| A2 | Filtres | PRESENT | `:387-426` | statut, véhicule, conducteur, type, période infraction, montant min/max, texte |
+| A3 | Statuts | PRESENT | `:42-45` (10), `:149-155` | **aucune machine à états appliquée** (`:12`) |
+| A4 | Échéances | PARTIAL | `due_date` (`:91`), overdue calculé uniquement dans `/stats/extended` (`:825-838`) | pas de statut/filtre « en retard », pas de scheduler (`:10`) |
+| A5 | Paiement / annulation | PARTIAL | `PATCH status=paid` auto-`paid_at` (`:607-608`) ; `cancelled` statut | pas d'endpoint dédié, pas de référence paiement, revert = PATCH libre |
+| A6 | Conducteur / véhicule | PRESENT | `:77-83, 469-479, 498-515, 522-569`, `fines_engine.py` | identification BLE/GPS/affectation avec confiance et candidats |
+| A7 | Historique | PARTIAL | `audit_log` scope fines par `fine_id` | **aucun endpoint/UI de lecture de l'historique d'une amende** (grep `/history` : 0) |
+| A8 | Pièces jointes | PRESENT | `:666-803` | multi-documents typés, Object Storage |
+| A9 | Création / saisie / OCR | PRESENT | `POST /fines` (`:463`), `POST /fines/ocr-extract` (`:171-229`, Gemini `gemini-3.1-pro-preview`, pré-remplissage, pas de création auto) | formulaire manuel sans fichier possible |
+| A10 | Coûts | PARTIAL | `amount + admin_fees → total_amount` (`:158-159, 496, 604`), totaux | pas de module Coûts central |
+| A11 | Reporting | PRESENT | `/fines/stats/summary` (`:630`), `/fines/stats/extended` (`:807-913`), `FinesDashboardPage.jsx` | KPIs, top 10, 12 mois |
+| A12 | Exports | PRESENT | `GET /fines/export?fmt=csv\|excel\|pdf` (`:267-357`), `fines_exporter.py` | mêmes filtres que la liste |
+| A13 | Doublons | **ABSENT** | grep `duplicate\|doublon\|dedup\|sha256` dans `fines.py` : 0 ; index `fines` : `_id` seul | `dossier_number` non unique en DB, séquence non atomique (`:130-146`) |
+| A14 | RBAC | PRESENT | `ROLES_RW` (`:52`), `ROLES_DELETE=(admin,)` (`:53`), `lecture_seule` bloqué (`auth.py:81-84`), `/fines/mine` driver (`:232-264`) | — |
+| A15 | Audit | PARTIAL | `_audit` sur 8/8 endpoints d'écriture (§14) | paiement/annulation/statut/affectations indistincts (`update` + liste de clés) |
+
+### A1 — Liste / recherche
+Frontend : `FinesPage.jsx` (onglets statuts `fines-tab-*`, KPI `fines-kpi-paid`). Route : `GET /fines` (`:384`). Collection : `fines`. Fonctionnement : query de base tenant + filtres, tri `sort` (préfixe `-`), pagination (max 200), totaux `total/paid/open` sur l'ensemble filtré (`:437-448`). RBAC : `ROLES_RW`. Tenant : proxy. Conclusion : **PRESENT**.
+
+### A2 — Filtres
+`status`, `vehicle_id`, `driver_id`, `infraction_type`, `start/end` sur `infraction_at`, `min_amount/max_amount` sur `total_amount`, `q` regex sur `dossier_number|ref_fine|location|vehicle_plate|driver_name` (`:405-426`). Conclusion : **PRESENT**.
+
+### A3 — Statuts
+`received, to_analyze, driver_to_identify, awaiting_driver, disputed, to_pay, paid, recharged, closed, cancelled` (`:42-45`). Transitions non contraintes (`:12` « no transitions enforced yet »). DB : `to_analyze` 44, `received` 4, `to_pay` 1. Conclusion : **PRESENT** (sans machine à états).
+
+### A4 — Échéances
+`due_date` ISO date optionnelle (`:91,121`). Overdue : calcul en mémoire dans `/stats/extended` seulement, exclut `paid/recharged/closed/cancelled` (`:826-838`). Pas de filtre liste, pas de statut dérivé, pas de tâche planifiée. DB : 45 avec `due_date`, **45 en retard (calcul read-only)**. Conclusion : **PARTIAL**.
+
+### A5 — Paiement / annulation
+Aucun endpoint `pay`/`cancel` : passage par `PATCH /fines/{id}` avec `status`. Si `status=paid` et `paid_at` absent → `paid_at = now_iso()` (`:607-608`) ; `paid_at` saisissable (UI `FineFormDialog.jsx:439-442` « Date paiement »). Annulation = `status=cancelled`. Pas de référence de paiement, pas de montant payé distinct. DB : `status=paid` 0, `paid_at` 0. Conclusion : **PARTIAL**.
+
+### A6 — Conducteur / véhicule
+Véhicule : `vehicle_id` (→ `vehicles.id`) + `vehicle_plate` dénormalisée (`:469-473, 592-594`). Conducteur : `driver_id` (→ `drivers.id`) + `driver_name` dénormalisé, `driver_validated_manually`, `driver_confidence`, `driver_sources`, `gps_trip_id` ; auto-identification à la création (`:498-515`) et à la demande (`:522-556`), aperçu candidats (`:559-569`) ; sources BLE 95 / GPS 85 / affectation 60-45, bonus multi-source, plafond 98 (`fines_engine.py:44-171`). DB : 2 `vehicle_id` (2/2 résolus), 44 plaque seule, 2 `driver_id` (2/2 résolus), 1 `driver_confidence`. Conclusion : **PRESENT**.
+
+### A7 — Historique
+Toute écriture produit un doc `audit_log{scope:"fines", fine_id, action, actor, diff, ts}` (`:162-167`). Aucune route de lecture par amende ; `diff` d'update = liste de clés sans valeurs (`:614`). Conclusion : **PARTIAL**.
+
+### A8 — Pièces jointes
+`POST /fines/{id}/documents` (kind ∈ `pdf|photo|courrier|contestation|preuve_paiement|libre`, MIME PDF/images, ≤20 MB, `:55-60, 666-725`), download (`:728-766`), delete soft (`:769-803`). Stockage §12. DB : 2 docs (`photo`). Conclusion : **PRESENT**.
+
+### A9 — Création / OCR
+`POST /fines` : création manuelle complète, statut initial `received`, `dossier_number` `AMD-YYYY-NNNN`, résolution plaque/nom, total, auto-identification non bloquante (`:463-519`). `POST /fines/ocr-extract` : image/PDF ≤10 MB → `extract_fine_from_document` (Gemini), retourne champs extraits, **ne crée pas** l'amende, audité `ocr_extract` (`:171-229`). Config OCR (clé/intégration) : nom `EMERGENT_LLM_KEY` présent ; détails `ocr_engine.py` **NON VÉRIFIÉ** (non lu). Conclusion : **PRESENT**.
+
+### A10 — Coûts
+`total_amount = amount + admin_fees` recalculé à chaque update (`:158-159, 604`) ; `currency` (CHF 49/49) ; agrégats `paid_amount/open_amount/pending_amount`. Pas de « Coûts » centralisé ni refacturation (`recharged` = statut seulement). Conclusion : **PARTIAL**.
+
+### A11 — Reporting
+`/fines/stats/summary` (par statut, total/payé), `/fines/stats/extended` (KPIs, overdue, par type, top 10 véhicules/conducteurs/montants, 12 mois — approximation 30 j/mois `:916-920`). Conclusion : **PRESENT**.
+
+### A12 — Exports
+CSV/XLSX/PDF avec filtres identiques à la liste, cap 10 000, totaux PDF, audité (double, §14) (`:267-357`). Conclusion : **PRESENT**.
+
+### A13 — Doublons
+Aucune détection (ref_fine, montant+date, hash fichier) ; aucun index unique (`fines` : `_id` seul). Conclusion : **ABSENT**.
+
+### A14 — RBAC
+Lecture/création/modification : `admin, manager, lecture_seule` (ce dernier bloqué en écriture par `auth.py:81-84`) ; suppression : `admin` ; chauffeur : `/fines/mine` filtré par `resolve_driver_id_for_user` (`_helpers.py:112-126`), `internal_notes` masquées (`:248`). Frontend : `AML` sur `/amendes`, `/amendes/dashboard` (`App.js:118-127`). Conclusion : **PRESENT**.
+
+### A15 — Audit
+§14. Conclusion : **PARTIAL**.
+
+---
+
+## SECTION 10 — FINE MODEL
+
+Collection `fines` — 49 docs. Preuves : `FineIn` (`:66-97`), `FineUpdate` (`:100-126`), création (`:481-516`), union DB.
+
+| Champ | Type | Req/Opt | Signification | Exemple anonymisé | Preuve |
+|---|---|---|---|---|---|
+| `id` | UUID4 str | REQ | **fine id** stable | `FINE_1` | `:483` ; 49 distincts |
+| `tenant_id` | str | REQ (stamp écrase le littéral `"default"` `:484`) | **tenant** | `TENANT_1(default)` | `db.py:27` |
+| `dossier_number` | str `AMD-YYYY-NNNN` | REQ | **fine number interne**, séquence annuelle non atomique, non indexée | `AMD-2026-NNNN` | `:130-146` ; 49 distincts |
+| `ref_fine` | str | OPT | référence de l'**autorité** | `<ref>` | DB 48 |
+| `authority` / `country` / `canton` / `city` / `location` | str | OPT (country déf. CH) | autorité et lieu | `<authority>`, `CH` | `:69-75` |
+| `received_at` | ISO date | OPT | réception | null (49/49) | `:73` |
+| `infraction_at` | ISO datetime | OPT | **offence date** | `2025-12-20T09:00:00Z` | `:74` ; DB 47 |
+| `vehicle_id` / `vehicle_plate` / `group` | str | OPT | **vehicle** (id → `vehicles.id`) + plaque dénormalisée | `VEHICLE_2` / `<plate>` | `:77-79` ; DB 2 / 46 / 0 |
+| `driver_id` / `driver_name` | str | OPT | **driver** (id → `drivers.id`) + nom dénormalisé | `DRIVER_2` | `:81-82` ; DB 2 |
+| `driver_validated_manually` | bool | REQ (déf. false) | validation humaine | false | `:83, 599-600` |
+| `driver_confidence` / `driver_sources[]` / `gps_trip_id` | int / list / str | OPT | résultat auto-identification | `0`, `[]` | `:489-490, 505-511` |
+| `auto_identify_error` | str | OPT | erreur non bloquante | — | `:514` ; DB 0 |
+| `infraction_type` | enum 8 valeurs | REQ (déf. other) | — | `speeding` | `:46-49` |
+| `infraction_details` | str | OPT | — | null | — |
+| `amount` / `admin_fees` | float | REQ (déf. 0) | **amount** / frais | `80.0` / `10.0` | `:88-89` |
+| `total_amount` | float | REQ (calculé) | amount + admin_fees | `90.0` | `:158-159` |
+| `currency` | str | REQ (déf. CHF) | — | `CHF` | `:90` |
+| `due_date` | ISO date str | OPT | **due date** | `2026-01-10` | `:91` ; DB 45 |
+| `status` | enum 10 | REQ (déf. received) | **status** ; `paid` = **paid flag** implicite (pas de booléen) | `to_pay` | `:42-45` |
+| `paid_at` | ISO date/datetime str | OPT | **date de paiement** : saisie métier (UI date) **ou** auto-horodatage technique à `status=paid` — **non distinguables** | null (49/49) | `:92, 607-608` |
+| — | — | — | **payment reference** : ABSENT | — | grep `payment_ref\|reference` : 0 |
+| `priority` | enum low/normal/high/urgent | REQ | — | `normal` | `:50` |
+| `case_owner` / `internal_notes` | str | OPT | suivi (notes masquées chauffeurs) | null / `<notes>` | `:96-97, 248` |
+| `documents[]` | list {id, kind, filename, content_type, size_bytes, storage_path, uploaded_at, uploaded_by} | REQ `[]` | **file/attachment** | 1 entrée `photo` | `:707-716` |
+| `created_at` / `created_by` / `updated_at` / `updated_by` | ISO / e-mail | REQ | **audit fields** | `USER_1` | `:491-494` |
+
+---
+
+## SECTION 11 — DRIVERS
+
+**DRIVER_MODEL = PRESENT** — collection `drivers` (227 docs, tous `TENANT_1(default)`, `id` UUID4 227/227). Champs observés : `id, tenant_id, name, first_name (84), last_name (84), email (227 présents, 88 non vides), user_id (38), navixy_employee_id (12), internal_number (85), ble_id/ble_id_norm/ibutton_id/rfid_id, phone, active (130 `false`), start_date/end_date, group, allowed_vehicle_ids, default_vehicle_id, vehicle_access_mode, created_at`. Index `(tenant_id, ble_id_norm)`. 1 doublon de `name` → nom non utilisable comme clé.
+
+| Module | Champ conducteur | Stable ID ? | Tenant scoped ? | Collection liée | Preuve |
+|---|---|---|---|---|---|
+| Fuel transactions | `driver_id` (+ `driver_hint` import, `driver_name` enrichi à la volée) | oui (`drivers.id` UUID) | oui | `drivers` | `fuel.py:329,479,361-364` ; DB 1/1 résolu |
+| Fuel cards | `fuel_card_assignments.driver_id` (type `driver`) validé à l'écriture | oui | oui | `drivers` | `fuel.py:267` ; DB 0 |
+| Fuel « mes transactions » | résolution serveur `user.driver_id` ou `drivers.email` | oui | oui | `users`→`drivers` | `fuel.py:387-396` |
+| Fines | `driver_id` + `driver_name` dénormalisé + `driver_confidence/sources/validated_manually` | oui | oui | `drivers`, `driver_sessions`, `trips`, `assignments` | `fines.py:81-83`, `fines_engine.py:78-124` ; DB 2/2 résolus |
+| Fines « mes amendes » | `resolve_driver_id_for_user` (email ou `user_id`, puis `user.driver_id`/`user.id`) | oui | oui | `users`→`drivers` | `_helpers.py:112-126` |
+
+Provenance stable : `drivers.id` partout ; `navixy_employee_id` disponible sur 12/227 seulement ; `user_id` sur 38/227. Aucun matching par nom dans le code fuel/fines (les noms sont dénormalisés en sortie uniquement).
+
+---
+
+## SECTION 12 — DOCUMENTS / FILES
+
+Entités porteuses : `fuel_transactions.documents[]`, `fuel_cards.documents[]` (disque local `backend/storage/fuel/{transactions|cards}/{entity_id}/{doc_id}_{filename}`, `fuel.py:35, 648-653, 666`), `fines.documents[]` (Object Storage `logitrak-journal/fines/{fine_id}/{doc_id}_{name}` via `put_object`, `fines.py:699-703`, `object_storage.py:15,35-48`). Relation : méta embarquée dans le document métier (1-N), pas de collection fichiers. Suppression : fines soft-delete méta (`:786-800`) ; fuel aucune suppression.
+
+Condition **WITH_FILE** : `documents` non vide **et** (fines) entrée avec `storage_path` string non vide ; (fuel) entrée méta présente — le fichier physique pod-local n'est pas garanti (pas vérifié fichier par fichier ; 45 fichiers FS = 45 entrées méta sur TX_3).
+
+```
+FUEL_TOTAL = 62   FUEL_WITH_FILE = 1 (TX_3, 45 entrées PNG 69 octets = tests)   FUEL_WITHOUT_FILE = 61
+FINES_TOTAL = 49  FINES_WITH_FILE = 2 (2 entrées photo, storage_path présent)  FINES_WITHOUT_FILE = 47
+FS : backend/storage/fines = 1 fichier orphelin (0 méta sans storage_path) ; backend/storage/fuel = 45 fichiers
+```
+
+---
+
+## SECTION 13 — RBAC
+
+Rôles réels (`auth.py:529-530` + DB) : `superadmin` (1), `admin` (3), `manager` (42), `driver` (39), `lecture_seule` (1). Aucun autre.
+
+| Rôle | Energy read | Energy write (settings/mapping/alerts) | Fuel read | Fuel write (tx manuelle, cartes, settings, FX) | Import | Reconcile (match manuel/run, anomalies decide) | Fines read | Fines write (create/update/docs) | Fines delete | Mark paid | Scope |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| superadmin | ✔ (bypass `auth.py:131`) | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | tenant via `X-Tenant-Id`, sinon `__none__` → aucune donnée (`auth.py:94`, `tenant_context.py:5`) |
+| admin | ✔ | ✔ (`energy.py:104,112,393,456`) | ✔ | ✔ (`fuel.py:143,209,233,258,443,985,1300`) | ✔ (`:678-685,754,885,926,951`) | ✔ (`MATCH_ROLES`) | ✔ | ✔ | ✔ (`ROLES_DELETE`) | ✔ (via PATCH) | son tenant |
+| manager | ✔ | settings/alerts ✔, tenant-mapping PUT ✘ (`energy.py:112` admin) | ✔ | ✘ | ✘ | ✔ (`fuel.py:33`) | ✔ | ✔ | ✘ | ✔ (via PATCH) | son tenant |
+| lecture_seule | ✔ | ✘ (403 global `auth.py:81-84`) | ✔ | ✘ | ✘ | ✘ | ✔ (`ROLES_RW` mais bloqué en écriture) | ✘ | ✘ | ✘ | son tenant |
+| driver | `/energy/trips` ✔ ses trajets (`energy.py:28`) ; overview ✘ | ✘ | `/fuel/my-transactions`, `/transactions/{id}` siennes, upload justificatif, signalement (`fuel.py:399-431, 587-592, 624-630`) | ✘ | ✘ | ✘ | `/fines/mine` (sans `internal_notes`) | ✘ | ✘ | ✘ | ses enregistrements |
+
+Frontend : routes `AML` (`App.js:46`), imports/paramètres `admin`, rapprochements `admin, manager`, mes-transactions `driver, admin, manager` (`App.js:146-163`).
+
+---
+
+## SECTION 14 — AUDIT LOGS
+
+**Définitions** : `log_audit` (`audit.py:6-29`) → `audit_log{id, action, at, tenant_id, user_id, user_email, user_role, details, [impersonation, note]}`, insert brut, **erreur avalée** (`:26-29`). `_audit` (`fines.py:162-167`) → `audit_log{ts, scope:"fines", action, fine_id, actor, diff}` + `tenant_id` proxy. Index `audit_log` : `(tenant_id, at)` — les docs schéma B n'ont pas `at`. DB : 22 894 ; 16 707 A / 6 187 B ; **1 030 sans `tenant_id`** (origine NON VÉRIFIÉ).
+
+| Module | Action | Implemented ? | Audited ? | Audit event | Preuve |
+|---|---|---:|---:|---|---|
+| Energy | create transaction (manuelle) | oui | oui | `fuel.tx_manual_create` (141) | `fuel.py:493` |
+| Energy | update transaction | **non** | — | — | aucun PATCH générique |
+| Energy | delete transaction | **non** | — | — | aucun DELETE |
+| Energy | import upload / confirm / force | oui | oui | `fuel.import_upload` (3) / `fuel.import_confirm` (2) / `fuel.import_force_row` (1) | `:715,911,944` |
+| Energy | import mapping/preview | oui | **non** | — | `:753-816` |
+| Energy | card create / update / status | oui | oui | `fuel.card_create` (1) / `fuel.card_update` (0) / `fuel.card_status` (1) | `:189,227,251` |
+| Energy | card assignment (vehicle/driver) | oui | oui | `fuel.card_assignment` (0) | `:280` |
+| Energy | card unassignment | implicite (clôture par nouvelle affectation) | via `fuel.card_assignment` | — | `:272-274` |
+| Energy | affectation initiale à la création carte | oui | **non** (details sans vehicle/driver) | — | `:182-190` |
+| Energy | reconciliation run / manuelle | oui | oui | `fuel.match_run` (47) / `fuel.match_manual` (47) | `:575,544` |
+| Energy | reconciliation auto implicite | oui | **non** (`log_audit`) ; trace `matches.history by:auto` | — | `fuel_engine.py:292` |
+| Energy | anomaly creation | oui | **non** | — | `fuel_anomalies.py:75-92` |
+| Energy | anomaly scan / resolution | oui | oui | `fuel.anomaly.scan` (91) / `fuel.anomaly.{justify\|correct\|reject}` (2) | `:1185,1215` |
+| Energy | documents (tx/carte) | oui | oui | `fuel.tx_document_upload` (45) / `fuel.card_document_upload` (0) | `:658` |
+| Energy | settings / capacity / fx_sync / issue | oui | oui | `fuel.settings_update` (89) / `fuel.vehicle.capacity_update` (2) / `fuel.fx_sync` (3) / `fuel.tx_issue_report` (46) | `:1021,1257,1312,635` |
+| Energy | statements ×7 | oui | oui | `fuel.statement.*` (50/1/49/1/1/48/133) | `fuel_statements.py` |
+| Energy | tenant mapping / recon settings / alerts config / candidates / exports | oui | oui | `energy.*` (96/215/186/145/695) | `energy.py:125,409,481,545,604,662` |
+| Fines | create / update / delete | oui | oui | `create` (1 203) / `update` (441) / `delete` (1 154) | `fines.py:518,614,626` |
+| Fines | payment | via PATCH | oui, **indistinct** (`update`, diff = clés) | `update` | `:607-614` |
+| Fines | payment cancellation / status change | via PATCH | oui, indistinct | `update` | idem |
+| Fines | driver assignment manuel / auto | PATCH / endpoint | indistinct / oui | `update` / `auto_identify` (91) | `:595-600, 551` |
+| Fines | vehicle assignment | via PATCH | indistinct | `update` | `:592-594` |
+| Fines | attachment add / remove | oui | oui | `upload_document` (89) / `delete_document` (87) | `:722,801` |
+| Fines | OCR extract | oui | oui | `ocr_extract` (46) | `:214-223` |
+| Fines | export | oui | oui ×2 (double écriture) | `fine.export` (213) + `export_{csv\|excel\|pdf}` (132/44/44) | `:316-317, 346-352` |
+
+```
+ENERGY_AUDIT_COVERAGE = 27/31  (dénominateur = actions d'écriture réellement implémentées ; non auditées : import mapping, affectation initiale carte, match auto implicite, création anomalie)
+FINES_AUDIT_COVERAGE  = 8/8 endpoints d'écriture ; 0/5 actions métier (paid, cancel, status, driver, vehicle) distinguables ; pas de before/after
+```
+
+---
+
+## SECTION 15 — VEHICLE IDENTITY / B1
+
+```
+FUEL VEHICLE KEY = fuel_transactions.vehicle_id → vehicles.id (UUID4) ; vehicle_hint (plaque/id import) sert UNIQUEMENT au matching, pas de persistance de la plaque
+CARD VEHICLE KEY = fuel_card_assignments.vehicle_id → vehicles.id (validé à l'écriture fuel.py:265)
+FINE VEHICLE KEY = fines.vehicle_id → vehicles.id (2/49) ; vehicle_plate dénormalisée (46/49, dont 44 SANS vehicle_id)
+```
+
+`vehicles` (20 docs, 100 % `TENANT_1(default)`) [DB] : `id` UUID4 20/20 distincts ; `vin` **0/20** ; `navixy_tracker_id` 14/20 (int) + `navixy_tracker_id_archived` 6, `navixy_tracker_status` 6, `navixy_tracker_unlinked_at` 6 → **le tracker est bien une affectation évolutive, déjà historisée/archivée pour 6 véhicules** ; `plate` 20/20 distinctes ; `fuel_type` 2/20 ; `tank_capacity_l` 1/20 ; `assigned_driver_id` 9/20 ; aucun `internal_id`. Index : `_id` seul.
+
+Comparaison : Journal UUID = clé stable et unique (preuve) ; VIN = indisponible (0) ; internal ID = inexistant ; Navixy ID (`navixy_master_user_id` tenant) = identité tenant, pas véhicule ; tracker ID = évolutif (6 désaffectations observées) → **interdit comme clé** ; plaque = unique aujourd'hui mais non historisée, modifiable, et 44 amendes la portent sans `vehicle_id`.
+
+```
+VEHICLE_JOIN_SOURCE_KEY = vehicles.id (UUID4)
+CAN_MAP_TO_DOCUMENTS    = NON VÉRIFIÉ (clé véhicule côté Documents absente de l'annexe)
+JOIN_DECISION           = JOIN_REQUIRES_MANUAL_MAPPING (UUID Journal ↔ véhicule Documents à établir explicitement ; 44/49 amendes legacy n'ont qu'une plaque → mapping manuel/validé obligatoire pour elles)
+```
+
+---
+
+## SECTION 16 — TENANT IDENTITY / B2
+
+```
+TENANT_COLLECTION  = tenants (83 docs, index unique id, index navixy_master_user_id ; non scopée — db.py:15)
+TENANT_STABLE_ID   = tenants.id (82 UUID4 + 1 littéral "default")
+TENANT_MAPPING_KEY = tenants.id ; navixy_master_user_id disponible sur 1/83 (le tenant "default", valeur 121349)
+```
+
+Champs tenant observés : `id, name, navixy_api_url, navixy_hash, navixy_master_user_id, navixy_login, status, created_at, [last_sync_at, last_sync_result, last_sso_at]`. Tous `status=active`.
+
+```
+tenant_id="default" : fines COUNT = 48 | fuel_transactions = 62 | fuel_cards = 1 | fuel_anomalies = 8 | vehicles = 20 | drivers = 227 | trips = 6 145 | users = 43/86
+MISSING COUNT = 0 | NULL COUNT = 0 | EMPTY COUNT = 0   (fines ; idem fuel : 0 hors "default")
+fines autre tenant (UUID) = 1
+```
+
+Analyse `fines.py` : 17 littéraux `{"tenant_id": "default"}` (`:135,247,288,370,373,404,484,529,563,575,584,622,634,687,735,776,811`) + `fines_engine.py:79,95,113` — tous **écrasés** par le proxy (`db.py:24-25` lecture ; `:27-29` écriture). Vrai fallback : `auth.py:96` `user.tenant_id or "default"` — 0 utilisateur concerné. Superadmin sans `X-Tenant-Id` → `__none__` → aucune donnée (fail-closed). `default` est le **tenant principal réel** (seul porteur de données métier et du compte Navixy maître).
+
+```
+TENANT_MAPPING_READY = NON VÉRIFIÉ (clé tenant Documents absente de l'annexe ; côté Journal la clé est prouvée)
+DEFAULT_TENANT_RISK  = PARTIAL (aucun cross-tenant/orphelin ; mais id non-UUID identique au fallback, 17 littéraux morts, aucun index fines)
+```
+
+---
+
+## SECTION 17 — NO-DOCUMENT RECORDS / B4
+
+```
+FUEL_TOTAL = 62   WITH_DOCUMENT = 1    WITHOUT_DOCUMENT = 61
+FINES_TOTAL = 49  WITH_FILE = 2        WITHOUT_FILE = 47
+```
+
+**B4 REPRESENTABILITY IN DOCUMENTS = GAP_REQUIRED** — L'annexe indique E2 « création uniquement depuis ticket OCR validé ; pas de saisie sans justificatif » et A9 « pas de formulaire manuel d'amende sans fichier ». Documents doit donc supporter : (1) transaction carburant legacy **sans document** (61/62 ici ; en production les relevés carte n'ont par nature pas de ticket) ; (2) amende legacy **sans fichier** (47/49), y compris avec plaque seule sans `vehicle_id` (44).
+
+---
+
+## SECTION 18 — LEGACY IDS / B5
+
+| Type | Legacy stable ID | Stable ? | Unique tenant ? | Idempotence future ? | Preuve |
+|---|---|---:|---:|---:|---|
+| fuel transaction | `fuel_transactions.id` UUID4 | oui | oui (62/62 distincts ; pas d'index unique sur `id`) | oui ; clés secondaires : `(provider, external_transaction_id)` unique partiel, `dedup_key` **non unique** (17/62 à cause de `force`) | `fuel.py:462`, `fuel_engine.py:300-304` |
+| fuel card | `fuel_cards.id` ; métier `(tenant, fingerprint)` unique | oui | oui | oui (fingerprint recalculable **uniquement** avec le même `FUEL_CARD_HMAC_SECRET` — ne jamais exporter) | `fuel_engine.py:310-312` |
+| card assignment | `fuel_card_assignments.id` | oui | oui (1) | oui | `fuel.py:275` |
+| import | `fuel_import_jobs.id`, `fuel_import_rows.id` (+ `row_index`) | oui | oui | oui | `:700,707` |
+| reconciliation (match) | `fuel_transaction_matches.id` ; clé fonctionnelle `transaction_id` (upsert 1-1) | oui | oui (56) ; **aucun index** | oui via `transaction_id` | `fuel_engine.py:285-294` |
+| anomaly | `fuel_anomalies.id` ; fonctionnelle `(transaction_id, type)` unique | oui | oui | oui | `fuel_anomalies.py:241-242` |
+| statement | `fuel_statements.id` ; `number` indexé (non unique) | oui | oui (2) | oui | `fuel_statements.py:78-79` |
+| fine | `fines.id` UUID4 ; `dossier_number` AMD-YYYY-NNNN (49/49 distincts) | oui | oui en données, **non garanti** (aucun index, séquence lue puis écrite `:134-146`) | oui via `id` ; `dossier_number` à conserver comme référence humaine seulement | `fines.py:483-485` |
+
+Contrat futur `tenant_id + legacy_source="journal" + legacy_id` : tous les types disposent d'un `id` UUID stable et tenant-scopé → **IDEMPOTENCE_READY = PARTIAL** (prête côté Journal ; non prouvée côté Documents ; `fines.id`/`matches` sans index unique côté source ; dedup_key non unique).
+
+---
+
+## SECTION 19 — PAYMENT MODEL / B6
+
+- Statut payé : `fines.status == "paid"` (pas de booléen) — `fines.py:42-45`.
+- Timestamp technique : `updated_at` (jamais utilisé ici comme date de paiement) ; `paid_at` **auto-posé à `now_iso()`** lors du passage à `paid` si vide (`:607-608`) → `paid_at` peut être une date technique.
+- Date métier réelle : `paid_at` saisie par l'opérateur (UI « Date paiement », `FineFormDialog.jsx:439-442`) — même champ que l'auto-horodatage, **aucun marqueur distinguant saisie/auto**.
+- Référence paiement : aucune.
+
+```
+REAL_PAYMENT_DATE_AVAILABLE = NO  (champ existant mais sémantique mixte saisie/auto, et 0 valeur en base)
+FIELD = fines.paid_at
+TYPE = str ISO (date "YYYY-MM-DD" si saisie UI ; datetime UTC si auto)
+SEMANTICS = date de paiement déclarée OU horodatage du changement de statut — indistinguables
+POPULATED_COUNT = 0 / 49   (status=paid : 0)
+PAYMENT_REFERENCE = NO
+```
+
+---
+
+## SECTION 20 — DATA DICTIONARY / B8
+
+Conventions globales (vérifiées) : dates/horodatages = chaînes ISO 8601 (`datetime.now(timezone.utc).isoformat()`, `_helpers.py:26-27`, `fuel.py:42-43`) ; `tx_datetime` import forcé UTC (`fuel_import.py:177,182`), saisie manuelle **sans tz possible** (observé `2026-07-28T09:00:00`) ; dates métier amendes `YYYY-MM-DD` (`due_date`, `paid_at` UI) ; fuseau décomptes/widget `TENANT_TZ` (`fuel_statements.TENANT_TZ`, Europe/Zurich selon rapports — valeur **NON VÉRIFIÉ** ici) ; devise ISO3, CHF par défaut, conversion BCE `fuel_exchange_rates{date, currency, rate_per_eur}` (globale) ; litres `unit="L"`, kWh `unit="kWh"`, jamais additionnés (`fuel.py:1036,1048-1049`, `energy.py:279-282`) ; km : `mileage` (fuel), `distance_km` (trips).
+
+| Collection | Field | Type | Nullable | Enum/unité | Signification | Preuve |
+|---|---|---|---:|---|---|---|
+| tenants | id | str | non | UUID4 / `"default"` | clé tenant | DB, `tenants.id_1` unique |
+| tenants | name, navixy_api_url, navixy_hash, navixy_login, navixy_master_user_id, status, created_at, last_sync_* | str/int | oui | status `active` | compte Navixy maître | DB |
+| vehicles | id | str | non | UUID4 | clé véhicule | DB 20 |
+| vehicles | plate, model, mode, fuel_type, tank_capacity_l, battery_capacity_kwh, navixy_tracker_id, navixy_tracker_id_archived, navixy_tracker_status, navixy_tracker_unlinked_at, assigned_driver_id, created_at, tenant_id | str/float/int | oui sauf plate/model/mode | L / kWh ; fuel_type `essence…` | tracker = affectation évolutive | DB ; `fuel.py:1226-1260` |
+| drivers | id, tenant_id, name, first_name, last_name, email, user_id, navixy_employee_id, internal_number, ble_id, ble_id_norm, ibutton_id, rfid_id, phone, active, start_date, end_date, group, allowed_vehicle_ids, default_vehicle_id, vehicle_access_mode, created_at | — | oui sauf id/name/email/tenant_id | — | conducteur | DB 227 |
+| fuel_transactions | (§4, 46 champs) | — | — | currency ISO3 ; unit L/kWh/unit ; match_status 4 ; classification 3 ; source manual/csv/xlsx ; fx_status 3 ; product_type 5 | achat carburant | §4 |
+| fuel_cards | (§5, 22 champs) | — | — | status 5 ; assignment_type 4 | carte | §5 |
+| fuel_card_assignments | (§5, 11 champs) | — | — | type 4 | affectation datée | §5 |
+| fuel_import_jobs | id, tenant_id, provider, filename, columns[], mapping{}, status, counts{total,ok,duplicate,unknown_card,invalid,amount_mismatch}, created_at, created_by, confirmed_at, imported_count | — | mapping null avant mapping | status `mapping\|preview\|confirmed` | lot d'import | `fuel.py:700-704, 810-811, 908-910` |
+| fuel_import_rows | id, tenant_id, job_id, row_index, raw{}, normalized{}, status, errors[], imported, transaction_id | — | normalized/transaction_id null | status `pending\|ok\|invalid\|duplicate\|unknown_card\|amount_mismatch` | ligne | `:706-710, 806-808, 879-880` |
+| fuel_import_mappings | id, tenant_id, provider, mapping{}, created_at, created_by | — | non | — | mapping sauvegardé | `:813-815` |
+| fuel_transaction_matches | id, tenant_id, transaction_id, score, status, method, breakdown[{rule,label,points}], candidates[{vehicle_id,partial_score}], computed_at, history[{at,score,status,by,reason}], decided_by, decided_at, reason | — | method null | status = MATCH_STATUSES ; method `card_assignment\|provider_vehicle\|driver_trip\|geo_single_candidate\|manual` | explication rattachement | `fuel_engine.py:129,141,162,201,285-294`, `fuel.py:536-543` |
+| fuel_anomalies | (§8, 15 champs) | — | — | type 4 ; severity critical/warning ; status 4 | anomalie | §8 |
+| fuel_statements | id, tenant_id, number, type, scope, period_month, date_from, date_to, include_carried_over, status, version, versions[], totals{}, close_exception, created_at/by, updated_at, closed_at/by, checked_at/by, refreshed_at | — | — | type regular/corrective ; status draft/to_review/validated/closed | décompte | `fuel_statements.py:77-89, 153-157, 209-212` |
+| fuel_statement_lines | (tenant_id, statement_id, version, transaction_id, blockers[], amount_chf…) | — | — | — | lignes figées | index `(tenant_id, statement_id, version)` ; champs exacts **NON VÉRIFIÉ** (module `fuel_statements.py` non lu) |
+| fuel_exchange_rates (globale) | date, currency, rate_per_eur | str/float | non | — | taux BCE | `fuel.py:1275-1277` ; DB 3 248 |
+| reconciliation_alert_candidates | id, tenant_id, dedup_key, vehicle_id, plate, model, period_from, period_to, gap_l, gap_pct, measurement_type, status_reason, created_at, mode, dispatched, dispatch, preview_only | — | — | dedup `recon-alert:{vehicle}:{from}:{to}` unique | candidats (jamais envoyés) | `energy.py:503-514, 538-541` ; DB 0 |
+| settings (`id=default`) | energy_tenant_id, reconciliation_threshold_percent, reconciliation_threshold_liters, reconciliation_alerts_enabled, reconciliation_alert_recipients[], real_energy_validated (non observé), mode, rules, privacy_*, weekly/monthly_report_* | — | oui | — | paramètres tenant | `energy.py:86,123,288-289,404-408,436-440` ; DB |
+| settings (`id=fuel`) | station_radius_m, score_auto, score_review, time_window_min, allocation_mode, providers[], anomalies{}, weights{} | int/str/list/dict | non | allocation A/B | paramètres carburant | `fuel_engine.py:14-43` |
+| fines | (§10, 32 champs) | — | — | status 10 ; infraction_type 8 ; priority 4 ; documents.kind 6 | amende | §10 |
+| audit_log | schéma A : id, action, at, tenant_id, user_id, user_email, user_role, details{}, impersonation{}, note ; schéma B : ts, scope, action, fine_id, actor, diff, tenant_id | — | tenant_id absent sur 1 030 | — | audit | §14 |
+| assignments | id, tenant_id, vehicle_id, driver_id, from_date, to_date, is_primary, source | — | dates null | source `navixy` | affectation véhicule↔chauffeur | DB 4 |
+| driver_sessions | (vehicle_id, driver_id, status, started_at, ended_at, …) | — | — | status closed/confirmed… | sessions BLE | `fines_engine.py:78-82` ; DB 726 ; champs exacts NON VÉRIFIÉ |
+
+---
+
+## SECTION 21 — VOLUMES
+
+Tenant unique porteur : `TENANT_1(default)` (sauf 1 amende sur un tenant UUID). Horloge pod : 2026-10-06.
+
+**ENERGY / FUEL**
+
+| Métrique | Valeur |
+|---|---:|
+| Transactions | 62 |
+| Oldest `tx_datetime` | 2026-07-05T10:00:00+00:00 |
+| Newest `tx_datetime` | 2026-08-25T09:30:00 |
+| With vehicle | 14 (2 véhicules distincts, 2/2 résolus) |
+| Without vehicle | 48 |
+| With driver | 1 (1/1 résolu) |
+| Without driver | 61 |
+| With card | 6 (1 carte, résolue) |
+| Without card | 56 |
+| With document | 1 (45 entrées méta) |
+| Without document | 61 |
+| Cards | 1 (`suspended`) ; assignments 1 |
+| Imports | 1 job (7 lignes, 6 importées) ; 1 mapping sauvegardé |
+| Reconciliations (matches) | 56 (3 manual / 53 unmatched) ; alert candidates Energy 0 |
+| Anomalies | 8 (6 open / 2 justified) |
+| Statements | 2 (draft 1, to_review 1) ; lines 24 ; tx locked 0 ; deferred 9 |
+| FX rates (globale) | 3 248 ; tx `fx_status` pending 1 |
+| Données de test | 56/62 `manual_reason`≈test ; 56 `TEST_FX` ; 45 PNG de 69 octets |
+
+**FINES**
+
+| Métrique | Valeur |
+|---|---:|
+| Total | 49 (48 `default` + 1 tenant UUID) |
+| Open (hors paid/recharged/closed/cancelled) | 49 (to_analyze 44, received 4, to_pay 1) |
+| Overdue (due_date < now, statut ouvert — calcul read-only) | 45 |
+| Paid | 0 |
+| With vehicle (`vehicle_id`) | 2 ; plaque seule sans id : 44 |
+| Without vehicle (ni id ni plaque) | 3 |
+| With driver (`driver_id`) | 2 |
+| Without driver | 47 |
+| With file | 2 |
+| Without file | 47 |
+| With real payment date (`paid_at`) | 0 |
+| Without real payment date | 49 |
+| Oldest `infraction_at` | 2025-10-15T10:30:00Z |
+| Newest `infraction_at` | 2026-07-01T10:00:00Z |
+| `created_at` range | 2026-06-19 → 2026-09-10 |
+| `dossier_number` | 49 distincts, tous `AMD-2026-` |
+| Données de test | 47/49 `ref_fine`≈TEST ; 2 créateurs distincts |
+
+---
+
+## SECTION 22 — ANONYMIZED SAMPLES
+
+**fuel_transactions (3/62)**
+```json
+{"id":"TX_1","external_transaction_id":"<ext-id>","provider":"Migrol","card_id":"CARD_1","card_last4":"****","tx_datetime":"2026-07-15T08:32:00+00:00","accounting_date":null,"station_name":"<station>","country":"CH","product_type":"diesel","quantity":45.5,"unit":"L","unit_price":1.82,"amount_total":82.81,"currency":"CHF","amount_chf":82.81,"fx_rate":null,"mileage":null,"vehicle_id":"VEHICLE_1","driver_id":null,"trip_id":null,"classification":"unclassified","match_status":"manual","match_score":0,"source":"csv","documents":[],"amount_check_warning":false,"dedup_key":"<sha256>","import_job_id":"JOB_1","locked":false,"created_at":"2026-07-31T08:30:21Z","created_by":"USER_1","updated_by":"USER_2","tenant_id":"TENANT_1(default)"}
+{"id":"TX_2","provider":"manuel","card_id":null,"tx_datetime":"2026-07-28T09:00:00","station_name":"<station>","product_type":null,"quantity":null,"unit":"L","amount_total":25.0,"currency":"XXX","amount_chf":null,"fx_status":"pending","vehicle_id":"VEHICLE_1","driver_id":null,"classification":"unclassified","match_status":"manual","match_score":0,"source":"manual","manual_reason":"<text>","documents":[],"deferred_from_statement_id":"STMT_1","tenant_id":"TENANT_1(default)"}
+{"id":"TX_3","external_transaction_id":"<ext-id>","provider":"Migrol","card_id":"CARD_1","tx_datetime":"2026-07-19T07:00:00+00:00","country":"CH","product_type":"adblue","quantity":10.0,"unit":"L","unit_price":0.95,"amount_total":9.5,"currency":"CHF","amount_chf":9.5,"vehicle_hint":"<hint>","vehicle_id":"VEHICLE_1","driver_id":"DRIVER_1","match_status":"manual","match_score":50,"source":"csv","documents":[{"id":"DOC_1","filename":"<file>","content_type":"image/png","size_bytes":69,"uploaded_at":"2026-07-31T08:57:26Z","uploaded_by":"USER_3"}, "… ×45"],"issues":[{"id":"ISS_1","message":"<text>","reported_by":"USER_1","reported_at":"2026-07-31T08:54:08Z","status":"open"}, "… ×46"],"import_job_id":"JOB_1","tenant_id":"TENANT_1(default)"}
+```
+
+**fuel_cards (1/1 — collection ne contient qu'un document)**
+```json
+{"id":"CARD_1","provider":"Migrol","provider_account":null,"last4":"****","fingerprint":"<hmac>","external_card_id":null,"assignment_type":"vehicle","allowed_products":["diesel","adblue"],"limit_per_tx":200.0,"limit_daily":null,"limit_monthly":null,"allowed_countries":["CH","FR"],"allowed_networks":[],"activated_at":null,"expires_at":"2027-12-31","status":"suspended","replaced_by":null,"notes":null,"documents":[],"history":[{"at":"2026-07-31T08:29:07Z","by":"USER_1","action":"create"},{"at":"2026-07-31T11:01:38Z","by":"USER_1","action":"status","before":"active","after":"suspended","reason":"<text>"}],"created_at":"2026-07-31T08:29:07Z","created_by":"USER_1","updated_at":"2026-07-31T11:01:38Z","tenant_id":"TENANT_1(default)"}
+```
+**fuel_card_assignments (1/1)**
+```json
+{"id":"ASG_1","card_id":"CARD_1","type":"vehicle","vehicle_id":"VEHICLE_1","driver_id":null,"valid_from":null,"valid_to":null,"created_by":"USER_1","reason":"<text>","tenant_id":"TENANT_1(default)"}
+```
+
+**fuel_import_rows (2/7) + job (1/1)**
+```json
+{"id":"ROW_1","job_id":"JOB_1","row_index":0,"normalized":{"external_transaction_id":"<ext-id>","card_last4":"****","tx_datetime":"2026-07-15T08:32:00+00:00","station_name":"<station>","country":"CH","product_type":"diesel","quantity":45.5,"unit":"L","unit_price":1.82,"amount_total":82.81,"currency":"CHF","vehicle_hint":null,"card_id":"CARD_1","dedup_key":"<sha256>"},"status":"ok","errors":[],"imported":true,"transaction_id":"TX_1","tenant_id":"TENANT_1(default)"}
+{"id":"ROW_2","job_id":"JOB_1","row_index":1,"normalized":{"…":"idem","quantity":52.0,"unit_price":1.79,"amount_total":93.08,"tx_datetime":"2026-07-16T12:10:00+00:00"},"status":"ok","imported":true,"transaction_id":"TX_99"}
+{"id":"JOB_1","provider":"Migrol","filename":"<file>","mapping":{"Date transaction":"tx_datetime","Numero de carte":"card_number","Station":"station_name","Pays":"country","Produit":"product_type","Quantite":"quantity","Prix unitaire":"unit_price","Montant TTC":"amount_total","Devise":"currency","Immatriculation":"vehicle_hint","N Transaction":"external_transaction_id"},"status":"confirmed","counts":{"total":7,"ok":3,"duplicate":1,"unknown_card":1,"invalid":1,"amount_mismatch":1},"imported_count":5,"created_by":"USER_1","tenant_id":"TENANT_1(default)"}
+```
+
+**fuel_transaction_matches (2/56)**
+```json
+{"id":"MATCH_1","transaction_id":"TX_1","status":"manual","method":"manual","score":0,"breakdown":[],"candidates":[],"computed_at":"2026-07-31T08:30:21Z","decided_by":"USER_2","decided_at":"2026-07-31T08:58:13Z","reason":"<text>","history":[{"at":"2026-07-31T08:30:21Z","score":0,"status":"unmatched","by":"USER_4"},{"at":"2026-07-31T08:30:48Z","status":"manual","by":"USER_1","reason":"<text>"}],"tenant_id":"TENANT_1(default)"}
+{"id":"MATCH_2","transaction_id":"TX_99","status":"unmatched","method":"card_assignment","score":0,"breakdown":[{"rule":"card_assigned_vehicle","label":"<label>","points":50},{"rule":"card_inactive_or_expired","label":"<label>","points":-50}],"candidates":[],"history":[{"at":"…","score":0,"status":"unmatched","by":"USER_4"},{"at":"…","score":50,"status":"unmatched","by":"USER_4"}],"tenant_id":"TENANT_1(default)"}
+```
+
+**fuel_anomalies (3/8)**
+```json
+{"id":"ANOM_1","type":"tank_overflow","severity":"critical","status":"open","transaction_id":"TX_95","related_transaction_id":null,"vehicle_id":"VEHICLE_2","card_id":null,"explanation":"<text>","context":{"quantity":85.0,"unit":"L","capacity":60.0,"tolerance_pct":100.0,"limit":60.0},"detected_at":"2026-07-31T11:01:38Z","decided_by":null,"decided_at":null,"decision_reason":null,"tenant_id":"TENANT_1(default)"}
+{"id":"ANOM_2","type":"card_inactive","severity":"critical","status":"open","transaction_id":"TX_96","vehicle_id":"VEHICLE_2","card_id":"CARD_1","context":{"card_status_at_tx":"suspended","card_last4":"****"},"detected_at":"2026-07-31T11:01:38Z"}
+{"id":"ANOM_3","type":"double_fill","severity":"warning","status":"open","transaction_id":"TX_97","related_transaction_id":"TX_98","vehicle_id":"VEHICLE_2","card_id":null,"context":{"interval_min":30,"window_min":60,"same_card":false,"different_stations":true,"stations":"<stations>"},"detected_at":"2026-07-31T11:01:39Z"}
+```
+
+**fines (3/49)**
+```json
+{"id":"FINE_1","tenant_id":"TENANT_1(default)","dossier_number":"AMD-2026-NNNN","ref_fine":"<ref>","authority":"<authority>","country":"CH","canton":"<canton>","city":"<city>","received_at":null,"infraction_at":"2025-12-20T09:00:00Z","location":null,"vehicle_id":"VEHICLE_2","vehicle_plate":"<plate>","group":null,"driver_id":null,"driver_name":null,"driver_validated_manually":false,"driver_confidence":0,"driver_sources":[],"infraction_type":"parking","infraction_details":null,"amount":80.0,"admin_fees":10.0,"total_amount":90.0,"currency":"CHF","due_date":"2026-01-10","paid_at":null,"status":"to_pay","priority":"normal","case_owner":null,"internal_notes":null,"documents":[{"id":"DOC_F1","kind":"photo","filename":"<file>","content_type":"image/jpeg","size_bytes":41507,"storage_path":"<objstore-path>","uploaded_at":"2026-06-22T15:25:13Z","uploaded_by":"USER_1"}],"created_at":"2026-06-19T13:47:08Z","created_by":"USER_1","updated_at":"2026-06-22T15:25:13Z","updated_by":"USER_1"}
+{"id":"FINE_3","tenant_id":"TENANT_1(default)","dossier_number":"AMD-2026-NNNN","ref_fine":null,"authority":null,"country":"CH","infraction_at":null,"vehicle_id":"VEHICLE_3","vehicle_plate":"<plate>","driver_id":"DRIVER_2","driver_name":"<name>","driver_validated_manually":false,"driver_confidence":null,"driver_sources":[],"infraction_type":"other","amount":0.0,"admin_fees":0.0,"total_amount":0.0,"currency":"CHF","due_date":null,"paid_at":null,"status":"received","priority":"normal","documents":[],"created_at":"2026-06-22T15:05:31Z","created_by":"USER_1"}
+{"id":"FINE_4","tenant_id":"TENANT_1(default)","dossier_number":"AMD-2026-NNNN","ref_fine":"<ref>","authority":"<authority>","country":"CH","canton":"<canton>","city":"<city>","infraction_at":"2025-10-15T10:30:00Z","location":"<loc>","vehicle_id":null,"vehicle_plate":"<plate>","driver_id":null,"driver_name":null,"infraction_type":"speeding","amount":250.0,"admin_fees":50.0,"total_amount":300.0,"currency":"CHF","due_date":"2025-11-15","paid_at":null,"status":"to_analyze","priority":"normal","internal_notes":"<notes>","documents":[],"created_at":"2026-06-22T15:35:01Z","created_by":"USER_1","updated_by":"USER_2"}
+```
+
+---
+
+## SECTION 23 — 31-FUNCTION PARITY MATRIX
+
+Documents = statuts **individuels** de l'annexe. ⚠ **INCOHÉRENCE INTERNE AUDIT DOCUMENTS — total §6 (4 OK / 7 PARTIEL / 4 MANQUANT / 1 N/A) différent du détail E1–E16 (4 / 6 / 5 / 1).** Non résolue ici.
+
+**ENERGY**
+
+| ID | Journal | Documents | Final gap | Required action |
+|---|---|---|---|---|
+| E1 Consommation | PRESENT (consommateur Energy) | OK | NONE | Vérifier que Documents reste consommateur d'Energy via Journal (invariant) — pas de double calcul |
+| E2 Approvisionnements | PRESENT (saisie manuelle sans justificatif + import) | PARTIEL | PARTIAL | Documents : permettre transaction sans ticket (relevés carte, legacy) avec motif |
+| E3 Cartes carburant | PRESENT | MANQUANT | MISSING | Référentiel cartes + affectations datées véhicule/conducteur (modèle §5) |
+| E4 Transactions | PRESENT (sans PATCH/DELETE) | PARTIEL | PARTIAL | Réaffectation/annulation explicites ; Journal lui-même n'a pas d'édition — définir le besoin |
+| E5 Rapprochements | PRESENT (tx↔véhicule scoré ; achats↔Energy) | MANQUANT | MISSING | Rattachement scoré explicable + rapprochement achats↔consommation (via Journal/Energy) |
+| E6 Anomalies | PRESENT (4 règles persistées, décisions) | PARTIEL | PARTIAL | Persistance, vue ouvertes, décision avec motif, seuils tenant |
+| E7 Imports CSV/XLSX | PRESENT | MANQUANT | MISSING | Import mapping générique, file de vérification, forçage motivé |
+| E8 Historique | PRESENT | PARTIEL | PARTIAL | Filtre période UI + pagination |
+| E9 Reporting | PRESENT | PARTIEL | PARTIAL | Évolution M/M-1, décomptes périodiques |
+| E10 Exports | PRESENT (décomptes, rapprochement ; pas de brut tx) | MANQUANT | MISSING | Export ligne par ligne (décomptes PDF/XLSX/CSV, rapprochement XLSX/PDF) |
+| E11 Filtres | PRESENT | PARTIEL | PARTIAL | station/carte/montant/type/texte |
+| E12 Intégration coûts | PARTIAL | OK | NONE | Documents supérieur ; conserver « une seule fois dans Coûts » lors d'une fédération |
+| E13 Échéances | PARTIAL (expiration carte, périodes décompte) | N/A | PARTIAL (conditionnel) | Devient requis avec E3 (`expires_at`, statut carte à date) |
+| E14 RBAC | PRESENT | OK | NONE | Aligner matrice §13 (driver : ses transactions) |
+| E15 Audit | PARTIAL (27/31) | OK | NONE (périmètre actuel) | Étendre l'audit aux fonctions E3/E5/E7 ajoutées |
+| E16 Conducteur | PRESENT | MANQUANT | MISSING | Entité conducteur stable (UUID) ; jamais par nom |
+
+Énergie — Final gap : **NONE 4 / PARTIAL 7 / MISSING 5**.
+
+**FINES**
+
+| ID | Journal | Documents | Final gap | Required action |
+|---|---|---|---|---|
+| A1 Liste / recherche | PRESENT | PARTIEL | PARTIAL | Vue dédiée Amendes |
+| A2 Filtres | PRESENT | PARTIEL | PARTIAL | autorité / montant / période infraction / conducteur |
+| A3 Statuts | PRESENT (10, sans machine à états) | OK (3) | PARTIAL | Mapper 10 statuts Journal → 3 Documents (perte : disputed, driver_to_identify, awaiting_driver, recharged, closed) ou enrichir |
+| A4 Échéances | PARTIAL | OK | NONE | — |
+| A5 Paiement / annulation | PARTIAL | OK (sans date métier/réf.) | PARTIAL | Date métier saisissable + référence (ni Journal ni Documents ne l'ont) |
+| A6 Conducteur / véhicule | PRESENT (identification BLE/GPS/affectation) | MANQUANT (véhicule couvert, conducteur absent) | MISSING | Conducteur sur amende + identification/validation manuelle |
+| A7 Historique | PARTIAL | PARTIEL | PARTIAL | Historique depuis la fiche amende |
+| A8 Pièces jointes | PRESENT (multi, typées) | PARTIEL | PARTIAL | Pièces additionnelles typées (courrier, contestation, preuve paiement) |
+| A9 Création / OCR | PRESENT (manuel + OCR pré-remplissage) | OK (supérieur) | PARTIAL | Formulaire manuel sans fichier (legacy 47/49) |
+| A10 Coûts | PARTIAL | OK | NONE | — |
+| A11 Reporting | PRESENT | PARTIEL | PARTIAL | KPIs amendes (par statut/type, top véhicules/conducteurs, 12 mois) |
+| A12 Exports | PRESENT | MANQUANT | MISSING | CSV/XLSX/PDF filtrés |
+| A13 Doublons | ABSENT | OK | NONE | Rien à imposer ; Documents supérieur |
+| A14 RBAC | PRESENT | OK | NONE | Ajouter vue chauffeur « mes amendes » si retenue |
+| A15 Audit | PARTIAL | OK | NONE | Conserver audit distinct paiement/annulation (Documents le fait, Journal non) |
+
+Amendes — Final gap : **NONE 6 / PARTIAL 7 / MISSING 2**.
+
+**31 fonctions — Final gap : NONE 10 / PARTIAL 14 / MISSING 7.**
+
+---
+
+## SECTION 24 — BLOCKERS B1–B8
+
+```
+B1 VEHICLE JOIN = PARTIAL
+Evidence: vehicles.id UUID4 stable (20/20), utilisé par fuel (14 tx, 2/2 résolus), cartes (1/1), fines (2/2) ; VIN 0/20 ; tracker évolutif prouvé (6 archivés) ; 44/49 fines portent une plaque sans vehicle_id.
+Remaining action: obtenir la clé véhicule Documents ; mapping UUID↔Documents explicite ; traitement manuel/validé des 44 amendes « plaque seule » ; interdire plaque/tracker comme clé auto.
+
+B2 TENANT MAPPING = PARTIAL
+Evidence: tenants.id unique ; tenant principal = littéral "default" (seul porteur de données et de navixy_master_user_id=121349) ; 0 orphelin/null/vide ; proxy écrase les 17 littéraux "default" de fines.py ; fallback auth.py:96 non déclenché (0 user sans tenant).
+Remaining action: clé tenant Documents (annexe muette) ; décider la correspondance "default" ↔ tenant Documents ; ne jamais réutiliser "default" comme fallback dans la façade.
+
+B3 DRIVER MODEL = PARTIAL
+Evidence: drivers.id UUID (227) ; fuel driver_id 1/1 résolu ; fines driver_id 2/2 résolus ; identification BLE/GPS/affectation (fines_engine) ; aucun matching par nom ; navixy_employee_id 12/227, user_id 38/227 ; 1 doublon de nom.
+Remaining action: Documents n'a pas d'entité conducteur (E16/A6 MANQUANT) ; définir l'entité cible et la provenance (drivers.id) ; card→driver history non éprouvé (0 donnée).
+
+B4 NO-DOCUMENT RECORDS = RESOLVED (quantification) / GAP côté Documents
+Evidence: fuel 61/62 sans document ; fines 47/49 sans fichier ; Documents exige un justificatif (E2, A9).
+Remaining action: spécifier dans Documents les enregistrements legacy sans fichier.
+
+B5 LEGACY IDEMPOTENCE = PARTIAL
+Evidence: id UUID stable sur tous les types ; clés secondaires (ext_id unique partiel, fingerprint unique, (transaction_id,type) unique) ; dedup_key non unique (17/62) ; fines/matches sans index unique ; dossier_number non atomique.
+Remaining action: contrat tenant_id + legacy_source="journal" + legacy_id à valider côté Documents ; ne pas exporter le fingerprint HMAC.
+
+B6 REAL PAYMENT DATE = PARTIAL
+Evidence: fines.paid_at existe (modèle + UI) mais sémantique mixte (saisie ou auto now à status=paid) ; 0/49 renseigné ; aucune référence paiement ; Documents idem (A5 « pas de date métier ni référence »).
+Remaining action: Documents doit introduire date métier + référence ; pour l'historique Journal, aucune date réelle n'est migrable (0).
+
+B7 FUEL CARDS = PARTIAL
+Evidence: modèle complet vérifié (22 + 11 champs, indexes, cycle de vie, affectations datées, HMAC) ; données : 1 carte, 1 affectation, 0 clôture, 0 affectation chauffeur ; documents carte pod-local.
+Remaining action: Documents E3 MANQUANT → spécifier le référentiel ; valider l'historisation sur données réelles.
+
+B8 DATA DICTIONARY = PARTIAL
+Evidence: dictionnaire exhaustif Journal (§4, §5, §8, §10, §20) ; restent NON VÉRIFIÉ : fuel_statement_lines, driver_sessions champs exacts, TENANT_TZ, ocr_engine config.
+Remaining action: dictionnaire Documents (absent de l'annexe) pour la table de correspondance champ à champ.
+
+BLOCKERS RESOLVED = 1 (B4, quantification)   BLOCKERS PARTIAL = 7   BLOCKERS BLOCKED = 0
+```
+
+---
+
+## SECTION 25 — CONFIRMED PHASE 4C GAPS
+
+| ID | Fonction | Journal proof | Documents actuel | Écart | Priorité | Bloquant migration ? | Dépendances |
+|---|---|---|---|---|---|---:|---|
+| G1 | Transaction carburant sans justificatif | `fuel.py:442-498` ; 61/62 | E2 PARTIEL | Documents refuse sans ticket | **P0** | oui | — |
+| G2 | Amende sans fichier (+ plaque seule) | `fines.py:463-519` ; 47/49, 44 plaque seule | A9 OK (OCR only) | pas de formulaire manuel | **P0** | oui | B1 mapping véhicule |
+| G3 | Référentiel cartes + affectations datées | §5 | E3 MANQUANT | absent | **P0** | oui (6 tx + import par carte) | G5 secret HMAC non exportable → re-saisie n° ou last4 |
+| G4 | Entité conducteur | §11 ; E16/A6 | MANQUANT | absent | **P0** | oui (fuel 1, fines 2, et toute identification future) | B3 |
+| G5 | Clés de correspondance véhicule/tenant Documents | §15-16 | annexe muette | inconnu | **P0** | oui | B1, B2 |
+| G6 | Statuts amendes 10 → 3 | `fines.py:42-45` | A3 OK (3) | perte sémantique (disputed, driver_to_identify, awaiting_driver, recharged, closed) | **P0** | oui (49 à mapper) | — |
+| G7 | Import CSV/XLSX avec mapping | §6 | E7 MANQUANT | absent | **P1** | non | G3 |
+| G8 | Rattachement tx↔véhicule scoré + manuel motivé | §7 | E5 MANQUANT | absent | **P1** | non (fédérable) | G3, G4, trajets Journal |
+| G9 | Rapprochement achats↔consommation Energy | `energy.py:224-370` | E5 MANQUANT | absent | **P1** | non | Energy via Journal uniquement (invariant) |
+| G10 | Anomalies persistées + décisions | §8 | E6 PARTIEL | non persisté | **P1** | non | G3 (card_inactive), capacités véhicules |
+| G11 | Exports énergie (décomptes, rapprochement) | §3 E10 | E10 MANQUANT | absent | **P1** | non | G7-G9 |
+| G12 | Exports amendes CSV/XLSX/PDF | `fines.py:267-357` | A12 MANQUANT | absent | **P1** | non | — |
+| G13 | Identification conducteur BLE/GPS/affectation + validation manuelle | `fines_engine.py` | A6 MANQUANT | absent | **P1** | non | G4, données trips/sessions Journal (fédération) |
+| G14 | Décomptes mensuels clôturables/verrouillants | `fuel_statements.py` | non évalué dans l'annexe | NON VÉRIFIÉ côté Documents | **P1** | non | G7-G8 |
+| G15 | Historique depuis la fiche amende | `audit_log scope fines` | A7 PARTIEL | partiel des deux côtés | **P2** | non | — |
+| G16 | Pièces additionnelles typées | `fines.py:55` | A8 PARTIEL | partiel | **P2** | non | — |
+| G17 | Filtres étendus (énergie A/E) | §3 E11, §9 A2 | PARTIEL | partiel | **P2** | non | — |
+| G18 | KPIs amendes / évolution mensuelle énergie | §9 A11, §3 E9 | PARTIEL | partiel | **P2** | non | — |
+| G19 | Date métier + référence de paiement | B6 | A5 OK sans date métier | absent des deux côtés | **P2** | non | — |
+| G20 | Vue chauffeur (mes transactions / mes amendes) | `fuel.py:399`, `fines.py:232` | non évalué | NON VÉRIFIÉ | **P2** | non | G4 |
+| G21 | Documents fuel pod-local (45 fichiers tests) | `fuel.py:35,651-653` | — | stockage éphémère ; 0 document réel | P2 (informatif) | non (tous tests) | Object Storage si reprise |
+
+---
+
+## SECTION 26 — MIGRATION RECOMMENDATION
+
+| Donnée | Strategy | Justification | Blocker | Target Documents |
+|---|---|---|---|---|
+| fuel transactions | FEDERATE READ-ONLY (phase 1) → MORE EVIDENCE REQUIRED pour migration physique | 62 enregistrements à ~98 % de test ; moteur (FX, matching, décomptes) reste dans Journal ; Documents refuse les tx sans ticket | G1, G5, B1 | lecture via façade `/api/service/v1/**` (à spécifier), jamais Energy direct |
+| fuel cards + assignments | MORE EVIDENCE REQUIRED | 1 carte test ; fingerprint HMAC non exportable ; modèle cible E3 inexistant | G3, B7 | référentiel cartes Documents (à créer) |
+| drivers | FEDERATE READ-ONLY | 227 conducteurs Journal (source Navixy/BLE) ; Documents sans entité | G4, B3 | entité conducteur Documents (à créer) alimentée par `drivers.id` |
+| imports (jobs/rows/mappings) | DO NOT MIGRATE | traces techniques de test (1 job) ; conserver dans Journal pour audit | — | — |
+| reconciliations (matches) | RECALCULATE | déductibles des tx + cartes + trajets ; données test incohérentes (10 vs 3 manual) | G8 | moteur Journal (fédéré) |
+| anomalies | RECALCULATE (décisions : MORE EVIDENCE REQUIRED) | 8 anomalies test ; recalculables ; 2 décisions `justified` à conserver si valeur | G10 | — |
+| fines | MORE EVIDENCE REQUIRED (physique) / FEDERATE READ-ONLY (phase 1) | 47/49 test ; 44 plaque seule ; 10 statuts → 3 ; pas de dédup source | G2, G5, G6, B1 | module Amendes Documents |
+| attachments | fines : MIGRATE PHYSICALLY possible (2 objets Object Storage, méta `storage_path`) — après GO ; fuel : DO NOT MIGRATE (45 PNG tests pod-local) | — | — | Object Storage Documents (préfixe à définir) |
+| audit history | DO NOT MIGRATE (conserver dans Journal, consultable) | 2 schémas, 1 030 sans tenant, 22 894 docs majoritairement tests ; Documents a son propre audit | — | — |
+| statements (décomptes) | MORE EVIDENCE REQUIRED | non évalués dans l'annexe Documents ; 2 brouillons tests | G14 | — |
+
+**AUCUNE migration réelle n'est exécutée ni préparée par ce rapport.**
+
+---
+
+## SECTION 27 — FINAL VERDICT
+
+```
+FINAL STATUS            = READY_FOR_GAP_IMPLEMENTATION
+ENERGY JOURNAL SOURCE   = VERIFIED
+FINES JOURNAL SOURCE    = VERIFIED
+31 FUNCTION PARITY      = INCOMPLETE  (NONE 10 / PARTIAL 14 / MISSING 7)
+B1-B8                   = PARTIAL     (1 RESOLVED, 7 PARTIAL, 0 BLOCKED)
+PHASE 4C SPECIFICATION  = CAN START
+HISTORICAL MIGRATION    = NOT STARTED
+PRODUCTION DEPLOYMENT   = NONE
+JOURNAL MODULE REMOVAL  = NOT AUTHORIZED
+```
+
+Le code source Journal des deux domaines est intégralement lu et prouvé (76 endpoints, modèles, indexes, RBAC, audit, stockage) ; les volumes et échantillons DB sont vérifiés en lecture seule. Aucun blocage dur côté Journal : toutes les clés sont des UUID stables tenant-scopés. Les preuves suffisent pour rédiger la spécification Phase 4C dans Documents, avec 6 écarts P0 (transactions/amendes sans justificatif, cartes, conducteur, clés de correspondance véhicule/tenant Documents, mapping des 10 statuts). Réserves : (1) les données actuelles sont ~96–98 % de test et n'autorisent aucune conclusion de migration historique ; (2) l'annexe Documents ne fournit ni clés véhicule/tenant ni dictionnaire, et présente une incohérence interne de totaux Énergie non résolue ; (3) `fuel_statement_lines`, `driver_sessions` (champs), `TENANT_TZ`, `ocr_engine` config restent NON VÉRIFIÉ. **READY_FOR_GAP_IMPLEMENTATION = les preuves suffisent pour spécifier ; ce n'est pas un GO pour coder.**
+
+---
+
+# CONTRÔLE ZÉRO MODIFICATION
+
+```
+$ git status --short
+?? .env.example
+?? frontend/yarn.lock
+?? logitrak-driver-app/.env.example
+?? logitrak-driver-app/yarn.lock
+?? yarn.lock
+$ git branch --show-current → main
+$ git rev-parse HEAD        → 4f007f84e6c2335c11eb2ff60797a768cc96c0b0
+$ git diff --stat           → (vide)
+
+PREEXISTING DIRTY/UNTRACKED = 5 fichiers ci-dessus — identiques à la liste du snapshot pré-audit (handoff) et au contrôle du complément de preuves ; aucun n'a été créé par Phase 4B (démontrable : même liste avant/après, HEAD inchangé, diff vide)
+BRANCH = main
+HEAD   = 4f007f84e6c2335c11eb2ff60797a768cc96c0b0
+FILES MODIFIED BY PHASE 4B = 0
+FILES CREATED BY PHASE 4B  = 0
+DB WRITES                  = 0   (uniquement find/findOne/countDocuments/aggregate/index_information)
+API WRITES                 = 0
+ENV CHANGES                = 0
+MIGRATIONS EXECUTED        = 0
+DEPLOYMENT                 = NONE
+```
+
+**STOP.** PHASE 4B = TERMINÉE · PHASE 4C = NON COMMENCÉE · MIGRATION = NON COMMENCÉE · DEPLOYMENT = NONE. En attente d'un nouveau GO explicite.
+
+
+=== 3. IMPORTANT — IDENTIFIANTS JOURNAL ===
+
+IMPORTANT — IDENTIFIANTS JOURNAL
+
+Les identifiants présents dans le rapport Phase 4B
+(TENANT_1(default), VEHICLE_n, DRIVER_n, CARD_n, TX_n, FINE_n)
+sont anonymisés et stables uniquement dans le rapport.
+
+Ne jamais les utiliser comme IDs de migration.
+
+Pendant 4C-0 :
+- identifier d'abord les clés canoniques Documents ;
+- définir ensuite exactement le contrat de mapping nécessaire à 4C-4.
+
+Si 4C-4 nécessite des identifiants source Journal réels,
+les lister précisément dans la spécification.
+
+Aucune extraction Journal supplémentaire maintenant.
+
+Une extraction READ-ONLY des clés réelles fera l'objet
+d'un GO utilisateur distinct côté Journal, uniquement si nécessaire.

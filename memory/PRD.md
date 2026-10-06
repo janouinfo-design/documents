@@ -727,3 +727,10 @@ VPS DEPLOYMENT       = NOT AUTHORIZED
 - Bloquants avant migration : B1 jointure véhicule (JOIN_NOT_READY) · B2 mapping tenant · B3 aucune entité conducteur · B4 aucune écriture sans document source (pleins/amendes historiques sans fichier) · B5 pas de clé d'idempotence legacy · B6 date de paiement réelle non modélisée · B7 cartes carburant (conditionnel) · B8 format Journal inconnu.
 - Intrants demandés : accès lecture Journal ou captures, export anonymisé, dictionnaire de données, matrice des rôles, volumétrie.
 - Aucun fichier applicatif modifié ; baseline Phases 1–3 inchangée ; aucun script de migration ; aucun déploiement. EN ATTENTE DU GO utilisateur.
+
+## Phase 4C — SPÉCIFICATION UNIQUEMENT (2026-10, zéro code)
+- Entrées : rapport Phase 4B Journal (HEAD 4f007f8, READ-ONLY, READY_FOR_GAP_IMPLEMENTATION = preuves suffisantes, PAS un GO code) copié dans `docs/inputs/PHASE_4C_INPUT_COMPLET.txt`.
+- Livrable : `docs/PHASE4C_SPECIFICATION.md` — 4C-0 audit cible Documents (read-only : `vehicles.id` UUID, `tenants.id` + clé technique `tenant_integrations.master_user_id=121349` ↔ Journal `navixy_master_user_id`, aucun conducteur, aucun document sans fichier, rôles admin/read_only/superadmin) ; 4C-1→4C-8 spécifiés au format 21 points ; ordre d'implémentation lots A→H (GO indépendant) ; dictionnaire champ à champ Journal→Documents ; décisions D1–D9 + D-E1 à trancher par l'utilisateur.
+- Principe directeur proposé (D1) : « document sans fichier » = source unique du coût ; `collect_costs` ne lit jamais `fuel_transactions` ; 1 document = 1 transaction conservé.
+- Erratum audit Phase 4 : Énergie = OK 4 / PARTIEL 6 / MANQUANT 5 / N/A 1 (le §6 disait 4/7/4/1) — fichier non modifié, à corriger sur GO.
+- Baseline Phases 1–3 figée ; démo preview conservée (amende 120 CHF « À payer », Migrol 74.17, facture 510.77) ; 0 fichier applicatif modifié ; 0 écriture DB ; aucune migration ; aucun déploiement. EN ATTENTE : décisions D1–D9 + GO par lot.
