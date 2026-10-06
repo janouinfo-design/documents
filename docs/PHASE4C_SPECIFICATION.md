@@ -8,7 +8,7 @@ Date : 2026-10 · Dépôt : `janouinfo-design/documents` (`/app`) · Entrées : 
 4C-0  AUDIT CIBLE DOCUMENTS            = FAIT (lecture seule, §0)
 4C-1 → 4C-8                             = SPÉCIFIÉS (§1–§8)
 PHASE 4C IMPLEMENTATION ORDER           = §9 (lots A→H, GO indépendant par lot)
-DÉCISIONS UTILISATEUR REQUISES          = §10 (D1–D9)
+DÉCISIONS UTILISATEUR                   = §10 — D1–D9 / D-E1 FIGÉES (2026-10) · amendements induits §10bis
 CODE = 0 · DB WRITES = 0 · MIGRATION = 0 · DEPLOYMENT = 0
 ```
 
@@ -151,12 +151,12 @@ Document avec `document_type="amende"`, `business_category="AMENDE"`, `montant, 
 4. **Gap exact** : P0 (B1/B2/B5).
 5. **Modèle cible** :
    - **Tenant (B2)** : `legacy_tenant_map{ legacy_source="journal", legacy_tenant_id, tenant_id, match_key="navixy_master_user_id", match_value, confirmed_by, confirmed_at }` — clé technique `Journal tenants.navixy_master_user_id ↔ Documents tenant_integrations.master_user_id` (prouvée des deux côtés pour le tenant principal : `121349`), **confirmation humaine obligatoire**, jamais par nom, jamais de fallback `default` (D3).
-   - **Véhicule (B1)** : `legacy_vehicle_map{ legacy_source, legacy_vehicle_id (UUID Journal), vehicle_id (Documents), method ∈ {manual, vin, navixy_vehicle_id, tracker_history_confirmed}, candidates[], confirmed_by, confirmed_at, note }`. Construction : pour chaque véhicule Journal (export READ-ONLY futur : `id, plate, vin, navixy_tracker_id, navixy_tracker_id_archived, model`) → appel du resolver Documents (`vin` → found ; `navixy_tracker_id` → found + warning → **candidat à confirmer** ; `plate` → manual_review) → table de candidats → **validation humaine** ligne par ligne (UI lot A). Amendes « plaque seule » (44) : résolution par `plaque_mentionnee` → `manual_review` → quarantaine jusqu'à confirmation ou rattachement « véhicule inconnu » explicite (D4).
+   - **Véhicule (B1)** : `legacy_vehicle_map{ legacy_source, legacy_vehicle_id (UUID Journal), vehicle_id (Documents), method ∈ {manual, vin, navixy_vehicle_id, tracker_history_confirmed}, candidates[], confirmed_by, confirmed_at, note }`. Construction : pour chaque véhicule Journal (export READ-ONLY futur : `id, plate, vin, navixy_tracker_id, navixy_tracker_id_archived, model`) → appel du resolver Documents (`vin` → found ; `navixy_tracker_id` → found + warning → **candidat à confirmer** ; `plate` → manual_review) → table de candidats → **validation humaine** ligne par ligne (UI lot A). Amendes « plaque seule » (44) : résolution par `plaque_mentionnee` → `manual_review` → **quarantaine jusqu'à confirmation humaine** (D4 figée : aucun objet « véhicule inconnu », `documents.vehicle_id` reste obligatoire ; non confirmée = non importée, listée dans le rapport de dry-run).
    - **Conducteur / carte** : pas de table séparée — `drivers.legacy_id`, `fuel_cards.legacy_id`.
    - **Idempotence (B5)** : `legacy_source`, `legacy_id`, `migration_version`, `legacy_payload_sha256` sur `documents`, `fuel_transactions`, `fuel_cards`, `fuel_card_assignments`, `drivers`, `driver_assignments` ; **1 enregistrement Journal → max 1 enregistrement Documents** ; rejouer = upsert par `(tenant_id, legacy_source, legacy_id)` ; `dedup_key` Journal conservée en `legacy_dedup_key` (informative, non unique) ; `dossier_number` → `dossier_interne` (référence humaine, non clé).
 6. **Collections / champs** : ci-dessus + `vehicles.legacy_ids[]?` (optionnel, pour affichage).
 7. **Indexes** : unique partiel `(tenant_id, legacy_source, legacy_id)` (legacy_id string) sur les 6 collections ; `legacy_vehicle_map (legacy_source, legacy_vehicle_id)` unique ; `legacy_tenant_map (legacy_source, legacy_tenant_id)` unique.
-8. **Endpoints** (lecture/validation humaine, aucune migration) : `GET /api/admin/legacy/tenant-map`, `POST …/tenant-map/confirm` (superadmin) ; `GET /api/legacy/vehicle-map`, `POST /api/legacy/vehicle-map/candidates` (corps = liste véhicules Journal anonymisée ou réelle → candidats via resolver, **aucune écriture**), `POST /api/legacy/vehicle-map/{legacy_vehicle_id}/confirm` (admin, `vehicle_id` ou `unknown`) ; `GET /api/legacy/dry-run-report` : **réservé** (hors 4C, GO distinct).
+8. **Endpoints** (lecture/validation humaine, aucune migration) : `GET /api/admin/legacy/tenant-map`, `POST …/tenant-map/confirm` (superadmin) ; `GET /api/legacy/vehicle-map`, `POST /api/legacy/vehicle-map/candidates` (corps = liste véhicules Journal anonymisée ou réelle → candidats via resolver, **aucune écriture**), `POST /api/legacy/vehicle-map/{legacy_vehicle_id}/confirm` (admin, `vehicle_id` **obligatoire** — D4 : pas de branche `unknown`) ; `GET /api/legacy/dry-run-report` : **réservé** (hors 4C, GO distinct).
 9. **Backend** : `server.py` (bloc Legacy ; index startup).
 10. **Frontend** : `LegacyMappingPage.jsx` (`/admin/correspondances`, admin) : tableau Journal ↔ Documents, candidats + méthode + warning tracker, boutons « Confirmer » / « Véhicule inconnu » ; console superadmin : onglet correspondance tenant.
 11. **RBAC** : tenant-map = superadmin ; vehicle-map = admin ; read_only lecture.
@@ -181,7 +181,7 @@ Document avec `document_type="amende"`, `business_category="AMENDE"`, `montant, 
 | `external_transaction_id` | tx.`external_transaction_id` (nouveau) · doc.`numero` | unique partiel `(tenant, fournisseur, external_transaction_id)` |
 | `provider` | tx.`fournisseur` (nouveau) · doc.`fournisseur` | `manuel` → null + `created_from=manual` |
 | `card_id` / `card_last4` | tx.`card_id` (via `fuel_cards.legacy_id`) / `carte_last4` | — |
-| `tx_datetime` (ISO, tz parfois absente) | tx.`date`, `heure`, `date_heure` | UTC → `Europe/Zurich` (D5) ; original conservé `date_heure_source` |
+| `tx_datetime` (ISO, tz parfois absente) | tx.`date`, `heure`, `date_heure`, `date_heure_source`, `date_heure_tz_assumed` | D5 figée : tz-aware → conversion `Europe/Zurich` ; **naïf → interprété heure locale `Europe/Zurich` + `date_heure_tz_assumed=true`** ; original brut toujours conservé dans `date_heure_source` ; `TENANT_TZ` Journal à confirmer read-only avant dry-run (ne bloque pas le modèle) |
 | `accounting_date` | tx.`date_comptable` (nouveau) | null 62/62 |
 | `station_name/address/country` | tx.`station`, `station_adresse`, `pays` (nouveaux) | lat/lng : DO NOT MIGRATE (null 62/62) |
 | `product_type` | tx.`type_carburant` + `energie` | `diesel→Diesel`, `essence→Essence`, `adblue→AdBlue`, `electric→Électricité (energie=electrique)`, `other→Autre` ; **AdBlue exclu du calcul de conso** (règle à ajouter dans `_conso_from_transactions`) |
@@ -189,7 +189,7 @@ Document avec `document_type="amende"`, `business_category="AMENDE"`, `montant, 
 | `unit_price` | `prix_litre` / `prix_kwh` | — |
 | `amount_net/vat_amount/vat_rate` | doc.`montant_ht`, `tva_chf`, `tva_taux` (nouveau) | — |
 | `amount_total/currency` | doc.`montant`, `devise` · tx.`montant`, `devise` | — |
-| `amount_chf/fx_*` | doc.`montant_chf`, tx.`fx_rate/fx_rate_date/fx_source/fx_status` (nouveaux) | **D7 : `collect_costs` lit `montant_chf` si `devise≠CHF`** |
+| `amount_chf/fx_*` | doc.`montant_chf`, tx.`fx_rate/fx_rate_date/fx_source/fx_status` (nouveaux) | **D7 figée** : `devise=CHF` → `montant` ; `devise≠CHF` + `montant_chf` présent → `montant_chf` ; `devise≠CHF` sans `montant_chf` → **jamais sommé comme CHF**, ligne marquée « conversion en attente » (`fx_status=pending`) et exclue du total CHF ; montant/devise d'origine conservés ; source FX Documents = décision ultérieure distincte |
 | `mileage` | tx.`kilometrage` | jamais écrit sur `vehicle.kilometrage` |
 | `vehicle_hint/driver_hint` | tx.`vehicle_hint`, `driver_hint` | contexte, jamais résolution auto |
 | `vehicle_id` | `vehicle_id` via `legacy_vehicle_map` | non résolu → quarantaine |
@@ -380,24 +380,60 @@ Critère global de clôture Phase 4C : **31 fonctions = NONE** (Final gap) sauf 
 | **H** | UI/exploitation : filtres/pagination/périodes, graphique, rôle `driver` + vues « mes… » | §7 | P1 (filtres) / P2 (driver) | C, D, F, G | M | pytest RBAC + it. |
 | — | **Dry-run migration** (hors 4C) : extraction clés réelles Journal (GO distinct), rapport d'écarts, 0 écriture | — | après parité | A→H | — | rapport |
 
-Règles communes à tous les lots : préfixe `/api` · `REACT_APP_BACKEND_URL` · `tid(request)` serveur · read_only 403 backend · `data-testid` sur tout élément interactif/critique · aucun ObjectId exposé · `datetime.now(timezone.utc)` · `collect_costs` ne lit jamais `fuel_transactions` · aucune réaffectation automatique véhicule/conducteur · Phases 1–3 figées (tests existants intacts) · `requirements.txt` via `pip freeze` après installation · Dockerfile vérifié pour tout nouveau module backend · aucune donnée factice injectée en production.
+Règles communes à tous les lots : préfixe `/api` · `REACT_APP_BACKEND_URL` · `tid(request)` serveur · read_only 403 backend · **RBAC centralisé (`require_roles`, matrice §10bis) dès le lot A ; rôles `manager`/`driver` activés au lot H via `integration_expert`** · `data-testid` sur tout élément interactif/critique · aucun ObjectId exposé · `datetime.now(timezone.utc)` · `collect_costs` ne lit jamais `fuel_transactions` · aucune réaffectation automatique véhicule/conducteur · Phases 1–3 figées (tests existants intacts) · `requirements.txt` via `pip freeze` après installation · Dockerfile vérifié pour tout nouveau module backend · aucune donnée factice injectée en production.
 
 ---
 
-## §10 — DÉCISIONS UTILISATEUR REQUISES AVANT GO (aucune valeur par défaut appliquée)
+## §10 — DÉCISIONS UTILISATEUR — FIGÉES (2026-10) · D1–D9 / D-E1 = DÉCIDÉES
 
-| ID | Décision | Options | Recommandation (argumentée, non appliquée) |
+Ces décisions figent **uniquement la spécification**. Aucun GO de lot n'en découle. Détail des options/preuves/risques : livré dans le chat (session 2026-10), repris ici sous forme figée.
+
+| ID | Décision | Choix figé | Règles figées |
 |---|---|---|---|
-| **D1** | Représentation des enregistrements sans justificatif | (a) **document sans fichier** (coût porté par le document, invariant conservé) · (b) `source_document_id` nullable + coûts lus dans `fuel_transactions` | (a) — seul choix compatible avec « `collect_costs` ne lit jamais `fuel_transactions` », 1 doc = 1 tx, 409 d'intégrité |
-| **D2** | Identité des cartes sans fingerprint HMAC | (a) `(fournisseur, last4)` non unique + désambiguïsation manuelle · (b) saisie du n° complet et nouveau HMAC Documents (secret propre) | (a) pour la migration (n° complet non disponible) ; (b) possible plus tard pour les nouvelles cartes |
-| **D3** | Correspondance tenant | clé technique `navixy_master_user_id` (121349 des deux côtés) confirmée par superadmin | oui, confirmation humaine obligatoire ; jamais par nom ; jamais `default` implicite |
-| **D4** | 44 amendes Journal « plaque seule » | (a) quarantaine jusqu'à confirmation manuelle véhicule · (b) rattachement « véhicule inconnu » explicite (document sans véhicule — **nécessite** `documents.vehicle_id` nullable, impact conformité/UI) | (a) ; (b) seulement si le métier veut conserver des amendes orphelines |
-| **D5** | Fuseau des dates legacy | `Europe/Zurich` pour `date/heure` (original conservé `date_heure_source`) | oui (cohérent avec les tickets OCR saisis en heure locale) |
-| **D6** | Rôles | créer `driver` (vue chauffeur) ? créer `manager` (écriture sans import/paramètres) ? `notes_internes` visibles read_only ? | `driver` oui (lot H, revue auth obligatoire) ; `manager` non sauf besoin exprimé ; `notes_internes` admin seulement |
-| **D7** | Devises ≠ CHF dans Coûts | `collect_costs` lit `montant_chf` si présent et `devise≠CHF` (sinon `montant`) | oui (petit changement du moteur, testé Phase 1 intacte en CHF) |
-| **D8** | Anomalies/décisions et `issues[]` Journal | recalculer anomalies ; réimporter décisions `justified` ? migrer `issues[]` en signalements ? | recalculer ; décisions : seulement si données réelles ; `issues` : non (46/46 tests) |
-| **D9** | Amende `annulee` | exclue de `collect_costs` (montant conservé, badge Annulée) | oui |
-| **D-E1** | Consommation réelle canonique après migration | Documents (CAN Navixy + tickets + ASTRA) **ou** module Energy externe fédéré via Journal | Documents ; fédération Energy = transitoire, lecture seule, contrat `/api/service/v1/**` à écrire si requis |
+| **D1** | Enregistrements sans justificatif | **(a) document sans fichier** | (1) `source ∈ {legacy_import, manual}` · (2) `storage_path`/métadonnées fichier null/absents · (3) 1 document = max 1 `fuel_transaction` · (4) UI explicite « Aucun justificatif » · (5) endpoints fichier gèrent l'absence de binaire sans erreur technique · (6) création/modification auditées · (7) idempotence `tenant_id + legacy_source + legacy_id`. `source_document_id` **non** nullable en fonctionnement normal. Invariant : `collect_costs` lit le document ; `fuel_transactions` jamais resommé. |
+| **D2** | Identité des cartes sans fingerprint HMAC | **(a)** | `(fournisseur, last4)` **non unique** + désambiguïsation manuelle ; aucun fingerprint Journal migré ; HMAC propre à Documents = lot ultérieur éventuel (hors 4C) pour les nouvelles cartes. |
+| **D3** | Correspondance tenant | **(a)** | Mapping uniquement par clé technique Journal `tenants.navixy_master_user_id` ↔ Documents `tenant_integrations.master_user_id`, **confirmation superadmin obligatoire** ; aucun mapping par nom ; aucun fallback `default` implicite ; tenant sans clé technique = **non migré automatiquement** (ligne du rapport de dry-run). |
+| **D4** | 44 amendes « plaque seule » | **(a) quarantaine** | Quarantaine jusqu'à confirmation humaine du véhicule ; `documents.vehicle_id` reste obligatoire ; aucun objet permanent « véhicule inconnu » ; plaque = indice, jamais jointure automatique. |
+| **D5** | Fuseau des dates legacy | **(a) `Europe/Zurich`** | tz-aware → conversion `Europe/Zurich` ; datetime Journal **naïf** → heure locale `Europe/Zurich` supposée + `date_heure_tz_assumed=true` ; `date_heure_source` = valeur brute toujours conservée ; `TENANT_TZ` Journal à confirmer read-only **avant dry-run** (ne bloque pas le modèle). |
+| **D6** | Rôles | **D6.1 driver = OUI · D6.2 manager = OUI · D6.3 notes_internes = admin uniquement** | Modèle cible 5 rôles : `superadmin` (plateforme / override tenant) · `admin` (administration complète du tenant) · `manager` (exploitation métier, **sans** imports / cartes / paramètres / suppressions) · `read_only` (consultation) · `driver` (uniquement ses propres données). `notes_internes` masquées à `read_only` et `driver` (filtrage **serveur**). Matrice : §10bis. Toute modification `auth.py` → `integration_expert`. |
+| **D7** | Devises ≠ CHF dans Coûts | **(a)** | `devise=CHF` → `montant` ; `devise≠CHF` + `montant_chf` → `montant_chf` ; `devise≠CHF` sans `montant_chf` → **jamais sommé comme CHF**, marqué « conversion en attente », exclu du total CHF ; montant/devise d'origine conservés ; source FX Documents = décision ultérieure distincte. |
+| **D8** | Anomalies / décisions / `issues[]` | **D8.a recalculer · D8.b réimport conditionnel · D8.c ne pas migrer** | Anomalies **recalculées** par Documents ; décision legacy `justified` réimportée **uniquement si** anomalie re-détectée par Documents, même transaction legacy, même type, donnée réelle (non test) ; `issues[]` non migrées — commentaire métier réel → `fuel_transactions.commentaire`, aucun sous-système « signalements ». |
+| **D9** | Amende `annulee` | **(a)** | Exclue de `collect_costs` **et** des échéances actives ; montant et document conservés ; badge « Annulée » ; transition auditée avec motif. `cloturee` reste comptée ; `refacturee` reste comptée avec son marqueur (table §5.5). |
+| **D-E1** | Consommation réelle canonique | **(a) Documents** | Priorité `CAN mesuré > fuel_transactions/tickets` (Phase 2 figée) ; ASTRA = référence officielle/comparative ; rapprochement achats↔consommation calculé dans Documents ; **aucune dépendance permanente au Journal/Energy** ; fédération éventuelle = transitoire explicite, lecture seule, **avec date de fin** ; contrat `/api/service/v1/**` non écrit par défaut. |
+
+### §10bis — Amendements de la spécification induits par les décisions
+
+1. **D4 → §4.5 / §4.8** : `confirm` exige `vehicle_id` ; aucune branche `unknown` ; état « non confirmé » = quarantaine (hors `documents`). Lot A : UI sans bouton « Véhicule inconnu ».
+2. **D5 → §3 / §4.11 / §6a** : champ `fuel_transactions.date_heure_tz_assumed` (bool, défaut false) ; import CSV/XLSX (lot F) : colonnes date sans fuseau = heure locale `Europe/Zurich` ; `_conso_from_transactions`, `double_plein` et périodes de décompte (lot G) opèrent en `Europe/Zurich`.
+3. **D6 → RBAC cible (remplace les lignes « RBAC » des §1–§7)** — `(J)` = sémantique prouvée Journal (4B §13) · `(P)` = proposition Documents, à confirmer au GO du lot concerné :
+
+| Capacité | superadmin | admin | manager | read_only | driver |
+|---|---|---|---|---|---|
+| Lecture tenant (toutes pages) | ✔ override | ✔ | ✔ (J) | ✔ (J) | ✘ — ses données via `/api/me/**` (J) |
+| Phases 1–3 : upload/scan/validate/édition documents & fiche véhicule | ✔ | ✔ | ✔ (P) | ✘ | ✘ |
+| Suppression (documents, archive conducteur, soft-delete pièces) | ✔ | ✔ | ✘ (J : `ROLES_DELETE=admin`) | ✘ | ✘ |
+| Plein / amende sans justificatif (4C-3) | ✔ | ✔ | amende ✔ (J) · plein ✔ (P — Journal : admin seul) | ✘ | ✘ |
+| Amendes : statut, paiement, conducteur, pièces (4C-5) | ✔ | ✔ | ✔ (J) | ✘ | ✘ |
+| `notes_internes` (lecture) | ✔ | ✔ | ✔ (P) | ✘ (D6.3) | ✘ (J) |
+| Conducteurs : référentiel (4C-1) | ✔ | ✔ | ✘ (P) | ✘ | ✘ |
+| Affectations véhicule↔conducteur (4C-1) | ✔ | ✔ | ✔ (P) | ✘ | ✘ |
+| Cartes : création/édition/statut/affectations (4C-2) | ✔ | ✔ | ✘ (J) | ✘ | ✘ |
+| Imports CSV/XLSX, mappings (4C-6a) | ✔ | ✔ | ✘ (J) | ✘ | ✘ |
+| Match manuel motivé, run, décisions anomalies (4C-6a) | ✔ | ✔ | ✔ (J : `MATCH_ROLES`) | ✘ | ✘ |
+| Paramètres tenant (`tenant-settings.fuel`, intégrations) | ✔ | ✔ | ✘ (J) | ✘ | ✘ |
+| Rapprochement (lecture/generate), décomptes : création/refresh (4C-6b) | ✔ | ✔ | ✔ (P) | lecture | ✘ |
+| Décomptes : validate/close (verrou) (4C-6b) | ✔ | ✔ | ✘ (P) | ✘ | ✘ |
+| Exports CSV/XLSX/PDF | ✔ | ✔ | ✔ (P) | ✔ (P) | ses données (P) |
+| Correspondances legacy véhicule (lot A) | ✔ | ✔ | ✘ (P) | lecture | ✘ |
+| Correspondance tenant (lot A) | ✔ seul | ✘ | ✘ | ✘ | ✘ |
+| Justificatif sur ses propres transactions | — | — | — | — | ✔ (J) |
+
+   Implémentation : helper central `require_roles(*roles)` dès le **lot A** ; matrice limitée à `superadmin/admin/read_only` jusqu'au lot H (middleware read_only Phase 1–3 inchangé) ; `manager` et `driver` **créés au lot H** (`users.role` enum + `users.driver_id`, `auth.py` via `integration_expert`) → aucune reprise des endpoints, seule la matrice s'étend. Phases 1–3 : `manager` = écriture sauf DELETE → **une garde ajoutée** sur les DELETE existants au lot H (tests existants inchangés : admin). Migration des comptes Journal (hors 4C, dry-run) : `lecture_seule → read_only`, `manager → manager`, `driver → driver` (si `drivers.user_id` résolu), `admin → admin`.
+4. **D7 → §5.9 / §6b** : `collect_costs` = une seule modification (3 cas) ; réponse enrichie `pending_fx[]` (lignes exclues, pour affichage « conversion en attente ») ; totaux de décomptes (lot G) suivent la même règle ; tests Phase 1 CHF inchangés.
+5. **D8 → §6a.14** : réimport des décisions = étape du dry-run (pas du lot F) ; conditions figées ; `issues[]` → `commentaire` uniquement si réel.
+6. **D9 → §5.5 / §5.9** : `collect_costs` et `collect_deadlines` filtrent `fine_status="annulee"` ; amende Phase 3 sans `fine_status` = `a_payer` (dérivation, aucune migration) ; `/paid` Phase 3 intact.
+7. **D-E1 → §6b.5** : aucune route de fédération Journal/Energy spécifiée dans 4C ; si un besoin transitoire est exprimé → spécification distincte (contrat, date de fin, lecture seule) avant tout GO.
+8. **D2 / D3** : §2 et §4 déjà conformes ; précision D3 : rapport de dry-run liste les tenants Journal sans clé technique comme « non migrés ».
 
 ---
 
@@ -416,7 +452,7 @@ PHASE 4C — SPECIFICATION
 4C-7 UI / EXPLOITATION       = SPECIFIED (lot H)
 4C-8 PLAN DE TESTS           = SPECIFIED
 IMPLEMENTATION ORDER         = A → B → C → D → E → F → G → H (GO indépendant par lot)
-DÉCISIONS REQUISES           = D1–D9, D-E1
+DÉCISIONS                    = D1–D9, D-E1 FIGÉES (§10, 2026-10) — lots A–H : GO distinct requis par lot
 ERRATUM PHASE 4              = signalé (OK 4 / PARTIEL 6 / MANQUANT 5 / N/A 1), fichier non modifié
 
 FILES MODIFIED (applicatifs) = 0
@@ -427,4 +463,4 @@ PHASES 1–3 = FIGÉES · JOURNAL = INCHANGÉ
 PHASE 4C = SPECIFICATION ONLY
 ```
 
-**STOP.** En attente du GO explicite par lot (et des décisions D1–D9 / D-E1) avant toute ligne de code.
+**STOP.** Décisions D1–D9 / D-E1 figées. En attente du GO explicite **par lot** (A → H) avant toute ligne de code. Aucun GO lot n'est implicite.
