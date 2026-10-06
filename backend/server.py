@@ -31,6 +31,8 @@ from auth import (authenticate_request, check_lockout, clear_failures, create_ac
                   hash_password, record_failure, seed_admin, seed_superadmin, verify_password,
                   create_sso_token, SSO_TOKEN_TTL_MINUTES)
 from storage import get_object, guess_mime, init_storage, put_object
+import legacy_identity
+from legacy_identity import norm_vin as _norm_vin, norm_plate as _norm_plate, identity as _identity
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -812,6 +814,18 @@ def tid(request: Request) -> str:
     return getattr(request.state, "tenant_id", None) or "default"
 
 
+# Matrice RBAC centralisée (Phase 4C §10bis). Rôles actuels : superadmin / admin / read_only.
+# `manager` et `driver` seront ajoutés au lot H — aucun comportement Phases 1–3 modifié ici.
+def require_roles(*roles):
+    async def _dep(request: Request):
+        user = getattr(request.state, "user", None) or await require_auth(request)
+        role = user.get("role")
+        if role == "superadmin" or role in roles:
+            return user
+        raise HTTPException(status_code=403, detail="Accès refusé pour ce rôle")
+    return _dep
+
+
 async def find_tenant_vehicle(request: Request, vehicle_id: str, projection: dict = None) -> dict:
     """Pivot d'isolation : tout accès véhicule passe par (tenant_id + vehicle_id)."""
     v = await db.vehicles.find_one({"id": vehicle_id, "tenant_id": tid(request)},
@@ -912,22 +926,6 @@ _IDENTITY_PROJ = {"_id": 0, "id": 1, "vin": 1, "plaque": 1, "marque": 1, "modele
                   "annee": 1, "navixy_tracker_id": 1, "navixy_vehicle_id": 1}
 
 
-def _norm_vin(v):
-    return re.sub(r"[^A-Z0-9]", "", (v or "").upper())
-
-
-def _norm_plate(p):
-    return re.sub(r"[^A-Z0-9]", "", (p or "").upper())
-
-
-def _identity(v: dict) -> dict:
-    return {"vehicle_id": v.get("id"), "vin": v.get("vin") or None,
-            "plate": v.get("plaque") or None, "make": v.get("marque") or None,
-            "model": v.get("modele") or None, "year": v.get("annee") or None,
-            "navixy_tracker_id": v.get("navixy_tracker_id"),
-            "navixy_vehicle_id": v.get("navixy_vehicle_id")}
-
-
 @api_router.get("/vehicles/resolve")
 async def resolve_vehicle(request: Request,
                           vehicle_id: Optional[str] = None,
@@ -941,41 +939,231 @@ async def resolve_vehicle(request: Request,
     historique d'affectation boîtier↔véhicule n'est maintenu.
     plate : JAMAIS de match automatique — statut manual_review avec candidats.
     Plusieurs résultats sur un critère fort = ambiguous immédiat."""
-    vin_n, plate_n = _norm_vin(vin), _norm_plate(plate)
-    criteria = []
-    if vehicle_id:
-        criteria.append(("vehicle_id", lambda v: v.get("id") == vehicle_id))
-    if vin_n:
-        criteria.append(("vin", lambda v: _norm_vin(v.get("vin")) == vin_n))
-    if navixy_vehicle_id is not None:
-        criteria.append(("navixy_vehicle_id", lambda v: v.get("navixy_vehicle_id") == navixy_vehicle_id))
-    if navixy_tracker_id is not None:
-        criteria.append(("navixy_tracker_id", lambda v: v.get("navixy_tracker_id") == navixy_tracker_id))
-    if plate_n:
-        criteria.append(("plate", lambda v: _norm_plate(v.get("plaque")) == plate_n))
-    if not criteria:
-        raise HTTPException(status_code=422, detail=(
-            "Fournissez au moins un critère : vehicle_id, vin, navixy_vehicle_id, "
-            "navixy_tracker_id ou plate."))
     vehicles = await db.vehicles.find({"tenant_id": tid(request)}, _IDENTITY_PROJ).to_list(None)
-    searched = [name for name, _ in criteria]
-    for name, pred in criteria:
-        matches = [v for v in vehicles if pred(v)]
-        if name == "plate":
-            if matches:
-                return {"status": "manual_review", "matched_by": "plate", "count": len(matches),
-                        "matches": [_identity(m) for m in matches],
-                        "note": "Rapprochement par plaque réservé à une confirmation manuelle"}
+    try:
+        return legacy_identity.resolve_identity(vehicles, vehicle_id, vin, navixy_vehicle_id,
+                                                navixy_tracker_id, plate)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Phase 4C — Lot A : correspondances legacy Journal → Documents (véhicules, tenant-scopé).
+# Lecture seule + confirmation HUMAINE. Aucune donnée métier legacy n'est migrée ici.
+# ---------------------------------------------------------------------------
+class LegacyVehicleIn(BaseModel):
+    legacy_vehicle_id: str
+    plate: Optional[str] = None
+    vin: Optional[str] = None
+    navixy_tracker_id: Optional[int] = None
+    navixy_vehicle_id: Optional[int] = None
+    model: Optional[str] = None
+
+
+class LegacyVehiclesPayload(BaseModel):
+    legacy_source: Optional[str] = legacy_identity.LEGACY_SOURCE_DEFAULT
+    vehicles: List[LegacyVehicleIn]
+
+
+class LegacyVehicleConfirm(BaseModel):
+    vehicle_id: str
+    note: Optional[str] = None
+    override: bool = False
+    reason: Optional[str] = None
+
+
+class LegacyRejectPayload(BaseModel):
+    reason: str
+
+
+def _legacy_source(value) -> str:
+    try:
+        return legacy_identity.normalize_source(value)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+def _vmap_key(request: Request, legacy_source: str, legacy_vehicle_id: str) -> dict:
+    return {"tenant_id": tid(request), "legacy_source": legacy_source,
+            "legacy_vehicle_id": (legacy_vehicle_id or "").strip()}
+
+
+async def _legacy_candidates(request: Request, payload: LegacyVehiclesPayload):
+    src = _legacy_source(payload.legacy_source)
+    if not payload.vehicles:
+        raise HTTPException(status_code=422, detail="Liste de véhicules Journal vide")
+    if len(payload.vehicles) > 2000:
+        raise HTTPException(status_code=422, detail="Maximum 2000 véhicules par lot")
+    vehicles = await db.vehicles.find({"tenant_id": tid(request)}, _IDENTITY_PROJ).to_list(None)
+    existing = {r["legacy_vehicle_id"]: r for r in await db.legacy_vehicle_map.find(
+        {"tenant_id": tid(request), "legacy_source": src}, {"_id": 0}).to_list(None)}
+    items = []
+    for v in payload.vehicles:
+        item = v.model_dump()
+        item["legacy_vehicle_id"] = (item["legacy_vehicle_id"] or "").strip()
+        if not item["legacy_vehicle_id"]:
+            raise HTTPException(status_code=422, detail="legacy_vehicle_id manquant")
+        cand = legacy_identity.vehicle_candidates(vehicles, item)
+        ex = existing.get(item["legacy_vehicle_id"])
+        cand["existing"] = ({"status": ex.get("status"), "vehicle_id": ex.get("vehicle_id"),
+                             "method": ex.get("method")} if ex else None)
+        items.append(cand)
+    return src, items, existing
+
+
+@api_router.get("/legacy/vehicle-map")
+async def legacy_vehicle_map_list(request: Request, status: Optional[str] = None,
+                                  legacy_source: Optional[str] = None):
+    q = {"tenant_id": tid(request)}
+    if status:
+        q["status"] = status
+    if legacy_source:
+        q["legacy_source"] = _legacy_source(legacy_source)
+    rows = await db.legacy_vehicle_map.find(q, {"_id": 0}).to_list(None)
+    vids = [r["vehicle_id"] for r in rows if r.get("vehicle_id")]
+    plates = {v["id"]: v for v in await db.vehicles.find(
+        {"tenant_id": tid(request), "id": {"$in": vids}},
+        {"_id": 0, "id": 1, "plaque": 1, "marque": 1, "modele": 1}).to_list(None)} if vids else {}
+    for r in rows:
+        v = plates.get(r.get("vehicle_id")) or {}
+        r["vehicle"] = ({"vehicle_id": v["id"], "plate": v.get("plaque"), "make": v.get("marque"),
+                         "model": v.get("modele")} if v else None)
+    order = {"pending": 0, "confirmed": 1, "rejected": 2}
+    rows.sort(key=lambda r: (order.get(r.get("status"), 9), (r.get("legacy") or {}).get("plate") or "",
+                             r.get("legacy_vehicle_id") or ""))
+    all_rows = await db.legacy_vehicle_map.find({"tenant_id": tid(request)}, {"_id": 0, "status": 1}).to_list(None)
+    counts = {k: sum(1 for r in all_rows if r.get("status") == k) for k in ("pending", "confirmed", "rejected")}
+    return {"rows": rows, "counts": counts}
+
+
+@api_router.post("/legacy/vehicle-map/candidates", dependencies=[Depends(require_roles("admin"))])
+async def legacy_vehicle_map_candidates(payload: LegacyVehiclesPayload, request: Request):
+    """Aperçu LECTURE SEULE : candidats Documents par véhicule Journal. Aucune écriture."""
+    src, items, _ = await _legacy_candidates(request, payload)
+    summary = {}
+    for it in items:
+        summary[it["status"]] = summary.get(it["status"], 0) + 1
+    return {"legacy_source": src, "items": items, "summary": summary, "written": 0}
+
+
+@api_router.post("/legacy/vehicle-map/stage", dependencies=[Depends(require_roles("admin"))])
+async def legacy_vehicle_map_stage(payload: LegacyVehiclesPayload, request: Request):
+    """Met en file d'attente (statut pending) les véhicules Journal à confirmer. Lignes confirmées/rejetées intactes."""
+    src, items, existing = await _legacy_candidates(request, payload)
+    now = datetime.now(timezone.utc).isoformat()
+    user = (getattr(request.state, "user", None) or {}).get("email")
+    created = updated = skipped = 0
+    for it in items:
+        ex = existing.get(it["legacy_vehicle_id"])
+        if ex and ex.get("status") in ("confirmed", "rejected"):
+            skipped += 1
             continue
-        if len(matches) == 1:
-            out = {"status": "found", "matched_by": name, "vehicle": _identity(matches[0])}
-            if name == "navixy_tracker_id":
-                out["warning"] = "tracker_join_no_assignment_history"
-            return out
-        if len(matches) > 1:
-            return {"status": "ambiguous", "matched_by": name, "count": len(matches),
-                    "matches": [_identity(m) for m in matches]}
-    return {"status": "not_found", "searched_by": searched}
+        key = _vmap_key(request, src, it["legacy_vehicle_id"])
+        res = await db.legacy_vehicle_map.update_one(key, {
+            "$set": {"legacy": it["legacy"], "candidates": it["candidates"],
+                     "suggestion": {"status": it["status"], "method": it["method_suggested"],
+                                    "warnings": it["warnings"]},
+                     "status": "pending", "staged_at": now, "staged_by": user, "updated_at": now},
+            "$setOnInsert": {**key, "id": str(uuid.uuid4()), "vehicle_id": None, "method": None,
+                             "confirmed_by": None, "confirmed_at": None, "note": None, "created_at": now}},
+            upsert=True)
+        if res.upserted_id is not None:
+            created += 1
+        else:
+            updated += 1
+    await audit("legacy_map_stage", "legacy_vehicle_map", request, entity_id=src,
+                detail=(f"{len(items)} véhicule(s) Journal analysés : {created} mis en file, "
+                        f"{updated} actualisés, {skipped} ignorés (déjà confirmés/rejetés) — aucune migration"))
+    return {"legacy_source": src, "created": created, "updated": updated, "skipped": skipped, "items": items}
+
+
+def _method_for(row: dict, vehicle_id: str) -> str:
+    for c in (row or {}).get("candidates") or []:
+        if c.get("vehicle_id") == vehicle_id:
+            return legacy_identity._METHOD_BY_CRITERION.get(c.get("matched_by"), "manual")
+    return "manual"
+
+
+@api_router.post("/legacy/vehicle-map/{legacy_vehicle_id}/confirm",
+                 dependencies=[Depends(require_roles("admin"))])
+async def legacy_vehicle_map_confirm(legacy_vehicle_id: str, payload: LegacyVehicleConfirm, request: Request,
+                                     legacy_source: Optional[str] = None):
+    """Confirmation HUMAINE d'une correspondance. Conflit = 409 explicite, jamais d'écrasement silencieux."""
+    src = _legacy_source(legacy_source)
+    vehicle = await find_tenant_vehicle(request, payload.vehicle_id,
+                                        {"_id": 0, "id": 1, "plaque": 1, "marque": 1, "modele": 1})
+    key = _vmap_key(request, src, legacy_vehicle_id)
+    if not key["legacy_vehicle_id"]:
+        raise HTTPException(status_code=422, detail="legacy_vehicle_id manquant")
+    row = await db.legacy_vehicle_map.find_one(key, {"_id": 0})
+    conflicts = []
+    if row and row.get("status") == "confirmed" and row.get("vehicle_id") != payload.vehicle_id:
+        conflicts.append({"type": "legacy_already_confirmed", "current_vehicle_id": row["vehicle_id"]})
+    other = await db.legacy_vehicle_map.find_one(
+        {"tenant_id": tid(request), "status": "confirmed", "vehicle_id": payload.vehicle_id,
+         "legacy_vehicle_id": {"$ne": key["legacy_vehicle_id"]}},
+        {"_id": 0, "legacy_vehicle_id": 1, "legacy_source": 1})
+    if other:
+        conflicts.append({"type": "vehicle_already_mapped", "legacy_vehicle_id": other["legacy_vehicle_id"],
+                          "legacy_source": other.get("legacy_source")})
+    reason = (payload.reason or "").strip()
+    if conflicts and not (payload.override and reason):
+        raise HTTPException(status_code=409, detail={
+            "message": "Conflit de correspondance — aucun écrasement silencieux. "
+                       "Relancez avec override=true et un motif pour remplacer explicitement.",
+            "conflicts": conflicts})
+    now = datetime.now(timezone.utc).isoformat()
+    user = (getattr(request.state, "user", None) or {}).get("email")
+    method = _method_for(row, payload.vehicle_id)
+    before = {"status": row.get("status"), "vehicle_id": row.get("vehicle_id")} if row else None
+    update = {"status": "confirmed", "vehicle_id": payload.vehicle_id, "method": method,
+              "confirmed_by": user, "confirmed_at": now, "note": (payload.note or "").strip() or None,
+              "rejected_by": None, "rejected_at": None, "reject_reason": None, "updated_at": now}
+    if conflicts:
+        update["conflict_override"] = {"reason": reason, "conflicts": conflicts, "by": user, "at": now,
+                                       "before": before}
+    await db.legacy_vehicle_map.update_one(key, {
+        "$set": update,
+        "$setOnInsert": {**key, "id": str(uuid.uuid4()), "legacy": {}, "candidates": [],
+                         "suggestion": {"status": "direct", "method": "manual", "warnings": []},
+                         "created_at": now}}, upsert=True)
+    label = f"{vehicle.get('plaque') or payload.vehicle_id} ({payload.vehicle_id})"
+    detail = f"Journal {key['legacy_vehicle_id']} → {label} via {method}"
+    if before:
+        detail += f" ; avant : {before['status']}/{before['vehicle_id']}"
+    if conflicts:
+        detail += f" ; REMPLACEMENT explicite — motif : {reason} ; conflits : {json.dumps(conflicts)}"
+    await audit("legacy_map_replace" if conflicts else "legacy_map_confirm", "legacy_vehicle_map", request,
+                entity_id=key["legacy_vehicle_id"], vehicle_id=payload.vehicle_id, detail=detail)
+    out = await db.legacy_vehicle_map.find_one(key, {"_id": 0})
+    out["vehicle"] = {"vehicle_id": vehicle["id"], "plate": vehicle.get("plaque"),
+                      "make": vehicle.get("marque"), "model": vehicle.get("modele")}
+    return out
+
+
+@api_router.post("/legacy/vehicle-map/{legacy_vehicle_id}/reject",
+                 dependencies=[Depends(require_roles("admin"))])
+async def legacy_vehicle_map_reject(legacy_vehicle_id: str, payload: LegacyRejectPayload, request: Request,
+                                    legacy_source: Optional[str] = None):
+    src = _legacy_source(legacy_source)
+    key = _vmap_key(request, src, legacy_vehicle_id)
+    row = await db.legacy_vehicle_map.find_one(key, {"_id": 0})
+    if not row:
+        raise HTTPException(status_code=404, detail="Correspondance introuvable")
+    reason = (payload.reason or "").strip()
+    if not reason:
+        raise HTTPException(status_code=422, detail="Motif de rejet obligatoire")
+    now = datetime.now(timezone.utc).isoformat()
+    user = (getattr(request.state, "user", None) or {}).get("email")
+    before = {"status": row.get("status"), "vehicle_id": row.get("vehicle_id")}
+    await db.legacy_vehicle_map.update_one(key, {"$set": {
+        "status": "rejected", "vehicle_id": None, "method": None, "confirmed_by": None, "confirmed_at": None,
+        "rejected_by": user, "rejected_at": now, "reject_reason": reason, "updated_at": now}})
+    await audit("legacy_map_reject", "legacy_vehicle_map", request, entity_id=key["legacy_vehicle_id"],
+                vehicle_id=before.get("vehicle_id"),
+                detail=f"Journal {key['legacy_vehicle_id']} rejeté (quarantaine) — motif : {reason} ; "
+                       f"avant : {before['status']}/{before['vehicle_id']}")
+    return await db.legacy_vehicle_map.find_one(key, {"_id": 0})
 
 
 _CORE_REF_FIELDS = [
@@ -5102,6 +5290,164 @@ async def admin_update_integration(tid: str, payload: IntegrationUpdate, request
     return await admin_get_integration(tid)
 
 
+# ---------------------------------------------------------------------------
+# Phase 4C — Lot A : correspondance TENANT Journal → Documents (superadmin, clé technique uniquement — D3)
+# ---------------------------------------------------------------------------
+class LegacyTenantIn(BaseModel):
+    legacy_tenant_id: str
+    navixy_master_user_id: Optional[int] = None
+    name: Optional[str] = None  # accepté pour affichage, JAMAIS utilisé pour la correspondance
+
+
+class LegacyTenantsPayload(BaseModel):
+    legacy_source: Optional[str] = legacy_identity.LEGACY_SOURCE_DEFAULT
+    tenants: List[LegacyTenantIn]
+
+
+class LegacyTenantConfirm(BaseModel):
+    legacy_source: Optional[str] = legacy_identity.LEGACY_SOURCE_DEFAULT
+    legacy_tenant_id: str
+    tenant_id: str
+    match_value: int
+    override: bool = False
+    reason: Optional[str] = None
+
+
+class LegacyTenantRevoke(BaseModel):
+    legacy_source: Optional[str] = legacy_identity.LEGACY_SOURCE_DEFAULT
+    legacy_tenant_id: str
+    reason: str
+
+
+async def _documents_tenant_keys():
+    integs = await db.tenant_integrations.find(
+        {"provider": "navixy", "master_user_id": {"$type": ["int", "long", "double"]}},
+        {"_id": 0, "tenant_id": 1, "master_user_id": 1}).to_list(None)
+    tenants = {t["id"]: t for t in await db.tenants.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(None)}
+    return integs, tenants
+
+
+@admin_router.get("/legacy/tenant-map")
+async def admin_legacy_tenant_map():
+    maps = await db.legacy_tenant_map.find({}, {"_id": 0}).to_list(None)
+    integs, tenants = await _documents_tenant_keys()
+    maps.sort(key=lambda m: (m.get("status") != "confirmed", m.get("legacy_tenant_id") or ""))
+    return {"match_key": legacy_identity.TENANT_MATCH_KEY, "maps": maps,
+            "documents_tenants": [{"tenant_id": i["tenant_id"], "master_user_id": i["master_user_id"],
+                                   "name": (tenants.get(i["tenant_id"]) or {}).get("name") or i["tenant_id"]}
+                                  for i in integs]}
+
+
+@admin_router.get("/legacy/tenant-map/resolve")
+async def admin_legacy_tenant_resolve(legacy_tenant_id: str, legacy_source: Optional[str] = None):
+    """Seule une correspondance CONFIRMÉE est utilisable (D3). Sinon 404 explicite."""
+    m = await db.legacy_tenant_map.find_one(
+        {"legacy_source": _legacy_source(legacy_source), "legacy_tenant_id": legacy_tenant_id.strip(),
+         "status": "confirmed"}, {"_id": 0})
+    if not m:
+        raise HTTPException(status_code=404, detail="Correspondance tenant non confirmée — inutilisable")
+    return m
+
+
+@admin_router.post("/legacy/tenant-map/candidates")
+async def admin_legacy_tenant_candidates(payload: LegacyTenantsPayload):
+    """Aperçu LECTURE SEULE par clé technique. Aucune écriture."""
+    src = _legacy_source(payload.legacy_source)
+    if not payload.tenants:
+        raise HTTPException(status_code=422, detail="Liste de tenants Journal vide")
+    integs, tenants = await _documents_tenant_keys()
+    existing = {m["legacy_tenant_id"]: m for m in await db.legacy_tenant_map.find(
+        {"legacy_source": src}, {"_id": 0}).to_list(None)}
+    items = []
+    for t in payload.tenants:
+        item = t.model_dump()
+        item["legacy_tenant_id"] = (item["legacy_tenant_id"] or "").strip()
+        if not item["legacy_tenant_id"]:
+            raise HTTPException(status_code=422, detail="legacy_tenant_id manquant")
+        cand = legacy_identity.tenant_candidates(integs, tenants, item)
+        cand["legacy_name"] = item.get("name")
+        ex = existing.get(item["legacy_tenant_id"])
+        cand["existing"] = {"status": ex.get("status"), "tenant_id": ex.get("tenant_id")} if ex else None
+        items.append(cand)
+    return {"legacy_source": src, "items": items, "written": 0}
+
+
+@admin_router.post("/legacy/tenant-map/confirm")
+async def admin_legacy_tenant_confirm(payload: LegacyTenantConfirm, request: Request):
+    src = _legacy_source(payload.legacy_source)
+    legacy_tenant_id = (payload.legacy_tenant_id or "").strip()
+    if not legacy_tenant_id:
+        raise HTTPException(status_code=422, detail="legacy_tenant_id manquant")
+    tenant = await db.tenants.find_one({"id": payload.tenant_id}, {"_id": 0, "id": 1, "name": 1})
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Client introuvable")
+    integ = await db.tenant_integrations.find_one(
+        {"tenant_id": payload.tenant_id, "provider": "navixy", "master_user_id": payload.match_value},
+        {"_id": 0, "tenant_id": 1})
+    if not integ:
+        raise HTTPException(status_code=422, detail=(
+            "Clé technique non vérifiée : navixy_master_user_id ne correspond pas à ce client. "
+            "La correspondance par nom ou par identifiant implicite (« default ») est interdite."))
+    key = {"legacy_source": src, "legacy_tenant_id": legacy_tenant_id}
+    row = await db.legacy_tenant_map.find_one(key, {"_id": 0})
+    conflicts = []
+    if row and row.get("status") == "confirmed" and row.get("tenant_id") != payload.tenant_id:
+        conflicts.append({"type": "legacy_already_confirmed", "current_tenant_id": row["tenant_id"]})
+    other = await db.legacy_tenant_map.find_one(
+        {"status": "confirmed", "tenant_id": payload.tenant_id, "legacy_tenant_id": {"$ne": legacy_tenant_id}},
+        {"_id": 0, "legacy_tenant_id": 1, "legacy_source": 1})
+    if other:
+        conflicts.append({"type": "tenant_already_mapped", "legacy_tenant_id": other["legacy_tenant_id"],
+                          "legacy_source": other.get("legacy_source")})
+    reason = (payload.reason or "").strip()
+    if conflicts and not (payload.override and reason):
+        raise HTTPException(status_code=409, detail={
+            "message": "Conflit de correspondance tenant — aucun écrasement silencieux. "
+                       "Relancez avec override=true et un motif pour remplacer explicitement.",
+            "conflicts": conflicts})
+    now = datetime.now(timezone.utc).isoformat()
+    user = (getattr(request.state, "user", None) or {}).get("email")
+    before = {"status": row.get("status"), "tenant_id": row.get("tenant_id")} if row else None
+    update = {"tenant_id": payload.tenant_id, "match_key": legacy_identity.TENANT_MATCH_KEY,
+              "match_value": payload.match_value, "status": "confirmed", "confirmed_by": user,
+              "confirmed_at": now, "revoked_by": None, "revoked_at": None, "revoke_reason": None,
+              "updated_at": now}
+    if conflicts:
+        update["conflict_override"] = {"reason": reason, "conflicts": conflicts, "by": user, "at": now,
+                                       "before": before}
+    await db.legacy_tenant_map.update_one(key, {
+        "$set": update, "$setOnInsert": {**key, "id": str(uuid.uuid4()), "created_at": now}}, upsert=True)
+    detail = (f"Journal tenant {legacy_tenant_id} → {tenant.get('name') or payload.tenant_id} "
+              f"({payload.tenant_id}) via {legacy_identity.TENANT_MATCH_KEY}={payload.match_value}")
+    if before:
+        detail += f" ; avant : {before['status']}/{before['tenant_id']}"
+    if conflicts:
+        detail += f" ; REMPLACEMENT explicite — motif : {reason} ; conflits : {json.dumps(conflicts)}"
+    await audit("legacy_tenant_map_replace" if conflicts else "legacy_tenant_map_confirm", "legacy_tenant_map",
+                request, entity_id=legacy_tenant_id, detail=detail, tenant_id=payload.tenant_id)
+    return await db.legacy_tenant_map.find_one(key, {"_id": 0})
+
+
+@admin_router.post("/legacy/tenant-map/revoke")
+async def admin_legacy_tenant_revoke(payload: LegacyTenantRevoke, request: Request):
+    key = {"legacy_source": _legacy_source(payload.legacy_source),
+           "legacy_tenant_id": (payload.legacy_tenant_id or "").strip()}
+    row = await db.legacy_tenant_map.find_one(key, {"_id": 0})
+    if not row:
+        raise HTTPException(status_code=404, detail="Correspondance tenant introuvable")
+    reason = (payload.reason or "").strip()
+    if not reason:
+        raise HTTPException(status_code=422, detail="Motif de révocation obligatoire")
+    now = datetime.now(timezone.utc).isoformat()
+    user = (getattr(request.state, "user", None) or {}).get("email")
+    await db.legacy_tenant_map.update_one(key, {"$set": {
+        "status": "revoked", "revoked_by": user, "revoked_at": now, "revoke_reason": reason, "updated_at": now}})
+    await audit("legacy_tenant_map_revoke", "legacy_tenant_map", request, entity_id=key["legacy_tenant_id"],
+                detail=f"Correspondance tenant {key['legacy_tenant_id']} → {row.get('tenant_id')} révoquée — "
+                       f"motif : {reason} ; avant : {row.get('status')}", tenant_id=row.get("tenant_id"))
+    return await db.legacy_tenant_map.find_one(key, {"_id": 0})
+
+
 @app.on_event("startup")
 async def startup():
     try:
@@ -5149,6 +5495,7 @@ async def startup():
         await db.tenant_settings.create_index("tenant_id", unique=True)
         await db.alerts.create_index([("vehicle_id", 1), ("type", 1), ("document_id", 1),
                                       ("threshold", 1), ("due_date", 1)])
+        await legacy_identity.ensure_legacy_indexes(db)
         if NAVIXY_HASH:
             await db.tenant_integrations.update_one(
                 {"tenant_id": "default", "provider": "navixy"},

@@ -285,4 +285,17 @@ export const putDocRequirements = (profil, categories) =>
 export const getVehicleDocConformity = (id) =>
   http.get(`/vehicles/${id}/conformite-documents`).then((r) => r.data);
 
+// Phase 4C — Lot A : correspondances legacy Journal → Documents (lecture seule + confirmation humaine)
+export const getLegacyVehicleMap = (params = {}) => http.get("/legacy/vehicle-map", { params }).then((r) => r.data);
+export const legacyVehicleCandidates = (data) => http.post("/legacy/vehicle-map/candidates", data).then((r) => r.data);
+export const legacyVehicleStage = (data) => http.post("/legacy/vehicle-map/stage", data).then((r) => r.data);
+export const legacyVehicleConfirm = (legacyId, data, legacySource = "journal") =>
+  http.post(`/legacy/vehicle-map/${encodeURIComponent(legacyId)}/confirm`, data, { params: { legacy_source: legacySource } }).then((r) => r.data);
+export const legacyVehicleReject = (legacyId, reason, legacySource = "journal") =>
+  http.post(`/legacy/vehicle-map/${encodeURIComponent(legacyId)}/reject`, { reason }, { params: { legacy_source: legacySource } }).then((r) => r.data);
+export const adminLegacyTenantMap = () => http.get("/admin/legacy/tenant-map").then((r) => r.data);
+export const adminLegacyTenantCandidates = (data) => http.post("/admin/legacy/tenant-map/candidates", data).then((r) => r.data);
+export const adminLegacyTenantConfirm = (data) => http.post("/admin/legacy/tenant-map/confirm", data).then((r) => r.data);
+export const adminLegacyTenantRevoke = (data) => http.post("/admin/legacy/tenant-map/revoke", data).then((r) => r.data);
+
 export default http;

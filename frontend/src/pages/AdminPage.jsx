@@ -13,6 +13,7 @@ import NewClientDialog from "@/components/admin/NewClientDialog";
 import ClientUsers from "@/components/admin/ClientUsers";
 import ClientIntegration from "@/components/admin/ClientIntegration";
 import TransfersHistory from "@/components/admin/TransfersHistory";
+import LegacyTenantMap from "@/components/admin/LegacyTenantMap";
 
 function ClientCard({ tenant, expanded, onToggle }) {
   const qc = useQueryClient();
@@ -124,6 +125,7 @@ export default function AdminPage() {
         </div>
       )}
       <TransfersHistory />
+      <LegacyTenantMap />
       <NewClientDialog open={newOpen} onOpenChange={setNewOpen} />
     </div>
   );

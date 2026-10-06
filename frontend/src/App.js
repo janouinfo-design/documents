@@ -18,6 +18,7 @@ import AdminPage from "@/pages/AdminPage";
 import DocumentsPage from "@/pages/DocumentsPage";
 import ScanPage from "@/pages/ScanPage";
 import ArchivesPage from "@/pages/ArchivesPage";
+import LegacyMappingPage from "@/pages/LegacyMappingPage";
 import SsoNotConfigured from "@/pages/SsoNotConfigured";
 import { useLocation } from "react-router-dom";
 
@@ -62,6 +63,7 @@ function App() {
                           <Route path="/alertes" element={<AlertsPage />} />
                           <Route path="/integrite" element={<IntegrityPage />} />
                           <Route path="/admin" element={<AdminPage />} />
+                          <Route path="/admin/correspondances" element={<LegacyMappingPage />} />
                         </Routes>
                       </ErrorBoundary>
                     </Layout>

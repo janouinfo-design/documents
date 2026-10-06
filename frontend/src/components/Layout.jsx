@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutDashboard, Truck, CalendarClock, Bell, Layers3, UserCircle2, KeyRound, LogOut, ShieldCheck, Building2, Eye, FolderOpen, Wallet, Fuel } from "lucide-react";
+import { LayoutDashboard, Truck, CalendarClock, Bell, Layers3, UserCircle2, KeyRound, LogOut, ShieldCheck, Building2, Eye, FolderOpen, Wallet, Fuel, GitMerge } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getActingTenant, setActingTenant, getPendingReviewCount } from "@/lib/api";
 import {
@@ -20,6 +20,7 @@ const NAV = [
   { to: "/energie", label: "Énergie", icon: Fuel, testId: "nav-energy" },
   { to: "/alertes", label: "Alertes", icon: Bell, testId: "nav-alerts" },
   { to: "/integrite", label: "Intégrité", icon: ShieldCheck, testId: "nav-integrity" },
+  { to: "/admin/correspondances", label: "Correspondances", icon: GitMerge, testId: "nav-legacy" },
 ];
 
 function Brand() {
