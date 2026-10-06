@@ -1,0 +1,27 @@
+{
+  "summary": "LOGITRAK Phase 1 'Pont Facture → Coûts' frontend E2E — 9/9 target flows PASS. (1) /couts shows facture_garage cost row Entretien 511 CHF with correct Enyaq filter + KPI; (2) VehicleDrawer Coûts tab shows vehicle-cost-doc row with Entretien & GARAGE DU LÉMAN SA; (3) Full upload→OCR Claude(~8s)→review flow: business-category-block + 'Suggestion IA : PNEUS · 99%' + all extraction-field-* (fournisseur/numero/date/montant_chf 648.6/montant_ht 600/tva 48.6/km 48900/plaque) + doc-plate-mismatch + 'Confirmer et enregistrer le coût' btn → cost row Pneus 649 CHF created, vehicle km=348/plate='1-Enyaq 01 Bern' unchanged; (4) same-file dedup → warning toast + doc created, business dedup → 409 duplicate-suspected + duplicate-confirm-anyway → 2nd cost created; (5) doc-edit-dialog shows new fields (business-category, montant-ht, tva, km-releve) — Entretien→Réparation→Entretien persists via /couts; (6) Non classé with amber style confirmed, restored to Entretien; (7) ScanDocumentDialog (via '+ Ajouter un document') shows business-category-block + Suggestion Pneus, categorie_suggeree absent from scan-field-*, doc-plate-mismatch present, scan-validate-btn → success; (8) RBAC read_only ro-e2e: /couts loads (0 CHF), no analyzed doc exists in client-test-e2e tenant to validate confirm/select-disabled (N/A); (9) Dashboard kpi-cout-annuel=147 655 CHF matches /couts KPI, /timeline + /documents load clean, legacy Assurance 1 234 CHF row visible in Enyaq Coûts tab, CSV export (Coûts de la flotte) downloads couts-flotte-logitrak.csv HTTP 200.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "ExtractionReviewDialog + ScanDialog review", "issues": ["business-category-suggestion renders 'Suggestion IA : PNEUS · 99 %' (uppercase code) rather than the human label 'Pneus' as specified in the review request. Cosmetic — code label is used instead of localized label. Low priority."]}
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_37.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "BusinessCategoryPicker business-category-suggestion shows the category CODE (e.g. 'PNEUS') while elsewhere the Select uses the French label ('Pneus'). Consider rendering the human label (c.label) for consistency with doc-edit-business-category and cost-category.",
+    "ScanDocumentDialog goes through a mandatory DocumentCropper (recadrage) step before scan-analyze-btn becomes visible. The 'Valider le recadrage' button has no data-testid, which breaks automated test flows if the review step is to be reached deterministically.",
+    "ScanDocumentDialog upload creates a new document with a generated name (scan-YYYYMMDD-HHMMSS.pdf) rather than the original filename, so a UI filter by 'facture_pneus_test' misses the newly-scanned doc. Non-blocking but may confuse users searching for their original file.",
+    "Minor: Recharts width/height(-1) warnings on Dashboard & /couts cost charts before container is measured — pre-existing cosmetic warnings only."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (not retested, previously 17/17 + 195 regression)", "frontend": "100% (9/9 flows; one sub-check N/A for RBAC-review since no analyzed doc exists in client-test-e2e tenant)"},
+  "test_credentials": "admin@logitrak.ch / 3a9218d1606b52e003383e52d7aea3d6 ; ro-e2e@client-test.ch / RoTest-2026y",
+  "seed_data_creation": "Created and FULLY CLEANED UP 3 test documents in Enyaq vehicle (two facture_pneus_test.jpg via drawer dropzone + one scan-*.pdf via ScanDialog). Restored facture_garage.jpg business_category back to ENTRETIEN after Réparation and Non classé checks. Final KPI = 147 655 CHF (identical to baseline before testing).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Phase 1 Pont Facture→Coûts fully validated frontend-side. Key testids: cost-row-doc:{id}, cost-category-doc:{id} (amber class when Non classé), vehicle-cost-doc:{id} + vehicle-cost-legacy:{vid}:{kind}, tab-couts (NOT costs-tab — that's the inner panel), extraction-review-dialog, business-category-{block|suggestion|select|opt-<CODE>}, extraction-field-{fournisseur|numero_facture|date_facture|montant_chf|montant_ht|tva_chf|kilometrage_releve|plaque}, extraction-apply-plaque, extraction-confirm-btn ('Confirmer et enregistrer le coût (N)'), duplicate-suspected + duplicate-confirm-anyway, doc-plate-mismatch, same-file-notice (toast). ScanDialog requires scan-doctype-facture → upload → 'Valider le recadrage' (no testid) → scan-analyze-btn → scan-review → business-category-block + scan-field-* + scan-validate-btn. CSV export at /api/reports/couts.csv?token=... via tokenized URL from export-menu-btn → 'Coûts de la flotte (CSV)'. OCR Claude is deterministic for facture_pneus_test.jpg (Pneus · 99% · all 10 fields complete) and takes ~8s. KPI baseline 147 655 CHF restored after test cleanup.",
+  "rca of the issue": "N/A — no bugs found."
+}

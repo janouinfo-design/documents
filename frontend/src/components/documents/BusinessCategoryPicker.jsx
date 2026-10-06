@@ -5,6 +5,11 @@ import { Button } from "@/components/ui/button";
 import { getBusinessCategories } from "@/lib/api";
 
 const NONE = "__none__";
+const FALLBACK_LABELS = {
+  ENTRETIEN: "Entretien", REPARATION: "Réparation", PNEUS: "Pneus", CARBURANT: "Carburant",
+  ENERGIE_ELECTRIQUE: "Énergie électrique", LAVAGE: "Lavage", PEAGE_VIGNETTE: "Péage / Vignette", AMENDE: "Amende",
+  ASSURANCE: "Assurance", LEASING: "Leasing", TAXES: "Taxes", AUTRE: "Autre",
+};
 
 export const useBusinessCategories = () =>
   useQuery({ queryKey: ["business-categories"], queryFn: getBusinessCategories, staleTime: Infinity });
@@ -12,7 +17,7 @@ export const useBusinessCategories = () =>
 // Catégorie métier d'un justificatif : suggestion IA affichée, confirmation humaine obligatoire.
 export function BusinessCategoryPicker({ value, onChange, suggestion, disabled = false }) {
   const { data: cats = [] } = useBusinessCategories();
-  const label = (code) => cats.find((c) => c.code === code)?.label || code;
+  const label = (code) => cats.find((c) => c.code === code)?.label || FALLBACK_LABELS[code] || code;
   const pct = suggestion?.confidence != null ? ` · ${Math.round(suggestion.confidence * 100)} %` : "";
   return (
     <div data-testid="business-category-block" className="rounded-xl border border-slate-200 bg-slate-50 p-4">
