@@ -714,3 +714,16 @@ VPS DEPLOYMENT       = NOT AUTHORIZED
 - Known limitations / reste : migration historique Journal-de-bord = NOT STARTED · imports cartes carburant = NOT STARTED · production = NOT DONE · retrait modules Journal = NOT DONE · dossier des amendes = « Divers » (FOLDERS système inchangés) ; une amende archivée sort de Coûts/Échéances comme tout document (comportement préexistant).
 - Roadmap : Phase 0 Audit DONE · Phase 1 Facture → Coûts DONE IN PREVIEW · Phase 2 Énergie & Carburant DONE IN PREVIEW · **Phase 3 Amendes DONE IN PREVIEW** · Phase 4 Migration historique Journal NEXT (prérequis JOIN_NOT_READY à lever) · Phase 5 Retrait modules Journal PENDING.
 - **AUCUN DÉPLOIEMENT VPS / PRODUCTION SANS GO EXPLICITE DU PROPRIÉTAIRE DU PROJET.**
+
+## BASELINE DE RÉFÉRENCE — clôture Phase 3 acceptée par l'utilisateur (2026-10)
+- Phases 1–3 figées : **aucun comportement validé ne doit être modifié**. Référence : test_fines_phase3 20/20 · régression globale 254 PASS / 0 FAIL · build PASS · testing agent it.39 PASS · multi-tenant / read_only / audit / intégrité documents validés.
+- Données de démonstration preview à CONSERVER : amende `amende_test.jpg` (1-Enyaq 01 Bern, 120.00 CHF, ORD-2026-0078-451) laissée en « À payer » pour montrer Documents → Coûts → Échéances → paiement ; transaction Migrol 74.17 CHF ; facture garage 510.77 CHF.
+- NE PAS lancer automatiquement : rappel amendes J-7, export Énergie CSV, migration historique Journal-de-bord, déploiement VPS/production (aucun GO).
+- Prochaine étape : préparation (sans code) de la prochaine phase fonctionnelle, à définir avec l'utilisateur.
+
+## Phase 4 — Audit de parité fonctionnelle Journal-de-bord → Documents (2026-10, AUDIT SEUL, ZÉRO CODE)
+- Livrable : `docs/PHASE4_AUDIT_PARITE_JOURNAL_DOCUMENTS.md` (31 fonctions : Énergie 16, Amendes 15 ; tableau Fonction | ancien | Documents | parité | écart | action | priorité ; section BLOQUANTS).
+- Niveau de preuve : côté Documents VÉRIFIÉ sur le code (références fichier:ligne) ; côté Journal **NON VÉRIFIÉ** (aucun accès dans l'espace de travail — inventaire déclaré par l'utilisateur, lignes ⚠ À CONFIRMER).
+- Bloquants avant migration : B1 jointure véhicule (JOIN_NOT_READY) · B2 mapping tenant · B3 aucune entité conducteur · B4 aucune écriture sans document source (pleins/amendes historiques sans fichier) · B5 pas de clé d'idempotence legacy · B6 date de paiement réelle non modélisée · B7 cartes carburant (conditionnel) · B8 format Journal inconnu.
+- Intrants demandés : accès lecture Journal ou captures, export anonymisé, dictionnaire de données, matrice des rôles, volumétrie.
+- Aucun fichier applicatif modifié ; baseline Phases 1–3 inchangée ; aucun script de migration ; aucun déploiement. EN ATTENTE DU GO utilisateur.
