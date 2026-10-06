@@ -1,0 +1,24 @@
+{
+  "summary": "Phase 2 ENERGY frontend E2E validation (admin + read-only tenant). All critical flows pass: /energie renders with 4 KPIs showing cents (74.17 CHF, no NaN/Invalid Date/undefined); the real MIGROL SERVICE row (12.06.2026 14:32 · Essence · 43,12 L · 1.720 CHF/L · 74.17 CHF) is present exactly once; vehicle filter narrows to Enyaq and persists KPIs; empty state renders for vehicles without transactions; drawer 'Énergie' tab opens via energy-vehicle-<id> click with vehicle-energy-list showing the MIGROL line; Coûts page shows the Migrol cost line exactly once (0 occurrences of 148.34); seeded duplicate ticket flow triggers DuplicateSuspectedBox (data-kind='transaction', title 'Transaction énergie en doublon probable'), 'Valider quand même' button creates exactly 1 fuel_transaction then success toast; delete of ticket_essence.jpg (source of a transaction) is blocked with HTTP 409 and toast message 'Ce document est la pièce justificative d'une transaction énergie — suppression impossible pour préserver la traçabilité.'; read_only user ro-e2e sees empty /energie, no MIGROL leak (tenant isolation OK); mobile 390x844 renders 2-col KPI grid, row scrollable, no NaN; no unexpected 4xx/5xx (only the deliberate 409s on delete + duplicate validate); no console errors apart from logs of those 409 responses. All test artefacts cleaned up (seeded doc + its fuel_transaction removed via Mongo deleteOne).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_38.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "EnergyPage.jsx is clean (<140 lines), uses chfExact for cents, proper data-testid coverage, error state via QueryErrorState.",
+    "BusinessCategoryPicker/DuplicateSuspectedBox correctly exposes data-kind attribute for test differentiation (transaction vs document).",
+    "DocFolderSection surfaces backend 409 detail.message as toast which keeps traceability message in UI (good UX)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100% (10/10 scenarios)"},
+  "test_credentials": "admin@logitrak.ch (tenant default) + ro-e2e@client-test.ch (tenant client-test-e2e) — passwords read from /app/memory/test_credentials.md",
+  "seed_data_creation": "Seeded document edce747f-2682-4659-b5a5-171446ad5184 (ticket_carburant 'pytest_dup_ticket.jpg', vehicle 6d00f932-d74d-4e1b-84ad-6116ffb0af33, tenant default) via Mongo for the duplicate flow. After test, both the seeded document and the fuel_transaction 86236669-1e1f-413c-b98b-8615513277d1 created by 'Valider quand même' were deleted. Verified only the original Migrol fuel_transaction df340bb0-b977-40c6-9cbc-f8b8e7a4be29 (source_document_id 94da14e8…) remains on the vehicle.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phase 2 frontend is production-ready. Real Migrol data preserved: doc 94da14e8-2c37-4a59-9446-64cfad4ded92 + fuel_transaction df340bb0-b977-40c6-9cbc-f8b8e7a4be29 on vehicle 6d00f932-d74d-4e1b-84ad-6116ffb0af33. Review dialog can be reopened on already-validated docs via data-testid doc-extraction-open-<id>. For duplicate UX regression: insert a done-ticket_carburant document with identical station/date/montant/litres and open ExtractionReviewDialog → confirm button → expect DuplicateSuspectedBox (data-kind='transaction').",
+  "rca of the issue": "No issue observed. All functional, integration, tenant-isolation, and responsive requirements validated."
+}
