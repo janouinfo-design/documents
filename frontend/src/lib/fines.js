@@ -22,7 +22,9 @@ export const PIECE_TYPES = [["pdf", "PDF"], ["photo", "Photo"], ["courrier", "Co
   ["preuve_paiement", "Preuve de paiement"], ["libre", "Libre"]];
 export const PRIORITIES = [["low", "Basse"], ["normal", "Normale"], ["high", "Haute"], ["urgent", "Urgente"]];
 // Codes Journal PROUVÉS (4B) — enum complet figé après lecture seule du code Journal, aucun code inventé ici
-export const INFRACTION_TYPES = [["speeding", "Excès de vitesse"], ["parking", "Stationnement"], ["other", "Autre"]];
+// Enum Journal prouvée (backend/app/routes/fines.py · INFRACTION_TYPES, 8 codes, ordre source) — codes techniques en API, libellés FR = présentation.
+export const INFRACTION_TYPES = [["speeding", "Excès de vitesse"], ["parking", "Stationnement"], ["red_light", "Feu rouge"], ["toll", "Péage"],
+  ["forbidden_zone", "Zone interdite"], ["phone", "Téléphone au volant"], ["seatbelt", "Ceinture de sécurité"], ["other", "Autre"]];
 
 export const fineStatusLabel = (code) => FINE_STATUS_META[code]?.label || code || "—";
 export const infractionLabel = (code) => INFRACTION_TYPES.find(([c]) => c === code)?.[1] || code || "—";

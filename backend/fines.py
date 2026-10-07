@@ -36,9 +36,22 @@ PRIORITIES = ("low", "normal", "high", "urgent")
 # Codes Journal PROUVÉS dans les entrées 4B (speeding / parking / other, défaut `other`). L'enum complet
 # (8 valeurs) sera figé après lecture seule du code source Journal : aucun code supplémentaire n'est inventé ici,
 # la valeur est conservée telle quelle (chaîne) pour rester migrable sans perte.
-KNOWN_INFRACTION_TYPES = ("speeding", "parking", "other")
-INFRACTION_LABELS = {"speeding": "Excès de vitesse", "parking": "Stationnement", "other": "Autre"}
+# Enum Journal PROUVÉE (dépôt janouinfo-design/Journal-de-bord, backend/app/routes/fines.py, INFRACTION_TYPES, 8 valeurs, ordre source).
+# Codes techniques anglais en base/API ; libellés FR = présentation seule ; défaut `other` (spec/audit).
+KNOWN_INFRACTION_TYPES = ("speeding", "parking", "red_light", "toll", "forbidden_zone", "phone", "seatbelt", "other")
+INFRACTION_LABELS = {"speeding": "Excès de vitesse", "parking": "Stationnement", "red_light": "Feu rouge", "toll": "Péage",
+                     "forbidden_zone": "Zone interdite", "phone": "Téléphone au volant", "seatbelt": "Ceinture de sécurité", "other": "Autre"}
 DEFAULT_INFRACTION_TYPE = "other"
+
+
+def infraction_type_error(value) -> Optional[str]:
+    """Nouvelle saisie (création / PATCH) : code hors enum refusé. Les valeurs historiques déjà stockées sont lues telles quelles."""
+    if value is None:
+        return None
+    v = str(value).strip()
+    if v not in KNOWN_INFRACTION_TYPES:
+        return f"type_infraction inconnu « {v} » — valeurs : {', '.join(KNOWN_INFRACTION_TYPES)}"
+    return None
 LIEU_KEYS = ("pays", "canton", "ville", "lieu")
 INTERNAL_FIELDS = ("notes_internes",)  # D6.3 : masqué côté serveur pour read_only
 MOTIF_MIN_LEN = 3

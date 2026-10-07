@@ -2733,8 +2733,10 @@ _FINE_AUDIT_KEYS = ("date_expiration", "date_debut", "fournisseur", "numero", "t
 
 def _fine_field_errors(updates: dict) -> list:
     errors = []
-    if updates.get("type_infraction") is not None and not (0 < len(str(updates["type_infraction"]).strip()) <= 50):
-        errors.append("type_infraction invalide")
+    if "type_infraction" in updates:
+        err = fin.infraction_type_error(updates["type_infraction"])
+        if updates["type_infraction"] is None or err:
+            errors.append(err or "type_infraction invalide")
     for f in ("montant_amende", "frais_admin"):
         if updates.get(f) is not None and updates[f] < 0:
             errors.append(f"{f} invalide")

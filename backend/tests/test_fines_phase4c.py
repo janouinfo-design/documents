@@ -27,6 +27,9 @@ STATUSES = ["recue", "a_analyser", "conducteur_a_identifier", "en_attente_conduc
 JOURNAL = {"received": "recue", "to_analyze": "a_analyser", "driver_to_identify": "conducteur_a_identifier",
            "awaiting_driver": "en_attente_conducteur", "disputed": "contestee", "to_pay": "a_payer",
            "paid": "payee", "recharged": "refacturee", "closed": "cloturee", "cancelled": "annulee"}
+INFRACTION_TYPES = ["speeding", "parking", "red_light", "toll", "forbidden_zone", "phone", "seatbelt", "other"]  # enum Journal prouvée
+INFRACTION_LABELS_FR = {"speeding": "Excès de vitesse", "parking": "Stationnement", "red_light": "Feu rouge", "toll": "Péage",
+                        "forbidden_zone": "Zone interdite", "phone": "Téléphone au volant", "seatbelt": "Ceinture de sécurité", "other": "Autre"}
 DEADLINE_INACTIVE = {"payee", "refacturee", "cloturee", "annulee"}
 _D = lambda n: (datetime.now(timezone.utc) + timedelta(days=n)).strftime("%Y-%m-%d")  # noqa: E731
 AMENDE = {"autorite": "Police cantonale vaudoise", "date_infraction": _D(-10), "montant": 120.0, "devise": "CHF",
@@ -140,7 +143,9 @@ class TestStatutsParite:
         assert r.status_code == 200, r.text
         assert [s["code"] for s in r.json()["statuses"]] == STATUSES
         assert all(s["label"] for s in r.json()["statuses"])
-        assert [t["code"] for t in r.json()["infraction_types"]] == ["speeding", "parking", "other"]  # seuls codes PROUVÉS
+        assert [t["code"] for t in r.json()["infraction_types"]] == INFRACTION_TYPES  # 8 codes Journal exacts, ordre source
+        assert {t["code"]: t["label"] for t in r.json()["infraction_types"]} == INFRACTION_LABELS_FR
+        assert "documents" not in INFRACTION_TYPES and "forbidden_zone" in INFRACTION_TYPES
         assert [p["code"] for p in r.json()["piece_types"]] == ["pdf", "photo", "courrier", "contestation", "preuve_paiement", "libre"]
 
     def test_02_creation_defaut_a_payer_non_payee(self):
@@ -524,19 +529,52 @@ class TestFiltresEtCompat:
         assert {x["id"] for x in page2["items"]}.isdisjoint({x["id"] for x in page["items"]})
         assert _req("GET", "/fines", params={"vehicle_id": _S["veh_b"]}).json()["total"] == 0  # véhicule d'un autre tenant : rien
 
-    def test_23_type_infraction_legacy_inconnu_conserve_tel_quel(self):
-        doc_id = _mk(type_infraction="code_legacy_inconnu", source="legacy_import", legacy_source="journal-test",
-                     legacy_id=f"FINE-{_RUN}-X", fine_status="disputed", motif=None)
-        d = _get(doc_id)
-        assert d["type_infraction"] == "code_legacy_inconnu" and d["type_infraction_label"] == "code_legacy_inconnu"  # jamais converti en `other`
-        assert d["fine_status"] == "contestee"
-        assert _req("PATCH", f"/documents/{doc_id}", {"type_infraction": ""}).status_code == 422
-        _S["legacy"] = doc_id
+    def test_23_type_infraction_enum_8_codes_hors_enum_refuse_historique_conserve(self):
+        # les 8 codes acceptés à la création (code technique stocké tel quel, libellé FR exposé) et en PATCH
+        created = {}
+        for code in INFRACTION_TYPES:
+            created[code] = _mk(type_infraction=code, delai_paiement=None)
+            d = _get(created[code])
+            assert d["type_infraction"] == code and d["type_infraction_label"] == INFRACTION_LABELS_FR[code], code
+            assert _db(created[code])["type_infraction"] == code
+        r = _req("PATCH", f"/documents/{created['other']}", {"type_infraction": "seatbelt"})
+        assert r.status_code == 200 and r.json()["type_infraction"] == "seatbelt"
+        assert _get(created["other"])["type_infraction_label"] == "Ceinture de sécurité"
+        assert any("type_infraction: other → seatbelt" in a["detail"] for a in _audits(created["other"], "modify"))
+        assert {x["id"] for x in _req("GET", "/fines", params={"type_infraction": "forbidden_zone", "limit": 200}).json()["items"]} == {created["forbidden_zone"]}
+        by_type = {t["code"]: t for t in _req("GET", "/fines/stats").json()["by_type"]}
+        assert by_type["toll"]["label"] == "Péage" and by_type["toll"]["count"] >= 1
+        assert _get(_mk(type_infraction=None, delai_paiement=None))["type_infraction"] == "other"  # non fourni → défaut `other`
+        # nouvelle saisie hors enum : refusée (création, PATCH, legacy_import, null, vide) — aucune écriture
+        n = _mongo().documents.count_documents({"tenant_id": TENANT_A})
+        for bad in ("documents", "code_legacy_inconnu", "Speeding", "red light"):
+            r = _fine(type_infraction=bad)
+            assert r.status_code == 422 and "type_infraction" in r.text, (bad, r.text)
+        assert _fine(type_infraction="documents", source="legacy_import", legacy_source="j-test", legacy_id=f"TI-{_RUN}", motif=None).status_code == 422
+        assert _req("PATCH", f"/documents/{created['other']}", {"type_infraction": "documents"}).status_code == 422
+        assert _req("PATCH", f"/documents/{created['other']}", {"type_infraction": None}).status_code == 422
+        assert _req("PATCH", f"/documents/{created['other']}", {"type_infraction": ""}).status_code == 422
+        assert _mongo().documents.count_documents({"tenant_id": TENANT_A}) == n and _db(created["other"])["type_infraction"] == "seatbelt"
+        # valeur historique déjà stockée hors enum (donnée réelle non modifiée) : lue et affichée telle quelle, jamais convertie en `other`
+        hist = str(uuid.uuid4())
+        _mongo().documents.insert_one({"tenant_id": TENANT_A, "vehicle_id": _S["veh_a"], "id": hist, "folder": "Amendes", "document_type": "amende",
+                                       "business_category": "AMENDE", "extraction_status": "validated", "is_deleted": False, "montant": 30.0,
+                                       "devise": "CHF", "fournisseur": "Police P3", "numero": f"P3-T-{_RUN}", "type_infraction": "code_legacy_inconnu",
+                                       "payee": False, "created_at": datetime.now(timezone.utc).isoformat(), "pages": []})
+        d = _get(hist)
+        assert d["type_infraction"] == "code_legacy_inconnu" and d["type_infraction_label"] == "code_legacy_inconnu"
+        r = _req("PATCH", f"/documents/{hist}", {"dossier_interne": "DOS-HIST"})  # autre champ : OK, la valeur historique reste intacte
+        assert r.status_code == 200 and _db(hist)["type_infraction"] == "code_legacy_inconnu"
+        assert _req("GET", "/fines/stats").json()["by_type"] and any(t["code"] == "code_legacy_inconnu" for t in _req("GET", "/fines/stats").json()["by_type"])
+        # legacy_import valide (code enum) pour le test d'idempotence suivant
+        _S["legacy"] = _mk(type_infraction="red_light", source="legacy_import", legacy_source="journal-test", legacy_id=f"FINE-{_RUN}-X",
+                           fine_status="disputed", motif=None)
+        assert _get(_S["legacy"])["fine_status"] == "contestee" and _get(_S["legacy"])["type_infraction_label"] == "Feu rouge"
 
     def test_24_rejeu_legacy_idempotent_ne_reclasse_pas_le_statut(self):
         doc_id = _S["legacy"]
         assert _status(doc_id, "a_payer").status_code == 200
-        r = _fine(type_infraction="code_legacy_inconnu", source="legacy_import", legacy_source="journal-test",
+        r = _fine(type_infraction="red_light", source="legacy_import", legacy_source="journal-test",
                   legacy_id=f"FINE-{_RUN}-X", fine_status="to_analyze", motif=None)
         assert r.status_code == 200 and r.json()["created"] is False and r.json()["document_id"] == doc_id
         assert _db(doc_id)["fine_status"] == "a_payer"  # l'état métier courant n'est jamais écrasé par un rejeu
