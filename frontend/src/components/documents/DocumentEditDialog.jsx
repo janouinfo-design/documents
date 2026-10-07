@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { updateDocument } from "@/lib/api";
 import { useBusinessCategories } from "@/components/documents/BusinessCategoryPicker";
+import DriverPicker from "@/components/drivers/DriverPicker";
 
 const FREQUENCES = [["unique", "Unique"], ["mensuel", "Mensuel"], ["trimestriel", "Trimestriel"], ["semestriel", "Semestriel"], ["annuel", "Annuel"]];
 const NO_CAT = "__none__";
@@ -35,7 +36,7 @@ export default function DocumentEditDialog({ doc, categories = [], open, onOpenC
         date_debut: (doc.date_debut || "").slice(0, 10), date_expiration: (doc.date_expiration || "").slice(0, 10),
         preavis_jours: doc.preavis_jours ?? "", montant: doc.montant ?? "", devise: doc.devise || "CHF",
         montant_chf: doc.montant_chf ?? "",
-        frequence: doc.frequence || "", responsable: doc.responsable || "",
+        frequence: doc.frequence || "", responsable: doc.responsable || "", driver_id: doc.driver_id || null,
         business_category: doc.business_category || "", montant_ht: doc.montant_ht ?? "",
         tva_chf: doc.tva_chf ?? "", kilometrage_releve: doc.kilometrage_releve ?? "",
         tags: (doc.tags || []).join(", "), notes: doc.notes || "",
@@ -59,6 +60,7 @@ export default function DocumentEditDialog({ doc, categories = [], open, onOpenC
         preavis_jours: f.preavis_jours === "" ? null : Number(f.preavis_jours),
         montant: f.montant === "" ? null : Number(f.montant),
         devise: f.devise, frequence: f.frequence || null, responsable: f.responsable || null,
+        driver_id: f.driver_id || "",
         montant_chf: f.devise !== "CHF" && f.montant_chf !== "" ? Number(f.montant_chf) : null,
         business_category: f.business_category || null,
         montant_ht: f.montant_ht === "" ? null : Number(f.montant_ht),
@@ -109,6 +111,7 @@ export default function DocumentEditDialog({ doc, categories = [], open, onOpenC
           <F label="Organisme / fournisseur"><Input data-testid="doc-edit-fournisseur" value={f.fournisseur} onChange={setI("fournisseur")} /></F>
           <F label="N° contrat / document"><Input data-testid="doc-edit-numero" value={f.numero} onChange={setI("numero")} /></F>
           <F label="Responsable"><Input data-testid="doc-edit-responsable" value={f.responsable} onChange={setI("responsable")} /></F>
+          <F label="Conducteur (référentiel, choix explicite)"><DriverPicker value={f.driver_id} onChange={(v) => setF((p) => ({ ...p, driver_id: v }))} testId="doc-edit-driver" /></F>
           <F label="Date de début"><Input data-testid="doc-edit-date-debut" type="date" value={f.date_debut} onChange={setI("date_debut")} /></F>
           <F label="Date d'expiration"><Input data-testid="doc-edit-date-expiration" type="date" value={f.date_expiration} onChange={setI("date_expiration")} /></F>
           <F label="Préavis (jours)"><Input data-testid="doc-edit-preavis" type="number" min="0" max="730" value={f.preavis_jours} onChange={setI("preavis_jours")} placeholder="30" /></F>

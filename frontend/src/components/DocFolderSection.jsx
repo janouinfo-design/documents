@@ -157,6 +157,7 @@ export default function DocFolderSection({ vehicleId, folder, docs = [], onChang
                   <p className="truncate text-sm font-medium text-slate-800">{d.label || d.original_filename}</p>
                   <p className="flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
                     <span>{noFile ? `Saisie ${d.source === "legacy_import" ? "importée" : "manuelle"}` : fileSize(d.size)} · {dateFr(d.created_at)}</span>
+                    {d.driver_nom && <span data-testid={`doc-item-driver-${d.id}`} className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">{d.driver_nom}</span>}
                     <NoFileBadge doc={d} />
                     {analyzed && (
                       <button

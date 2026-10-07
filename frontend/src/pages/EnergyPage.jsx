@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Fuel, Droplets, Tag, Gauge, PenLine } from "lucide-react";
-import { getEnergy, getVehicles } from "@/lib/api";
+import { getEnergy, getVehicles, getDrivers } from "@/lib/api";
 import { chfExact, fmtQty, dateFr } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import KpiCard from "@/components/KpiCard";
@@ -46,13 +46,15 @@ export default function EnergyPage() {
   const { user } = useAuth();
   const isAdmin = ["admin", "superadmin"].includes(user?.role);
   const [vehicle, setVehicle] = useState(ALL);
+  const [driver, setDriver] = useState(ALL);
   const [fuelOpen, setFuelOpen] = useState(false);
 
   const { data, isLoading, isError, error } = useQuery({ queryKey: ["energy"], queryFn: () => getEnergy() });
   const { data: vehicles = [] } = useQuery({ queryKey: ["vehicles"], queryFn: getVehicles });
+  const { data: drivers = [] } = useQuery({ queryKey: ["drivers", "picker"], queryFn: () => getDrivers({ include_archived: "1" }) });
 
   const totals = data?.totals || {};
-  const txs = useMemo(() => (data?.transactions || []).filter((t) => vehicle === ALL || t.vehicle_id === vehicle), [data, vehicle]);
+  const txs = useMemo(() => (data?.transactions || []).filter((t) => (vehicle === ALL || t.vehicle_id === vehicle) && (driver === ALL || t.driver_id === driver)), [data, vehicle, driver]);
   const shown = vehicle === ALL ? totals : ((data?.by_vehicle || []).find((b) => b.vehicle_id === vehicle) || {});
 
   const prixMoyen = shown.prix_moyen_l != null
@@ -90,12 +92,19 @@ export default function EnergyPage() {
         <KpiCard testId="energy-kpi-conso" label="Conso réelle" value={isLoading ? "—" : conso} accent="emerald" icon={Gauge} sub={consoSub} />
       </div>
 
-      <div className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-3">
         <Select value={vehicle} onValueChange={setVehicle}>
           <SelectTrigger data-testid="energy-filter-vehicle"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL}>Tous les véhicules</SelectItem>
             {vehicles.map((v) => <SelectItem key={v.id} value={v.id}>{v.plaque || v.id}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={driver} onValueChange={setDriver}>
+          <SelectTrigger data-testid="energy-filter-driver"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Tous les conducteurs</SelectItem>
+            {drivers.map((d) => <SelectItem key={d.id} value={d.id}>{d.display}{d.is_deleted ? " (archivé)" : ""}</SelectItem>)}
           </SelectContent>
         </Select>
         <p className="self-center text-xs text-slate-400">
@@ -110,6 +119,7 @@ export default function EnergyPage() {
               <TableHead>Date</TableHead>
               <TableHead>Véhicule</TableHead>
               <TableHead>Station</TableHead>
+              <TableHead>Conducteur</TableHead>
               <TableHead>Énergie</TableHead>
               <TableHead>Quantité</TableHead>
               <TableHead>Prix unité</TableHead>
@@ -119,7 +129,7 @@ export default function EnergyPage() {
           <TableBody>
             {!isLoading && txs.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7}>
+                <TableCell colSpan={8}>
                   <p className="py-10 text-center text-sm text-slate-400" data-testid="energy-empty">
                     Aucune transaction — validez un ticket carburant ou de recharge depuis Documents.
                   </p>
@@ -142,6 +152,7 @@ export default function EnergyPage() {
                   {tx.carte_last4 && <span className="ml-1 text-[11px] text-slate-400">· carte ****{tx.carte_last4}</span>}
                   {tx.kilometrage && <span className="ml-1 text-[11px] text-slate-400">· {tx.kilometrage} km</span>}
                 </TableCell>
+                <TableCell className="text-sm text-slate-600" data-testid={`energy-driver-${tx.id}`}>{tx.driver_nom || <span className="text-slate-300">—</span>}</TableCell>
                 <TableCell>
                   <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold",
                     tx.energie === "electrique" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-700")}>

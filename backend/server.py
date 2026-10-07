@@ -35,6 +35,8 @@ import legacy_identity
 from legacy_identity import norm_vin as _norm_vin, norm_plate as _norm_plate, identity as _identity
 import nofile
 from nofile import ManualFuelCreate, ManualFineCreate
+import drivers as drv
+from drivers import DriverCreate, DriverUpdate, AssignmentCreate, AssignmentClose
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -2582,21 +2584,26 @@ def _in_range(d: str, date_from: Optional[str], date_to: Optional[str]) -> bool:
 
 @api_router.get("/energy")
 async def energy_overview(request: Request, vehicle_id: Optional[str] = None,
-                          date_from: Optional[str] = None, date_to: Optional[str] = None):
+                          date_from: Optional[str] = None, date_to: Optional[str] = None,
+                          driver_id: Optional[str] = None):
     """Énergie & carburant du tenant — LECTURE SEULE, dérivé des fuel_transactions (jamais resommé dans Coûts)."""
     t = tid(request)
     q = {"tenant_id": t, "is_deleted": False}
     if vehicle_id:
         q["vehicle_id"] = vehicle_id
+    if driver_id:
+        q["driver_id"] = driver_id
     all_tx = await db.fuel_transactions.find(q, {"_id": 0}).to_list(None)
     vmap = {v["id"]: v for v in await db.vehicles.find(
         {"tenant_id": t}, {"_id": 0, "id": 1, "plaque": 1, "marque": 1, "modele": 1,
                            "conso_reelle_l_100km": 1, "conso_reelle_source": 1}).to_list(None)}
     all_tx = [x for x in all_tx if x["vehicle_id"] in vmap]
     txs = [x for x in all_tx if _in_range(x.get("date"), date_from, date_to)]
+    dnames = await _driver_names(t, [x.get("driver_id") for x in txs])
     for x in txs:
         v = vmap.get(x["vehicle_id"]) or {}
         x["plaque"], x["marque"], x["modele"] = v.get("plaque"), v.get("marque"), v.get("modele")
+        x["driver_nom"] = dnames.get(x.get("driver_id"))
     txs.sort(key=lambda x: (x.get("date_heure") or x.get("date") or "", x.get("created_at") or ""), reverse=True)
     by_vehicle, fleet_l, fleet_km = [], 0.0, 0
     for vid in {x["vehicle_id"] for x in all_tx}:
@@ -2626,6 +2633,9 @@ async def vehicle_energy(vehicle_id: str, request: Request):
     txs = await db.fuel_transactions.find({"tenant_id": tid(request), "vehicle_id": vehicle_id, "is_deleted": False},
                                           {"_id": 0}).to_list(None)
     txs.sort(key=lambda x: (x.get("date_heure") or x.get("date") or "", x.get("created_at") or ""), reverse=True)
+    dnames = await _driver_names(tid(request), [x.get("driver_id") for x in txs])
+    for x in txs:
+        x["driver_nom"] = dnames.get(x.get("driver_id"))
     return {"transactions": txs, "totals": _energy_totals(txs),
             "conso_tickets": _conso_from_transactions(txs), "conso_kwh_tickets": _conso_kwh_from_transactions(txs),
             "conso_reelle_l_100km": v.get("conso_reelle_l_100km") or None,
@@ -2679,9 +2689,10 @@ class DocumentUpdate(BaseModel):
     tva_chf: Optional[float] = None
     kilometrage_releve: Optional[int] = None
     montant_chf: Optional[float] = None  # D7 : contre-valeur CHF saisie (devise ≠ CHF uniquement)
+    driver_id: Optional[str] = None  # Lot C : conducteur (UUID du tenant) ; "" = non identifié
 
 
-_COST_AUDIT_KEYS = ("montant", "devise", "montant_chf")
+_COST_AUDIT_KEYS = ("montant", "devise", "montant_chf", "driver_id")
 
 
 @api_router.patch("/documents/{doc_id}")
@@ -2709,6 +2720,14 @@ async def update_document(doc_id: str, payload: DocumentUpdate, request: Request
         # D7 : montant_chf ignoré (None) dès que la devise est CHF
         updates["montant_chf"] = nofile.montant_chf_for(updates.get("devise", doc.get("devise")),
                                                         updates.get("montant_chf", doc.get("montant_chf")))
+    if "driver_id" in updates:
+        # Lot C : FK conducteur optionnelle, validée dans le tenant (404) ; "" = non identifié
+        driver = await _driver_ref(t, updates["driver_id"])
+        updates["driver_id"] = driver["id"] if driver else None
+        updates["driver_validated_manually"] = bool(driver)
+        if updates["driver_id"] != doc.get("driver_id"):
+            await db.fuel_transactions.update_many({"tenant_id": t, "source_document_id": doc_id},
+                                                   {"$set": {"driver_id": updates["driver_id"]}})
     if updates.get("business_category") and updates["business_category"] not in BUSINESS_CATEGORY_LABELS:
         raise HTTPException(status_code=422, detail="Catégorie métier inconnue")
     if updates.get("frequence") and updates["frequence"] not in DOC_FREQUENCES:
@@ -2772,6 +2791,7 @@ async def list_all_documents(request: Request,
                              q: Optional[str] = None,
                              echeance: Optional[str] = None,
                              a_valider: Optional[str] = None,
+                             driver_id: Optional[str] = None,
                              limit: int = 500):
     t = tid(request)
     th = await deadline_settings(t)
@@ -2780,12 +2800,15 @@ async def list_all_documents(request: Request,
         query["vehicle_id"] = vehicle_id
     if folder:
         query["folder"] = folder
+    if driver_id:
+        query["driver_id"] = driver_id
     if a_valider:
         query["extraction_status"] = "done"
         query["archived"] = {"$ne": True}
     docs = await db.documents.find(query, {"_id": 0, "pages": 0, "extracted_fields": 0}).to_list(None)
     vmap = {v["id"]: v for v in await db.vehicles.find(
         {"tenant_id": t}, {"_id": 0, "id": 1, "plaque": 1, "marque": 1, "modele": 1}).to_list(None)}
+    dnames = await _driver_names(t, [d.get("driver_id") for d in docs])
     term = (q or "").strip().lower()
     out = []
     for d in docs:
@@ -2793,11 +2816,12 @@ async def list_all_documents(request: Request,
         v = vmap.get(d["vehicle_id"]) or {}
         d["plaque"] = v.get("plaque")
         d["vehicule_label"] = " ".join(x for x in [v.get("marque"), v.get("modele")] if x)
+        d["driver_nom"] = dnames.get(d.get("driver_id"))
         if statut and d["statut"] != statut:
             continue
         if term:
             haystack = " ".join(str(d.get(k) or "") for k in (
-                "label", "original_filename", "fournisseur", "numero", "responsable", "plaque")).lower()
+                "label", "original_filename", "fournisseur", "numero", "responsable", "plaque", "driver_nom")).lower()
             if term not in haystack and not any(term in (tg or "").lower() for tg in d.get("tags") or []):
                 continue
         if echeance:
@@ -2821,6 +2845,9 @@ async def list_documents(vehicle_id: str, request: Request):
         {"vehicle_id": vehicle_id, "is_deleted": False}, {"_id": 0}
     ).to_list(None)
     docs.sort(key=lambda d: d.get("created_at", ""), reverse=True)
+    dnames = await _driver_names(tid(request), [d.get("driver_id") for d in docs])
+    for d in docs:
+        d["driver_nom"] = dnames.get(d.get("driver_id"))
     return [with_statut(d, preavis) for d in docs]
 
 
@@ -2957,6 +2984,7 @@ async def create_fuel_transaction_nofile(vehicle_id: str, payload: ManualFuelCre
             errors.append(f"{f} invalide")
     if errors:
         raise HTTPException(status_code=422, detail=" ; ".join(errors))
+    driver = await _driver_ref(t, payload.driver_id)
     heure = nofile.norm_heure(payload.heure)
     doc_data = {k: v for k, v in {
         "station": (payload.station or "").strip() or None, "date": date_, "heure": heure,
@@ -2986,9 +3014,10 @@ async def create_fuel_transaction_nofile(vehicle_id: str, payload: ManualFuelCre
     rec = _nofile_record(vehicle, t, payload, "ticket_carburant",
                          nofile.fuel_label(doc_data.get("station"), date_, electric), user, now)
     rec.update(_ticket_to_v2(doc_data))
-    rec.update({"document_data": doc_data, "business_category": payload.business_category})
+    rec.update({"document_data": doc_data, "business_category": payload.business_category,
+                "driver_id": driver["id"] if driver else None, "driver_validated_manually": bool(driver)})
     doc_id, created = await _nofile_store(rec, payload, legacy_key, now)
-    extra = {"created_from": payload.source, "motif_saisie": rec["motif_saisie"],
+    extra = {"created_from": payload.source, "motif_saisie": rec["motif_saisie"], "driver_id": rec["driver_id"],
              **nofile.date_heure_fields(date_, heure, payload.source, payload.date_heure_tz_assumed)}
     if legacy_key:
         extra.update({"legacy_source": legacy_key["legacy_source"], "legacy_id": legacy_key["legacy_id"],
@@ -2998,7 +3027,8 @@ async def create_fuel_transaction_nofile(vehicle_id: str, payload: ManualFuelCre
                 f"{'Document' if created else 'Rejeu idempotent'} sans justificatif ({payload.source}"
                 + (f", motif : {rec['motif_saisie']}" if rec["motif_saisie"] else "")
                 + f") — {rec['label']} · {doc_data['montant']} {doc_data['devise']}"
-                + (f" · contre-valeur {rec['montant_chf']} CHF" if rec.get("montant_chf") is not None else ""))
+                + (f" · contre-valeur {rec['montant_chf']} CHF" if rec.get("montant_chf") is not None else "")
+                + (f" · conducteur {drv.display_name(driver)}" if driver else ""))
     await audit("create" if created else "modify", "fuel_transaction", request, fuel_tx["id"], vehicle["id"],
                 f"Transaction énergie {payload.source} ({'créée' if created else 'actualisée'}) — "
                 f"{doc_data.get('station') or '—'} · {doc_data['montant']} {doc_data['devise']} · "
@@ -3027,6 +3057,7 @@ async def create_fine_nofile(vehicle_id: str, payload: ManualFineCreate, request
                 errors.append(f"{f} invalide (AAAA-MM-JJ)")
     if errors:
         raise HTTPException(status_code=422, detail=" ; ".join(errors))
+    driver = await _driver_ref(t, payload.driver_id)
     doc_data = {k: v for k, v in {
         "autorite": payload.autorite.strip(), "numero_amende": (payload.numero_amende or "").strip() or None,
         "date_infraction": dates.get("date_infraction"), "montant_chf": round(float(payload.montant), 2),
@@ -3055,7 +3086,8 @@ async def create_fine_nofile(vehicle_id: str, payload: ManualFineCreate, request
                          "detail": "La plaque saisie diffère de celle du véhicule — aucune réaffectation automatique."})
     rec = _nofile_record(vehicle, t, payload, "amende", nofile.fine_label(doc_data["autorite"], v2.get("numero")), user, now)
     rec.update(v2)
-    rec.update({"document_data": doc_data, "business_category": "AMENDE"})
+    rec.update({"document_data": doc_data, "business_category": "AMENDE",
+                "driver_id": driver["id"] if driver else None, "driver_validated_manually": bool(driver)})
     if not existing:
         rec.update({"payee": False, "paid_at": None})  # statut de paiement conservé lors d'un rejeu
     doc_id, created = await _nofile_store(rec, payload, legacy_key, now)
@@ -3063,7 +3095,8 @@ async def create_fine_nofile(vehicle_id: str, payload: ManualFineCreate, request
                 f"{'Amende' if created else 'Rejeu idempotent amende'} sans justificatif ({payload.source}"
                 + (f", motif : {rec['motif_saisie']}" if rec["motif_saisie"] else "")
                 + f") — {rec['label']} · {v2.get('montant')} {v2.get('devise')}"
-                + (f" · contre-valeur {rec['montant_chf']} CHF" if rec.get("montant_chf") is not None else ""))
+                + (f" · contre-valeur {rec['montant_chf']} CHF" if rec.get("montant_chf") is not None else "")
+                + (f" · conducteur {drv.display_name(driver)}" if driver else ""))
     doc = await db.documents.find_one({"id": doc_id}, _NOFILE_PROJ)
     return {"ok": True, "created": created, "document_id": doc_id,
             "document": with_statut(doc, (await th_for(request))["urgent_days"]),
@@ -3103,6 +3136,329 @@ async def attach_document_file(doc_id: str, request: Request, file: UploadFile =
     out = with_statut({**doc, **upd}, (await th_for(request))["urgent_days"])
     out["duplicate_of"] = duplicate_of
     return out
+
+
+# ---------------------------------------------------------------------------
+# Phase 4C — Lot C : conducteurs (`drivers`) + affectations datées (`driver_assignments`).
+# Identité = UUID tenant-scopé ; nom/prénom = affichage uniquement, jamais une clé de résolution.
+# `driver_id` optionnel sur documents / fuel_transactions : FK validée dans le tenant (404 fail-closed).
+# Rôles utilisateurs `driver` / `manager` : NON créés (lot H).
+# ---------------------------------------------------------------------------
+async def ensure_driver_indexes():
+    await db.drivers.create_index([("tenant_id", 1), ("id", 1)], unique=True, name="uniq_driver_tenant_id")
+    await db.drivers.create_index([("tenant_id", 1), ("email", 1)], unique=True, name="uniq_driver_email",
+                                  partialFilterExpression={"email": {"$type": "string"}})
+    await db.drivers.create_index([("tenant_id", 1), ("is_deleted", 1), ("actif", 1)], name="drivers_tenant_state")
+    await db.driver_assignments.create_index([("tenant_id", 1), ("id", 1)], unique=True, name="uniq_assignment_tenant_id")
+    await db.driver_assignments.create_index([("tenant_id", 1), ("vehicle_id", 1), ("valid_from", -1)], name="assign_vehicle")
+    await db.driver_assignments.create_index([("tenant_id", 1), ("driver_id", 1), ("valid_from", -1)], name="assign_driver")
+    await db.driver_assignments.create_index([("tenant_id", 1), ("valid_to", 1)], name="assign_active")
+    for coll in (db.fuel_transactions, db.documents):
+        await coll.create_index([("tenant_id", 1), ("driver_id", 1)], name="tenant_driver",
+                                partialFilterExpression={"driver_id": {"$type": "string"}})
+
+
+async def _driver_or_404(tenant_id: str, driver_id: str, include_archived: bool = False) -> dict:
+    q = {"tenant_id": tenant_id, "id": driver_id}
+    if not include_archived:
+        q["is_deleted"] = False
+    d = await db.drivers.find_one(q, {"_id": 0})
+    if not d:
+        raise HTTPException(status_code=404, detail="Conducteur introuvable")
+    return d
+
+
+async def _driver_ref(tenant_id: str, driver_id) -> Optional[dict]:
+    """FK optionnelle `driver_id` : vide = non identifié ; sinon conducteur actif du MÊME tenant (404 sinon)."""
+    if driver_id in (None, ""):
+        return None
+    return await _driver_or_404(tenant_id, driver_id)
+
+
+async def _driver_names(tenant_id: str, ids) -> dict:
+    ids = [i for i in set(ids) if i]
+    if not ids:
+        return {}
+    rows = await db.drivers.find({"tenant_id": tenant_id, "id": {"$in": ids}},
+                                 {"_id": 0, "id": 1, "nom": 1, "prenom": 1, "matricule_interne": 1}).to_list(None)
+    return {r["id"]: drv.display_name(r) for r in rows}
+
+
+async def _assignments_out(tenant_id: str, query: dict) -> list:
+    rows = await db.driver_assignments.find({"tenant_id": tenant_id, **query}, {"_id": 0}).to_list(None)
+    names = await _driver_names(tenant_id, [r["driver_id"] for r in rows])
+    vmap = {v["id"]: v for v in await db.vehicles.find(
+        {"tenant_id": tenant_id, "id": {"$in": list({r["vehicle_id"] for r in rows})}},
+        {"_id": 0, "id": 1, "plaque": 1, "marque": 1, "modele": 1}).to_list(None)}
+    for r in rows:
+        v = vmap.get(r["vehicle_id"]) or {}
+        r.update({"driver_nom": names.get(r["driver_id"]), "plaque": v.get("plaque"),
+                  "vehicule_label": " ".join(x for x in (v.get("marque"), v.get("modele")) if x),
+                  "active": r.get("valid_to") is None or r["valid_to"] >= drv.today_zurich()})
+    rows.sort(key=lambda r: (r.get("valid_to") is not None, r.get("valid_from") or ""), reverse=False)
+    rows.sort(key=lambda r: r.get("valid_from") or "", reverse=True)
+    return rows
+
+
+async def _email_taken(tenant_id: str, email: Optional[str], exclude_id: Optional[str] = None) -> bool:
+    if not email:
+        return False
+    q = {"tenant_id": tenant_id, "email": email}
+    if exclude_id:
+        q["id"] = {"$ne": exclude_id}
+    return await db.drivers.find_one(q, {"_id": 1}) is not None
+
+
+@api_router.get("/drivers")
+async def list_drivers(request: Request, q: Optional[str] = None, actif: Optional[str] = None,
+                       include_archived: Optional[str] = None):
+    """Référentiel du tenant courant uniquement ; `affectations` = affectations en cours (lecture)."""
+    t = tid(request)
+    query = {"tenant_id": t}
+    if not include_archived:
+        query["is_deleted"] = False
+    if actif in ("true", "false"):
+        query["actif"] = actif == "true"
+    rows = await db.drivers.find(query, {"_id": 0}).to_list(None)
+    term = (q or "").strip().lower()
+    if term:
+        rows = [r for r in rows if term in " ".join(str(r.get(k) or "") for k in
+                                                     ("nom", "prenom", "matricule_interne", "email", "groupe")).lower()]
+    today = drv.today_zurich()
+    active = await _assignments_out(t, {"driver_id": {"$in": [r["id"] for r in rows]},
+                                        "$or": [{"valid_to": None}, {"valid_to": {"$gte": today}}]})
+    by_driver = {}
+    for a in active:
+        if a["valid_from"] <= today:
+            by_driver.setdefault(a["driver_id"], []).append(
+                {k: a.get(k) for k in ("id", "vehicle_id", "plaque", "vehicule_label", "valid_from", "valid_to", "principal")})
+    for r in rows:
+        r["display"] = drv.display_name(r)
+        r["affectations"] = by_driver.get(r["id"], [])
+    rows.sort(key=lambda r: ((r.get("nom") or "").lower(), (r.get("prenom") or "").lower()))
+    return rows
+
+
+@api_router.post("/drivers", dependencies=[Depends(require_roles("admin"))])
+async def create_driver(payload: DriverCreate, request: Request):
+    t, now = tid(request), datetime.now(timezone.utc).isoformat()
+    data = drv.normalize_driver(payload.model_dump())
+    errors = drv.driver_errors(data) + drv.source_errors(payload)
+    if errors:
+        raise HTTPException(status_code=422, detail=" ; ".join(errors))
+    legacy_key = None
+    if payload.source == "legacy_import":
+        legacy_key = {"tenant_id": t, "legacy_source": _legacy_source(payload.legacy_source or "journal"),
+                      "legacy_id": str(payload.legacy_id).strip()}
+    existing = await db.drivers.find_one(legacy_key, {"_id": 0, "id": 1}) if legacy_key else None
+    if await _email_taken(t, data.get("email"), (existing or {}).get("id")):
+        raise HTTPException(status_code=409, detail={"code": "EMAIL_TAKEN",
+                                                     "message": "Un conducteur de ce tenant utilise déjà cet email."})
+    user = _nofile_user(request)
+    rec = {**data, "tenant_id": t, "source": payload.source, "is_deleted": False,
+           "updated_at": now, "updated_by": user, "created_by": "import" if legacy_key else user}
+    if legacy_key:
+        res = await legacy_identity.upsert_legacy_record(db, "drivers", t, legacy_key["legacy_source"],
+                                                         legacy_key["legacy_id"], {**rec, "created_at": payload.created_at or now})
+        driver_id, created = res["id"], res["created"]
+    else:
+        driver_id, created = str(uuid.uuid4()), True
+        await db.drivers.insert_one({**rec, "id": driver_id, "created_at": now})
+    await audit("create" if created else "legacy_replay", "driver", request, driver_id, None,
+                f"{'Conducteur créé' if created else 'Rejeu idempotent conducteur'} ({payload.source}) — "
+                f"{drv.display_name(data)}" + (f" · email {data['email']}" if data.get("email") else "")
+                + (f" · legacy {legacy_key['legacy_source']}:{legacy_key['legacy_id']}" if legacy_key else ""))
+    d = await _driver_or_404(t, driver_id)
+    d["display"] = drv.display_name(d)
+    return {**d, "created": created}
+
+
+@api_router.get("/drivers/{driver_id}")
+async def get_driver(driver_id: str, request: Request):
+    t = tid(request)
+    d = await _driver_or_404(t, driver_id, include_archived=True)
+    d["display"] = drv.display_name(d)
+    d["assignments"] = await _assignments_out(t, {"driver_id": driver_id})
+    return d
+
+
+@api_router.patch("/drivers/{driver_id}", dependencies=[Depends(require_roles("admin"))])
+async def update_driver(driver_id: str, payload: DriverUpdate, request: Request):
+    t = tid(request)
+    before = await _driver_or_404(t, driver_id)
+    data = drv.normalize_driver(payload.model_dump(exclude_unset=True))
+    if not data:
+        raise HTTPException(status_code=422, detail="Aucun champ à modifier")
+    errors = drv.driver_errors({**before, **data}, partial=True)
+    if errors:
+        raise HTTPException(status_code=422, detail=" ; ".join(errors))
+    if "email" in data and await _email_taken(t, data["email"], driver_id):
+        raise HTTPException(status_code=409, detail={"code": "EMAIL_TAKEN",
+                                                     "message": "Un conducteur de ce tenant utilise déjà cet email."})
+    changes = drv.diff_fields(before, data)
+    if not changes:
+        d = {**before, "display": drv.display_name(before)}
+        return d
+    now = datetime.now(timezone.utc).isoformat()
+    upd = {**data, "updated_at": now, "updated_by": _nofile_user(request)}
+    await db.drivers.update_one({"id": driver_id, "tenant_id": t}, {"$set": upd})
+    state = ""
+    if "actif" in data and data["actif"] != before.get("actif"):
+        state = " — " + ("RÉACTIVATION" if data["actif"] else "DÉSACTIVATION")
+    await audit("modify", "driver", request, driver_id, None,
+                f"Conducteur {drv.display_name(before)} modifié{state} : " + " ; ".join(changes))
+    d = {**before, **upd}
+    d["display"] = drv.display_name(d)
+    return d
+
+
+@api_router.post("/drivers/{driver_id}/archive", dependencies=[Depends(require_roles("admin"))])
+async def archive_driver(driver_id: str, request: Request):
+    """Archivage non destructif : masqué des listes/picker, historique et liens driver_id conservés."""
+    t = tid(request)
+    d = await _driver_or_404(t, driver_id)
+    open_assign = await db.driver_assignments.count_documents({"tenant_id": t, "driver_id": driver_id, "valid_to": None})
+    if open_assign:
+        raise HTTPException(status_code=409, detail={
+            "code": "OPEN_ASSIGNMENTS", "count": open_assign,
+            "message": "Ce conducteur a une affectation en cours : clôturez-la explicitement avant d'archiver."})
+    now = datetime.now(timezone.utc).isoformat()
+    upd = {"is_deleted": True, "actif": False, "archived_at": now, "archived_by": _nofile_user(request), "updated_at": now}
+    await db.drivers.update_one({"id": driver_id, "tenant_id": t}, {"$set": upd})
+    await audit("archive", "driver", request, driver_id, None,
+                f"Conducteur {drv.display_name(d)} archivé (actif {d.get('actif')} → False, is_deleted False → True)")
+    return {"ok": True, "id": driver_id, "is_deleted": True}
+
+
+@api_router.post("/drivers/{driver_id}/restore", dependencies=[Depends(require_roles("admin"))])
+async def restore_driver(driver_id: str, request: Request):
+    t = tid(request)
+    d = await db.drivers.find_one({"tenant_id": t, "id": driver_id, "is_deleted": True}, {"_id": 0})
+    if not d:
+        raise HTTPException(status_code=404, detail="Conducteur archivé introuvable")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.drivers.update_one({"id": driver_id, "tenant_id": t},
+                                {"$set": {"is_deleted": False, "updated_at": now, "restored_at": now,
+                                          "restored_by": _nofile_user(request)}})
+    await audit("restore", "driver", request, driver_id, None,
+                f"Conducteur {drv.display_name(d)} restauré (is_deleted True → False, actif = {d.get('actif')})")
+    return {"ok": True, "id": driver_id, "is_deleted": False}
+
+
+@api_router.get("/vehicles/{vehicle_id}/driver-assignments")
+async def list_vehicle_assignments(vehicle_id: str, request: Request):
+    await find_tenant_vehicle(request, vehicle_id, {"_id": 1})
+    return await _assignments_out(tid(request), {"vehicle_id": vehicle_id})
+
+
+@api_router.post("/vehicles/{vehicle_id}/driver-assignments", dependencies=[Depends(require_roles("admin"))])
+async def create_vehicle_assignment(vehicle_id: str, payload: AssignmentCreate, request: Request):
+    """Affectation datée véhicule↔conducteur. Chevauchement d'une affectation principale → 409,
+    sauf `replace=true` + motif : l'affectation en cours est clôturée explicitement (auditée), jamais en silence."""
+    vehicle = await find_tenant_vehicle(request, vehicle_id, {"_id": 0, "id": 1, "plaque": 1})
+    t = tid(request)
+    errors = drv.assignment_errors(payload)
+    if errors:
+        raise HTTPException(status_code=422, detail=" ; ".join(errors))
+    driver = await _driver_or_404(t, payload.driver_id)  # 404 si autre tenant / archivé
+    if not driver.get("actif"):
+        raise HTTPException(status_code=422, detail="Conducteur désactivé : réactivez-le avant de l'affecter")
+    legacy_key = None
+    if payload.source == "legacy_import":
+        legacy_key = {"tenant_id": t, "legacy_source": _legacy_source(payload.legacy_source or "journal"),
+                      "legacy_id": str(payload.legacy_id).strip()}
+    existing = await db.driver_assignments.find_one(legacy_key, {"_id": 0, "id": 1}) if legacy_key else None
+    conflicts = []
+    if payload.principal:
+        q = {"tenant_id": t, "vehicle_id": vehicle_id, "principal": True}
+        if existing:
+            q["id"] = {"$ne": existing["id"]}
+        for a in await db.driver_assignments.find(q, {"_id": 0}).to_list(None):
+            if drv.overlaps(a["valid_from"], a.get("valid_to"), payload.valid_from, payload.valid_to):
+                conflicts.append(a)
+    names = await _driver_names(t, [c["driver_id"] for c in conflicts])
+    conflict_out = [{"id": c["id"], "driver_id": c["driver_id"], "driver_nom": names.get(c["driver_id"]),
+                     "valid_from": c["valid_from"], "valid_to": c.get("valid_to")} for c in conflicts]
+    if conflicts and not payload.replace:
+        raise HTTPException(status_code=409, detail={
+            "code": "ASSIGNMENT_OVERLAP", "conflicts": conflict_out,
+            "message": "Une affectation principale chevauche cette période : clôturez-la ou confirmez le remplacement (motif)."})
+    if conflicts and any(c.get("valid_to") is not None or c["valid_from"] >= payload.valid_from for c in conflicts):
+        raise HTTPException(status_code=409, detail={
+            "code": "ASSIGNMENT_OVERLAP", "conflicts": conflict_out,
+            "message": "Remplacement impossible : seule une affectation EN COURS commencée avant la nouvelle date "
+                       "peut être remplacée (sinon clôturez-la explicitement)."})
+    now, user = datetime.now(timezone.utc).isoformat(), _nofile_user(request)
+    motif = drv.clean_str(payload.motif)
+    closed = []
+    for c in conflicts:
+        new_to = (datetime.strptime(payload.valid_from, "%Y-%m-%d") - timedelta(days=1)).date().isoformat()
+        await db.driver_assignments.update_one({"id": c["id"], "tenant_id": t}, {"$set": {
+            "valid_to": new_to, "closed_at": now, "closed_by": user, "close_motif": motif, "replaced": True}})
+        await audit("replace", "driver_assignment", request, c["id"], vehicle_id,
+                    f"Affectation {names.get(c['driver_id'])} → {vehicle.get('plaque')} clôturée par remplacement "
+                    f"(valid_to — → {new_to}) — motif : {motif}")
+        closed.append({**c, "valid_to": new_to})
+    rec = {"tenant_id": t, "driver_id": driver["id"], "vehicle_id": vehicle_id, "valid_from": payload.valid_from,
+           "valid_to": payload.valid_to, "principal": payload.principal, "source": payload.source,
+           "motif": motif, "created_by": "import" if legacy_key else user, "closed_by": None, "closed_at": None,
+           "updated_at": now}
+    if legacy_key:
+        res = await legacy_identity.upsert_legacy_record(db, "driver_assignments", t, legacy_key["legacy_source"],
+                                                         legacy_key["legacy_id"], {**rec, "created_at": payload.created_at or now})
+        assign_id, created = res["id"], res["created"]
+    else:
+        assign_id, created = str(uuid.uuid4()), True
+        await db.driver_assignments.insert_one({**rec, "id": assign_id, "created_at": now})
+    await audit("create" if created else "legacy_replay", "driver_assignment", request, assign_id, vehicle_id,
+                f"{'Affectation créée' if created else 'Rejeu idempotent affectation'} ({payload.source}) : "
+                f"{drv.display_name(driver)} → {vehicle.get('plaque')} du {payload.valid_from}"
+                + (f" au {payload.valid_to}" if payload.valid_to else " (en cours)")
+                + (" · principale" if payload.principal else " · secondaire") + (f" — motif : {motif}" if motif else ""))
+    out = await _assignments_out(t, {"id": assign_id})
+    return {**out[0], "created": created, "replaced": closed}
+
+
+@api_router.post("/driver-assignments/{assignment_id}/close", dependencies=[Depends(require_roles("admin"))])
+async def close_assignment(assignment_id: str, payload: AssignmentClose, request: Request):
+    t = tid(request)
+    a = await db.driver_assignments.find_one({"tenant_id": t, "id": assignment_id}, {"_id": 0})
+    if not a:
+        raise HTTPException(status_code=404, detail="Affectation introuvable")
+    if a.get("valid_to") is not None:
+        raise HTTPException(status_code=409, detail={"code": "ALREADY_CLOSED", "valid_to": a["valid_to"],
+                                                     "message": "Affectation déjà clôturée."})
+    valid_to = payload.valid_to or drv.today_zurich()
+    if not drv.is_date(valid_to):
+        raise HTTPException(status_code=422, detail="valid_to invalide (AAAA-MM-JJ)")
+    if valid_to < a["valid_from"]:
+        raise HTTPException(status_code=422, detail="valid_to antérieure à valid_from")
+    now, user = datetime.now(timezone.utc).isoformat(), _nofile_user(request)
+    motif = drv.clean_str(payload.motif)
+    await db.driver_assignments.update_one({"id": assignment_id, "tenant_id": t}, {"$set": {
+        "valid_to": valid_to, "closed_at": now, "closed_by": user, "close_motif": motif, "updated_at": now}})
+    names = await _driver_names(t, [a["driver_id"]])
+    await audit("close", "driver_assignment", request, assignment_id, a["vehicle_id"],
+                f"Affectation {names.get(a['driver_id'])} clôturée (valid_to — → {valid_to})"
+                + (f" — motif : {motif}" if motif else ""))
+    return (await _assignments_out(t, {"id": assignment_id}))[0]
+
+
+@api_router.get("/vehicles/{vehicle_id}/driver-at")
+async def driver_at(vehicle_id: str, request: Request, date: Optional[str] = None):
+    """LECTURE SEULE : conducteur(s) affecté(s) à une date (affectations datées). Ne résout jamais par nom, n'écrit rien."""
+    await find_tenant_vehicle(request, vehicle_id, {"_id": 1})
+    day = date or drv.today_zurich()
+    if not drv.is_date(day):
+        raise HTTPException(status_code=422, detail="date invalide (AAAA-MM-JJ)")
+    rows = await _assignments_out(tid(request), {"vehicle_id": vehicle_id})
+    candidates = [r for r in rows if drv.covers(r["valid_from"], r.get("valid_to"), day)]
+    candidates.sort(key=lambda r: (not r.get("principal"), r["valid_from"]), reverse=False)
+    principals = [c for c in candidates if c.get("principal")]
+    return {"vehicle_id": vehicle_id, "date": day, "candidates": candidates,
+            "driver": principals[0] if len(principals) == 1 else None,
+            "ambiguous": len(principals) > 1, "written": 0}
+
 
 
 
@@ -3979,6 +4335,7 @@ class DocumentValidate(BaseModel):
     fields: dict = Field(default_factory=dict)
     business_category: Optional[str] = None
     duplicate_override: bool = False
+    driver_id: Optional[str] = None  # Lot C : conducteur choisi explicitement (jamais déduit du document)
 
 
 @api_router.post("/documents/{doc_id}/validate")
@@ -3993,6 +4350,8 @@ async def validate_scanned_document(doc_id: str, payload: DocumentValidate, requ
     if payload.business_category and payload.business_category not in BUSINESS_CATEGORY_LABELS:
         raise HTTPException(status_code=422, detail="Catégorie métier inconnue")
     vehicle = await find_tenant_vehicle(request, docrec["vehicle_id"])
+    driver = await _driver_ref(tid(request), payload.driver_id) if payload.driver_id is not None else None
+    tx_extra = {"driver_id": driver["id"] if driver else None} if payload.driver_id is not None else None
 
     defs = {d["key"]: d for d in FIELD_DEFS.get(dtype, [])}
     conf_by_field = {f["field"]: f.get("confidence") for f in docrec.get("extracted_fields") or []}
@@ -4056,6 +4415,9 @@ async def validate_scanned_document(doc_id: str, payload: DocumentValidate, requ
     }
     warnings = []
     fuel_tx = None
+    if payload.driver_id is not None:
+        doc_set["driver_id"] = driver["id"] if driver else None
+        doc_set["driver_validated_manually"] = bool(driver)
     if payload.business_category or dtype in COST_DOC_TYPES:
         doc_set["business_category"] = payload.business_category or None
     if dtype == "facture":
@@ -4092,7 +4454,7 @@ async def validate_scanned_document(doc_id: str, payload: DocumentValidate, requ
         if any(doc_data.get(k) is not None for k in ("montant", "litres", "energie_kwh")):
             fuel_tx = await _upsert_fuel_transaction(
                 doc_id, doc_data, vehicle, tid(request),
-                (getattr(request.state, "user", None) or {}).get("email") or "utilisateur")
+                (getattr(request.state, "user", None) or {}).get("email") or "utilisateur", tx_extra)
         else:
             warnings.append({"code": "TRANSACTION_SKIPPED",
                              "detail": "Ni montant, ni litres, ni kWh validés — aucune transaction énergie créée."})
@@ -4127,7 +4489,9 @@ async def validate_scanned_document(doc_id: str, payload: DocumentValidate, requ
                 f"Validation {type_label} — {len(applied) + len(doc_data)} champ(s) appliqué(s)"
                 + (f" — coût {doc_set['montant']} {doc_set.get('devise')} "
                    f"({BUSINESS_CATEGORY_LABELS.get(doc_set.get('business_category'), COST_UNCLASSIFIED_LABEL)})"
-                   if doc_set.get("montant") is not None else ""))
+                   if doc_set.get("montant") is not None else "")
+                + (f" — conducteur : {docrec.get('driver_id') or '—'} → {doc_set['driver_id'] or '—'}"
+                   if "driver_id" in doc_set and doc_set["driver_id"] != docrec.get("driver_id") else ""))
 
     fresh = await db.vehicles.find_one({"id": vehicle["id"]}, {"_id": 0})
     navixy_push = None
@@ -5755,6 +6119,7 @@ async def startup():
         await db.alerts.create_index([("vehicle_id", 1), ("type", 1), ("document_id", 1),
                                       ("threshold", 1), ("due_date", 1)])
         await legacy_identity.ensure_legacy_indexes(db)
+        await ensure_driver_indexes()
         if NAVIXY_HASH:
             await db.tenant_integrations.update_one(
                 {"tenant_id": "default", "provider": "navixy"},

@@ -66,6 +66,7 @@ export default function EnergyTab({ vehicle }) {
                 <p className="text-xs text-slate-400">
                   {txDateLabel(tx)} · {energyLabel(tx)} · {qtyLabel(tx)} · {unitPriceLabel(tx)}
                   {tx.kilometrage ? ` · ${tx.kilometrage} km` : ""}
+                  {tx.driver_nom ? <span data-testid={`vehicle-energy-driver-${tx.id}`}> · {tx.driver_nom}</span> : ""}
                 </p>
               </div>
               <p className="text-sm font-semibold text-slate-900">{tx.montant != null ? chfExact(tx.montant, tx.devise) : "—"}</p>

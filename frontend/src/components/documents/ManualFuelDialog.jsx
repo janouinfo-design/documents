@@ -7,9 +7,10 @@ import { createFuelNoFile } from "@/lib/api";
 import { chfExact } from "@/lib/format";
 import { CoherenceWarnings, DuplicateSuspectedBox } from "@/components/documents/BusinessCategoryPicker";
 import { F, DeclarativeBanner, VehicleSelect, CurrencyFields, num, useNoFileSubmit } from "@/components/documents/nofileShared";
+import DriverPicker from "@/components/drivers/DriverPicker";
 
 const EMPTY = { date: "", heure: "", station: "", montant: "", devise: "CHF", montant_chf: "", litres: "", prix_litre: "",
-  energie_kwh: "", prix_kwh: "", type_carburant: "", kilometrage: "", carte_last4: "", motif: "" };
+  energie_kwh: "", prix_kwh: "", type_carburant: "", kilometrage: "", carte_last4: "", motif: "", driver_id: null };
 
 // « Plein / recharge sans justificatif » — 1 document sans fichier (= le coût) + 1 transaction énergie.
 export default function ManualFuelDialog({ open, onOpenChange, vehicle, onCreated }) {
@@ -25,6 +26,7 @@ export default function ManualFuelDialog({ open, onOpenChange, vehicle, onCreate
       litres: kind === "CARBURANT" ? num(f.litres) : null, prix_litre: kind === "CARBURANT" ? num(f.prix_litre) : null,
       energie_kwh: kind === "ENERGIE_ELECTRIQUE" ? num(f.energie_kwh) : null, prix_kwh: kind === "ENERGIE_ELECTRIQUE" ? num(f.prix_kwh) : null,
       kilometrage: num(f.kilometrage), carte_last4: f.carte_last4 || null, business_category: kind, motif: f.motif, source: "manual", duplicate_override: override,
+      driver_id: f.driver_id || null,
     }),
     successLabel: (r) => `${kind === "ENERGIE_ELECTRIQUE" ? "Recharge" : "Plein"} enregistré sans justificatif — ${chfExact(r.cost?.montant, r.cost?.devise)}${r.cost?.pending_fx ? " (conversion en attente)" : ""} compté une seule fois`,
     onSuccess: (r) => { onCreated?.(r); onOpenChange(false); },
@@ -70,6 +72,9 @@ export default function ManualFuelDialog({ open, onOpenChange, vehicle, onCreate
           )}
           <F label="Kilométrage au compteur"><Input data-testid="manual-fuel-km" type="number" min="0" step="1" value={f.kilometrage} onChange={set("kilometrage")} /></F>
           <F label="Carte (4 derniers chiffres)"><Input data-testid="manual-fuel-carte" maxLength={4} value={f.carte_last4} onChange={set("carte_last4")} /></F>
+          <F label="Conducteur (optionnel, choix explicite)" className="sm:col-span-2">
+            <DriverPicker value={f.driver_id} onChange={(v) => setF((p) => ({ ...p, driver_id: v }))} testId="manual-fuel-driver" />
+          </F>
           <F label="Motif de la saisie sans justificatif *" className="sm:col-span-2">
             <Textarea data-testid="manual-fuel-motif" rows={2} value={f.motif} onChange={set("motif")} placeholder="Ticket perdu, relevé de carte carburant, borne sans reçu…" />
           </F>

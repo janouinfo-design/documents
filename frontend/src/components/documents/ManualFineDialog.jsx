@@ -7,8 +7,9 @@ import { createFineNoFile } from "@/lib/api";
 import { chfExact } from "@/lib/format";
 import { CoherenceWarnings, DuplicateSuspectedBox } from "@/components/documents/BusinessCategoryPicker";
 import { F, DeclarativeBanner, VehicleSelect, CurrencyFields, num, useNoFileSubmit } from "@/components/documents/nofileShared";
+import DriverPicker from "@/components/drivers/DriverPicker";
 
-const EMPTY = { autorite: "", numero_amende: "", date_infraction: "", montant: "", devise: "CHF", montant_chf: "", delai_paiement: "", plaque: "", motif: "" };
+const EMPTY = { autorite: "", numero_amende: "", date_infraction: "", montant: "", devise: "CHF", montant_chf: "", delai_paiement: "", plaque: "", motif: "", driver_id: null };
 
 // « Nouvelle amende sans fichier » — document validé (coût + échéance de paiement), règles Phase 3.
 export default function ManualFineDialog({ open, onOpenChange, vehicle, onCreated }) {
@@ -21,6 +22,7 @@ export default function ManualFineDialog({ open, onOpenChange, vehicle, onCreate
       autorite: f.autorite, numero_amende: f.numero_amende || null, date_infraction: f.date_infraction || null,
       montant: num(f.montant), devise: f.devise, montant_chf: f.devise !== "CHF" ? num(f.montant_chf) : null,
       delai_paiement: f.delai_paiement || null, plaque: f.plaque || null, motif: f.motif, source: "manual", duplicate_override: override,
+      driver_id: f.driver_id || null,
     }),
     successLabel: (r) => `Amende enregistrée sans fichier — ${chfExact(r.cost?.montant, r.cost?.devise)}${r.cost?.pending_fx ? " (conversion en attente)" : ""} · à payer`,
     onSuccess: (r) => { onCreated?.(r); onOpenChange(false); },
@@ -46,6 +48,9 @@ export default function ManualFineDialog({ open, onOpenChange, vehicle, onCreate
           <F label="Montant à payer (frais inclus) *"><Input data-testid="manual-fine-montant" type="number" min="0" step="0.05" value={f.montant} onChange={set("montant")} /></F>
           <CurrencyFields devise={f.devise} montantChf={f.montant_chf} onDevise={set("devise")} onMontantChf={set("montant_chf")} idPrefix="manual-fine" />
           <F label="Plaque mentionnée"><Input data-testid="manual-fine-plaque" value={f.plaque} onChange={set("plaque")} placeholder={vehicle?.plaque || ""} /></F>
+          <F label="Conducteur (optionnel, choix explicite)">
+            <DriverPicker value={f.driver_id} onChange={(v) => setF((p) => ({ ...p, driver_id: v }))} testId="manual-fine-driver" />
+          </F>
           <F label="Motif de la saisie sans fichier *" className="sm:col-span-2">
             <Textarea data-testid="manual-fine-motif" rows={2} value={f.motif} onChange={set("motif")} placeholder="Courrier papier non scanné, amende reprise d'un ancien système…" />
           </F>

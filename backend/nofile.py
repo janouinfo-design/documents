@@ -33,6 +33,7 @@ class ManualFuelCreate(BaseModel):
     plaque: Optional[str] = None
     business_category: str
     motif: Optional[str] = None
+    driver_id: Optional[str] = None
     duplicate_override: bool = False
     source: str = "manual"
     legacy_source: Optional[str] = None
@@ -51,6 +52,7 @@ class ManualFineCreate(BaseModel):
     delai_paiement: Optional[str] = None
     plaque: Optional[str] = None
     motif: Optional[str] = None
+    driver_id: Optional[str] = None
     duplicate_override: bool = False
     source: str = "manual"
     legacy_source: Optional[str] = None

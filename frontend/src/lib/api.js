@@ -307,4 +307,16 @@ export const attachDocumentFile = (docId, file) => {
   return http.post(`/documents/${docId}/attach-file`, form, { headers: { "Content-Type": "multipart/form-data" } }).then((r) => r.data);
 };
 
+// Phase 4C — Lot C : conducteurs (référentiel tenant) + affectations datées véhicule↔conducteur
+export const getDrivers = (params = {}) => http.get("/drivers", { params }).then((r) => r.data);
+export const getDriver = (id) => http.get(`/drivers/${id}`).then((r) => r.data);
+export const createDriver = (data) => http.post("/drivers", data).then((r) => r.data);
+export const updateDriver = (id, data) => http.patch(`/drivers/${id}`, data).then((r) => r.data);
+export const archiveDriver = (id) => http.post(`/drivers/${id}/archive`).then((r) => r.data);
+export const restoreDriver = (id) => http.post(`/drivers/${id}/restore`).then((r) => r.data);
+export const getVehicleAssignments = (vehicleId) => http.get(`/vehicles/${vehicleId}/driver-assignments`).then((r) => r.data);
+export const createVehicleAssignment = (vehicleId, data) => http.post(`/vehicles/${vehicleId}/driver-assignments`, data).then((r) => r.data);
+export const closeAssignment = (id, data) => http.post(`/driver-assignments/${id}/close`, data).then((r) => r.data);
+export const getDriverAt = (vehicleId, date) => http.get(`/vehicles/${vehicleId}/driver-at`, { params: date ? { date } : {} }).then((r) => r.data);
+
 export default http;

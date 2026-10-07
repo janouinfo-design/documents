@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { Search, FolderCog, ListChecks, Pencil, Download, FolderOpen, Loader2, Sparkles, FileX2 } from "lucide-react";
+import { Search, FolderCog, ListChecks, Pencil, Download, FolderOpen, Loader2, Sparkles, FileX2, UserRound } from "lucide-react";
 import { getAllDocuments, getDocCategories, getDeadlineSettings, getVehicles, fileUrl } from "@/lib/api";
 import { dateFr } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -194,6 +194,11 @@ export default function DocumentsPage() {
                     </span>
                   )}
                   <NoFileBadge doc={d} className="mt-0.5" />
+                  {d.driver_nom && (
+                    <span data-testid={`doc-driver-${d.id}`} className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                      <UserRound className="h-3 w-3" /> {d.driver_nom}
+                    </span>
+                  )}
                   <FineSummary doc={d} className="mt-0.5 block max-w-[320px]" />
                 </TableCell>
                 <TableCell>

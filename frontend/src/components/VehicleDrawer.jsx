@@ -23,6 +23,7 @@ import ControleTab from "@/components/tabs/ControleTab";
 import DocumentsTab from "@/components/tabs/DocumentsTab";
 import CostsTab from "@/components/tabs/CostsTab";
 import EnergyTab from "@/components/tabs/EnergyTab";
+import DriverTab from "@/components/tabs/DriverTab";
 
 const TABS = [
   { key: "general", label: "Général", icon: Car },
@@ -34,6 +35,7 @@ const TABS = [
   { key: "documents", label: "Documents", icon: FolderTree },
   { key: "couts", label: "Coûts", icon: Wallet },
   { key: "energie", label: "Énergie", icon: Fuel },
+  { key: "conducteur", label: "Conducteur", icon: User },
 ];
 
 function Chip({ icon: Icon, children }) {
@@ -196,6 +198,7 @@ export default function VehicleDrawer({ open, onOpenChange, vehicleId, initialTa
                 <TabsContent value="documents" className="mt-0"><DocumentsTab {...tabProps} /></TabsContent>
                 <TabsContent value="couts" className="mt-0"><CostsTab {...tabProps} /></TabsContent>
                 <TabsContent value="energie" className="mt-0"><EnergyTab {...tabProps} /></TabsContent>
+                <TabsContent value="conducteur" className="mt-0"><DriverTab {...tabProps} /></TabsContent>
               </div>
             </Tabs>
           </>

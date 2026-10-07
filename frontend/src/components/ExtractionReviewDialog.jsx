@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import {
   BusinessCategoryPicker, DuplicateSuspectedBox, PlateMismatchNote, CoherenceWarnings, isDocPlateMismatch, COST_DOC_TYPES,
 } from "@/components/documents/BusinessCategoryPicker";
+import DriverPicker from "@/components/drivers/DriverPicker";
 
 const inputType = (kind) => (kind === "date" ? "date" : ["int", "float", "float3"].includes(kind) ? "number" : "text");
 const CATEGORY_FIELD = "categorie_suggeree";
@@ -47,6 +48,7 @@ export default function ExtractionReviewDialog({ docId, open, onOpenChange, read
   const [bizCat, setBizCat] = useState(null);
   const [suggestion, setSuggestion] = useState(null);
   const [dupInfo, setDupInfo] = useState(null);
+  const [driverId, setDriverId] = useState(null);
 
   useEffect(() => {
     if (!open || !docId) return;
@@ -54,6 +56,7 @@ export default function ExtractionReviewDialog({ docId, open, onOpenChange, read
     setError(null);
     setData(null);
     setDupInfo(null);
+    setDriverId(null);
     getDocumentExtraction(docId)
       .then((d) => {
         setData(d);
@@ -91,6 +94,7 @@ export default function ExtractionReviewDialog({ docId, open, onOpenChange, read
     try {
       const payload = { document_type: data.document_type, fields: buildPayload(), duplicate_override: duplicateOverride };
       if (isCostDoc || bizCat) payload.business_category = bizCat || null;
+      if (driverId) payload.driver_id = driverId;
       const res = await validateScannedDocument(docId, payload);
       if (res.skipped_fields?.length) {
         res.skipped_fields.forEach((s) => toast.warning(s.detail || `Champ ${s.field} non appliqué (${s.reason})`));
@@ -248,6 +252,13 @@ export default function ExtractionReviewDialog({ docId, open, onOpenChange, read
         )}
 
         <DuplicateSuspectedBox info={dupInfo} onConfirmAnyway={() => confirm(true)} busy={validating} />
+
+        {!readOnly && data && ["ticket_carburant", "amende"].includes(data.document_type) && (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3" data-testid="extraction-driver-block">
+            <p className="mb-1.5 text-xs font-semibold text-slate-600">Conducteur (optionnel — choix explicite, jamais déduit du document)</p>
+            <DriverPicker value={driverId} onChange={setDriverId} testId="extraction-driver" />
+          </div>
+        )}
 
         <div className="flex flex-col-reverse items-center justify-end gap-2 border-t border-slate-100 pt-4 sm:flex-row">
           <Button variant="outline" data-testid="extraction-close-btn" onClick={() => onOpenChange(false)}>Fermer</Button>
