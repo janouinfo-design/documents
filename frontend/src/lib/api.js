@@ -166,8 +166,31 @@ export const putDeadlineSettings = (data) => http.put("/settings/deadlines", dat
 export const getCosts = (params = {}) => http.get("/costs", { params }).then((r) => r.data);
 export const getVehicleCosts = (id) => http.get(`/vehicles/${id}/costs`).then((r) => r.data);
 export const getBusinessCategories = () => http.get("/business-categories").then((r) => r.data);
-// Amende : marquer payée / annuler (action explicite auditée, rien n'est supprimé)
-export const setDocumentPaid = (id, payee) => http.post(`/documents/${id}/paid`, { payee }).then((r) => r.data);
+// Amende : marquer payée / retour « à payer » (action explicite auditée, rien n'est supprimé)
+// Lot D : paid_on = date métier (saisie), payment_ref optionnelle — paid_at (technique) est posé par le serveur.
+export const setDocumentPaid = (id, payee, extra = {}) => http.post(`/documents/${id}/paid`, { payee, ...extra }).then((r) => r.data);
+
+// Phase 4C — Lot D : amendes (10 statuts, paiement métier, pièces liées, historique, KPI, exports)
+export const getFines = (params = {}) => http.get("/fines", { params }).then((r) => r.data);
+export const getFinesStats = () => http.get("/fines/stats").then((r) => r.data);
+export const getFine = (id) => http.get(`/fines/${id}`).then((r) => r.data);
+export const setFineStatus = (id, data) => http.post(`/documents/${id}/fine-status`, data).then((r) => r.data);
+export const getDocumentHistory = (id) => http.get(`/documents/${id}/history`).then((r) => r.data);
+export const getFineAttachments = (id) => http.get(`/documents/${id}/attachments`).then((r) => r.data);
+export const addFineAttachment = (id, { piece_type, titre, date_piece, note, file }) => {
+  const form = new FormData();
+  form.append("piece_type", piece_type);
+  form.append("titre", titre);
+  if (date_piece) form.append("date_piece", date_piece);
+  if (note) form.append("note", note);
+  if (file) form.append("file", file);
+  return http.post(`/documents/${id}/attachments`, form, { headers: { "Content-Type": "multipart/form-data" } }).then((r) => r.data);
+};
+export const removeFineAttachment = (id, attId) => http.delete(`/documents/${id}/attachments/${attId}`).then((r) => r.data);
+export const finesExportUrl = (fmt, params = {}) => {
+  const qs = Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== "").map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
+  return withToken(`${API}/reports/amendes.${fmt}${qs ? `?${qs}` : ""}`);
+};
 
 // Énergie & carburant — fuel_transactions dérivées des tickets validés (jamais resommées dans Coûts)
 export const getEnergy = (params = {}) => http.get("/energy", { params }).then((r) => r.data);

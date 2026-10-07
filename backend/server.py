@@ -37,6 +37,9 @@ import nofile
 from nofile import ManualFuelCreate, ManualFineCreate
 import drivers as drv
 from drivers import DriverCreate, DriverUpdate, AssignmentCreate, AssignmentClose
+import fines as fin
+from fines import FineStatusChange, FinePaid
+from reports import build_fines_csv, build_fines_xlsx, build_fines_pdf
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -1995,10 +1998,8 @@ def doc_statut(d: dict, default_preavis: int = None) -> str:
         return "A_VERIFIER"
     days = days_until(d.get("date_expiration"))
     if _is_fine(d):
-        # Amende : payée → PAYEE ; sinon à payer, « en retard » si le délai est dépassé (jamais « expirée »)
-        if d.get("payee"):
-            return "PAYEE"
-        return "EN_RETARD" if days is not None and days < 0 else "A_PAYER"
+        # Amende (Lot D) : badge dérivé du statut métier (10 valeurs) — en retard si délai dépassé, jamais « expirée »
+        return fin.badge(fin.fine_status_of(d), days)
     if days is not None:
         if days < 0:
             return "EXPIRE"
@@ -2009,6 +2010,16 @@ def doc_statut(d: dict, default_preavis: int = None) -> str:
 
 def with_statut(d: dict, default_preavis: int = None) -> dict:
     d["statut"] = doc_statut(d, default_preavis)
+    if _is_fine(d):
+        # Lot D : statut effectif + « payé » DÉRIVÉ (fonction unique) — enrichissement de sortie, aucune écriture
+        st = fin.fine_status_of(d)
+        d["fine_status"] = st
+        d["fine_status_label"] = fin.FINE_STATUS_LABELS[st]
+        d["payee"] = fin.is_paid(st, d)
+        d["deadline_active"] = fin.deadline_active(st)
+        d["cost_counted"] = fin.cost_counted(st)
+        for k in ("paid_on", "paid_at", "payment_ref"):
+            d.setdefault(k, None)  # forme de sortie stable, y compris pour les amendes Phase 3
     return d
 
 
@@ -2182,7 +2193,7 @@ async def vehicle_doc_conformity(vehicle_id: str, request: Request):
     required = required_categories_for(v, reqs)
     docs = await db.documents.find(
         {"tenant_id": tid(request), "vehicle_id": vehicle_id,
-         "is_deleted": False, "archived": {"$ne": True}},
+         "is_deleted": False, "archived": {"$ne": True}, "parent_document_id": None},
         {"_id": 0, "folder": 1, "date_expiration": 1, "preavis_jours": 1,
          "a_verifier": 1, "en_renouvellement": 1}).to_list(None)
     by_cat: dict = {}
@@ -2281,11 +2292,11 @@ async def collect_deadlines(tenant_id: str, th: dict = None) -> dict:
          "prochaine_maintenance": 1}).to_list(None)
     docs = await db.documents.find(
         {"tenant_id": tenant_id, "is_deleted": False, "archived": {"$ne": True},
-         "payee": {"$ne": True}},
+         "parent_document_id": None},  # pièces liées (Lot D) : jamais une échéance
         {"_id": 0, "id": 1, "vehicle_id": 1, "folder": 1, "label": 1,
          "original_filename": 1, "date_expiration": 1, "responsable": 1,
          "document_type": 1, "business_category": 1, "fournisseur": 1, "numero": 1,
-         "montant": 1, "devise": 1}).to_list(None)
+         "montant": 1, "devise": 1, "fine_status": 1, "payee": 1, "paid_on": 1, "paid_at": 1}).to_list(None)
     vmap = {v["id"]: v for v in vehicles}
     items, covered = [], set()
 
@@ -2298,10 +2309,14 @@ async def collect_deadlines(tenant_id: str, th: dict = None) -> dict:
         v = vmap.get(d.get("vehicle_id")) or {}
         exp = d.get("date_expiration")
         days = days_until(exp)
+        fine = _is_fine(d)
+        fine_status = fin.fine_status_of(d) if fine else None
+        if fine and not fin.deadline_active(fine_status):
+            # Règle centrale D9 / §5.5 : payee · refacturee · cloturee · annulee = aucune échéance active
+            continue
         if exp and days is not None:
             # Équivalent V2 daté valide : masque la source legacy de cette catégorie
             covered.add((d.get("vehicle_id"), d.get("folder")))
-        fine = _is_fine(d)
         label = d.get("label") or d.get("original_filename") or "Document"
         if fine:
             # Amende non payée : échéance de paiement active jusqu'au paiement (« En retard » si dépassée)
@@ -2313,7 +2328,8 @@ async def collect_deadlines(tenant_id: str, th: dict = None) -> dict:
               "plaque": v.get("plaque"), "marque": v.get("marque"), "modele": v.get("modele"),
               "type": "amende" if fine else _DEADLINE_CATEGORY_TYPE.get(d.get("folder"), "document"),
               "category": "Amende" if fine else d.get("folder"),
-              "is_fine": fine,
+              "is_fine": fine, "fine_status": fine_status,
+              "contestee": fine_status == "contestee",
               "label": label,
               "date": str(exp)[:10] if exp else None,
               "days_remaining": days,
@@ -2458,15 +2474,19 @@ async def collect_costs(tenant_id: str) -> dict:
          "leasing": 1, "assurance": 1}).to_list(None)
     docs = await db.documents.find(
         {"tenant_id": tenant_id, "is_deleted": False, "archived": {"$ne": True},
-         "montant": {"$gt": 0}},
+         "montant": {"$gt": 0}, "parent_document_id": None},  # pièces liées (Lot D) : jamais un coût
         {"_id": 0, "id": 1, "vehicle_id": 1, "folder": 1, "label": 1, "original_filename": 1,
          "montant": 1, "devise": 1, "montant_chf": 1, "frequence": 1, "date_debut": 1, "date_expiration": 1,
-         "business_category": 1, "fournisseur": 1, "numero": 1, "justificatif_absent": 1}
+         "business_category": 1, "fournisseur": 1, "numero": 1, "justificatif_absent": 1,
+         "document_type": 1, "fine_status": 1, "payee": 1}
     ).to_list(None)
     vmap = {v["id"]: v for v in vehicles}
     items, covered, pending_fx = [], set(), []
 
     for d in docs:
+        fine_status = fin.fine_status_of(d) if _is_fine(d) else None
+        if fine_status and not fin.cost_counted(fine_status):
+            continue  # D9 : amende annulée — montant et document conservés, exclue du moteur de coûts
         v = vmap.get(d.get("vehicle_id")) or {}
         freq = d.get("frequence") or "unique"
         factor = COST_FREQ_FACTOR.get(freq, 0)
@@ -2483,6 +2503,7 @@ async def collect_costs(tenant_id: str) -> dict:
             "date_debut": str(d["date_debut"])[:10] if d.get("date_debut") else None,
             "date_expiration": str(d["date_expiration"])[:10] if d.get("date_expiration") else None,
             "justificatif_absent": bool(d.get("justificatif_absent")),
+            "fine_status": fine_status,
         }
         # D7 : CHF → montant ; non-CHF + montant_chf → montant_chf ; non-CHF sans montant_chf → exclu du total
         amount_chf, converted = nofile.cost_amount_chf(d)
@@ -2690,9 +2711,41 @@ class DocumentUpdate(BaseModel):
     kilometrage_releve: Optional[int] = None
     montant_chf: Optional[float] = None  # D7 : contre-valeur CHF saisie (devise ≠ CHF uniquement)
     driver_id: Optional[str] = None  # Lot C : conducteur (UUID du tenant) ; "" = non identifié
+    # Lot D — champs métier amende (optionnels)
+    type_infraction: Optional[str] = None
+    montant_amende: Optional[float] = None
+    frais_admin: Optional[float] = None
+    lieu_infraction: Optional[dict] = None
+    date_reception: Optional[str] = None
+    heure_infraction: Optional[str] = None
+    priorite: Optional[str] = None
+    dossier_interne: Optional[str] = None
+    notes_internes: Optional[str] = None
+    payment_ref: Optional[str] = None
 
 
 _COST_AUDIT_KEYS = ("montant", "devise", "montant_chf", "driver_id")
+_FINE_FIELDS = ("type_infraction", "montant_amende", "frais_admin", "lieu_infraction", "date_reception",
+                "heure_infraction", "priorite", "dossier_interne", "notes_internes", "payment_ref")
+_FINE_AUDIT_KEYS = ("date_expiration", "date_debut", "fournisseur", "numero", "type_infraction", "montant_amende",
+                    "frais_admin", "priorite", "dossier_interne", "payment_ref", "date_reception")
+
+
+def _fine_field_errors(updates: dict) -> list:
+    errors = []
+    if updates.get("type_infraction") is not None and not (0 < len(str(updates["type_infraction"]).strip()) <= 50):
+        errors.append("type_infraction invalide")
+    for f in ("montant_amende", "frais_admin"):
+        if updates.get(f) is not None and updates[f] < 0:
+            errors.append(f"{f} invalide")
+    if updates.get("priorite") not in (None, "") and updates["priorite"] not in fin.PRIORITIES:
+        errors.append("priorite : low, normal, high ou urgent")
+    if updates.get("date_reception") and not fin.is_date(str(updates["date_reception"])[:10]):
+        errors.append("date_reception invalide (AAAA-MM-JJ)")
+    if updates.get("heure_infraction") and not nofile.norm_heure(updates["heure_infraction"]):
+        errors.append("heure_infraction invalide (HH:MM)")
+    errors.extend(fin.payment_errors(None, updates.get("payment_ref")))
+    return errors
 
 
 @api_router.patch("/documents/{doc_id}")
@@ -2703,6 +2756,18 @@ async def update_document(doc_id: str, payload: DocumentUpdate, request: Request
     if not doc:
         raise HTTPException(status_code=404, detail="Document introuvable")
     updates = payload.model_dump(exclude_unset=True)
+    if any(k in updates for k in _FINE_FIELDS) and not _is_fine(doc):
+        raise HTTPException(status_code=422, detail="Champs amende réservés aux documents de type amende")
+    errs = _fine_field_errors(updates)
+    if errs:
+        raise HTTPException(status_code=422, detail=" ; ".join(errs))
+    if "lieu_infraction" in updates:
+        updates["lieu_infraction"] = fin.norm_lieu(updates["lieu_infraction"])
+    if "heure_infraction" in updates:
+        updates["heure_infraction"] = nofile.norm_heure(updates["heure_infraction"]) if updates["heure_infraction"] else None
+    for f in ("type_infraction", "priorite", "dossier_interne", "notes_internes", "payment_ref"):
+        if f in updates:
+            updates[f] = fin.norm_ref(updates[f])
     for f in ("date_debut", "date_expiration"):
         if updates.get(f):
             try:
@@ -2741,20 +2806,41 @@ async def update_document(doc_id: str, payload: DocumentUpdate, request: Request
     await db.documents.update_one({"id": doc_id, "tenant_id": t}, {"$set": updates})
     cost_changes = [f"{k}: {doc.get(k) if doc.get(k) is not None else '—'} → {updates[k] if updates[k] is not None else '—'}"
                     for k in _COST_AUDIT_KEYS if k in updates and updates[k] != doc.get(k)]
+    fine_changes = []
+    if _is_fine(doc):
+        fine_changes = [f"{k}: {fin.fmt_diff(doc.get(k), updates[k])}"
+                        for k in _FINE_AUDIT_KEYS if k in updates and updates[k] != doc.get(k) and k not in _COST_AUDIT_KEYS]
+        if "notes_internes" in updates and updates["notes_internes"] != doc.get("notes_internes"):
+            fine_changes.append("notes_internes modifiées")  # valeurs jamais journalisées (D6.3)
+        if "lieu_infraction" in updates and updates["lieu_infraction"] != doc.get("lieu_infraction"):
+            fine_changes.append(f"lieu: {fin.fmt_diff(fin.lieu_label(doc.get('lieu_infraction')), fin.lieu_label(updates['lieu_infraction']))}")
+        if "driver_id" in updates and updates["driver_id"] != doc.get("driver_id"):
+            names = await _driver_names(t, [doc.get("driver_id"), updates["driver_id"]])
+            await audit("fine_driver", "document", request, doc_id, doc.get("vehicle_id"),
+                        f"Conducteur de l'amende : {names.get(doc.get('driver_id')) or 'non identifié'} → "
+                        f"{names.get(updates['driver_id']) or 'non identifié'}")
+        if "date_expiration" in updates and updates["date_expiration"] != doc.get("date_expiration"):
+            await audit("fine_due_date", "document", request, doc_id, doc.get("vehicle_id"),
+                        f"Échéance de paiement : {fin.fmt_diff(doc.get('date_expiration'), updates['date_expiration'])}")
+        if "payment_ref" in updates and updates["payment_ref"] != doc.get("payment_ref"):
+            await audit("fine_payment_ref", "document", request, doc_id, doc.get("vehicle_id"),
+                        f"Référence de paiement : {fin.fmt_diff(doc.get('payment_ref'), updates['payment_ref'])}")
     await audit("modify", "document", request, doc_id, doc.get("vehicle_id"),
                 "Fiche document mise à jour ("
                 + ", ".join(k for k in updates if k != "updated_at") + ")"
-                + (" — coût : " + " ; ".join(cost_changes) if cost_changes else ""))
-    return with_statut({**doc, **updates}, preavis)
+                + (" — coût : " + " ; ".join(cost_changes) if cost_changes else "")
+                + (" — amende : " + " ; ".join(fine_changes) if fine_changes else ""))
+    return fin.strip_internal(with_statut({**doc, **updates}, preavis), _role(request))
 
 
-class DocumentPaid(BaseModel):
-    payee: bool = True
+def _role(request: Request) -> str:
+    return (getattr(request.state, "user", None) or {}).get("role") or ""
 
 
-@api_router.post("/documents/{doc_id}/paid")
-async def set_document_paid(doc_id: str, payload: DocumentPaid, request: Request):
-    """Amende : « Marquer comme payée » / annulation explicite. Rien n'est supprimé (document + coût conservés)."""
+@api_router.post("/documents/{doc_id}/paid", dependencies=[Depends(require_roles("admin"))])
+async def set_document_paid(doc_id: str, payload: FinePaid, request: Request):
+    """Amende : « Marquer comme payée » (→ `payee`) / retour (→ `a_payer`). Rien n'est supprimé (document + coût conservés).
+    `paid_on` = date métier fournie (jamais dérivée) · `paid_at` = horodatage technique serveur · `payment_ref` optionnel."""
     t = tid(request)
     doc = await db.documents.find_one({"id": doc_id, "tenant_id": t, "is_deleted": False},
                                       {"_id": 0, "pages": 0, "extracted_fields": 0})
@@ -2762,16 +2848,39 @@ async def set_document_paid(doc_id: str, payload: DocumentPaid, request: Request
         raise HTTPException(status_code=404, detail="Document introuvable")
     if not _is_fine(doc):
         raise HTTPException(status_code=422, detail="Seule une amende peut être marquée comme payée")
+    errs = fin.payment_errors(payload.paid_on, payload.payment_ref)
+    before_status = fin.fine_status_of(doc)
+    motif = (payload.motif or "").strip()
+    if payload.payee:
+        new_status = before_status if before_status in fin.PAID_STATUSES else "payee"
+    else:
+        new_status = "a_payer"
+        if before_status not in fin.PAID_STATUSES:
+            errs.append("l'amende n'est pas payée (aucun paiement à annuler)")
+        if len(motif) < fin.MOTIF_MIN_LEN:
+            errs.append("motif obligatoire pour annuler un paiement (correction métier auditée)")
+    if errs:
+        raise HTTPException(status_code=422, detail=" ; ".join(errs))
     now = datetime.now(timezone.utc).isoformat()
-    user = (getattr(request.state, "user", None) or {}).get("email") or "utilisateur"
-    upd = {"payee": payload.payee, "paid_at": now if payload.payee else None,
-           "paid_by": user if payload.payee else None, "updated_at": now}
+    user = _nofile_user(request)
+    upd = fin.status_update(doc, new_status, now, user, paid_on=fin.norm_ref(payload.paid_on),
+                            payment_ref=fin.norm_ref(payload.payment_ref) if payload.payment_ref is not None else None)
+    upd["updated_at"] = now
     await db.documents.update_one({"id": doc_id, "tenant_id": t}, {"$set": upd})
-    await audit("modify", "document", request, doc_id, doc.get("vehicle_id"),
-                (f"Amende marquée payée — {doc.get('fournisseur') or '—'} n° {doc.get('numero') or '—'} · "
-                 f"{doc.get('montant')} {doc.get('devise') or 'CHF'}") if payload.payee
-                else f"Statut « payée » annulé — amende n° {doc.get('numero') or '—'} à nouveau à payer")
-    return with_statut({**doc, **upd}, (await th_for(request))["urgent_days"])
+    ref = f"{doc.get('fournisseur') or '—'} n° {doc.get('numero') or '—'} · {doc.get('montant')} {doc.get('devise') or 'CHF'}"
+    before = {k: doc.get(k) for k in ("fine_status", "paid_on", "paid_at", "payment_ref")}
+    before["fine_status"] = before_status
+    after = {k: upd.get(k) for k in ("fine_status", "paid_on", "paid_at", "payment_ref")}
+    if payload.payee:
+        await audit("fine_paid", "document", request, doc_id, doc.get("vehicle_id"),
+                    f"Amende marquée payée — {ref} · statut {before_status} → {new_status} · "
+                    f"paid_on (date métier) : {fin.fmt_diff(before['paid_on'], after['paid_on'])} · "
+                    f"paid_at (technique) : {fin.fmt_diff(before['paid_at'], after['paid_at'])} · "
+                    f"payment_ref : {fin.fmt_diff(before['payment_ref'], after['payment_ref'])}")
+    else:
+        await audit(fin.PAYMENT_REVERT_ACTION, "document", request, doc_id, doc.get("vehicle_id"),
+                    f"{ref} · " + fin.payment_revert_detail(doc, before_status, new_status, motif, user, now))
+    return fin.strip_internal(with_statut({**doc, **upd}, (await th_for(request))["urgent_days"]), _role(request))
 
 
 @api_router.get("/documents/pending-review-count")
@@ -2795,7 +2904,7 @@ async def list_all_documents(request: Request,
                              limit: int = 500):
     t = tid(request)
     th = await deadline_settings(t)
-    query = {"tenant_id": t, "is_deleted": False}
+    query = {"tenant_id": t, "is_deleted": False, "parent_document_id": None}
     if vehicle_id:
         query["vehicle_id"] = vehicle_id
     if folder:
@@ -2810,9 +2919,11 @@ async def list_all_documents(request: Request,
         {"tenant_id": t}, {"_id": 0, "id": 1, "plaque": 1, "marque": 1, "modele": 1}).to_list(None)}
     dnames = await _driver_names(t, [d.get("driver_id") for d in docs])
     term = (q or "").strip().lower()
+    role = _role(request)
     out = []
     for d in docs:
         with_statut(d, th["urgent_days"])
+        fin.strip_internal(d, role)
         v = vmap.get(d["vehicle_id"]) or {}
         d["plaque"] = v.get("plaque")
         d["vehicule_label"] = " ".join(x for x in [v.get("marque"), v.get("modele")] if x)
@@ -2825,7 +2936,8 @@ async def list_all_documents(request: Request,
             if term not in haystack and not any(term in (tg or "").lower() for tg in d.get("tags") or []):
                 continue
         if echeance:
-            days = None if d.get("payee") else days_until(d.get("date_expiration"))
+            inactive_fine = _is_fine(d) and not d.get("deadline_active")
+            days = None if inactive_fine else days_until(d.get("date_expiration"))
             if echeance == "expired" and not (days is not None and days < 0):
                 continue
             if echeance == "30" and not (days is not None and 0 <= days <= th["urgent_days"]):
@@ -2842,12 +2954,14 @@ async def list_documents(vehicle_id: str, request: Request):
     await find_tenant_vehicle(request, vehicle_id, {"_id": 1})
     preavis = (await th_for(request))["urgent_days"]
     docs = await db.documents.find(
-        {"vehicle_id": vehicle_id, "is_deleted": False}, {"_id": 0}
+        {"vehicle_id": vehicle_id, "is_deleted": False, "parent_document_id": None}, {"_id": 0}
     ).to_list(None)
     docs.sort(key=lambda d: d.get("created_at", ""), reverse=True)
     dnames = await _driver_names(tid(request), [d.get("driver_id") for d in docs])
+    role = _role(request)
     for d in docs:
         d["driver_nom"] = dnames.get(d.get("driver_id"))
+        fin.strip_internal(d, role)
     return [with_statut(d, preavis) for d in docs]
 
 
@@ -3049,12 +3163,33 @@ async def create_fine_nofile(vehicle_id: str, payload: ManualFineCreate, request
     if not (payload.autorite or "").strip():
         errors.append("autorité obligatoire")
     dates = {}
-    for f in ("date_infraction", "delai_paiement"):
+    for f in ("date_infraction", "delai_paiement", "date_reception"):
         raw = getattr(payload, f)
         if raw:
             dates[f] = normalize_value(raw, "date")
             if not dates[f]:
                 errors.append(f"{f} invalide (AAAA-MM-JJ)")
+    # Lot D — statut initial (code Documents ou Journal), paiement métier, champs parité
+    fine_status = fin.DEFAULT_FINE_STATUS
+    if payload.fine_status:
+        try:
+            fine_status = fin.normalize_status(payload.fine_status)
+        except ValueError as e:
+            errors.append(str(e))
+    errors.extend(fin.payment_errors(payload.paid_on, payload.payment_ref))
+    fine_fields = {k: v for k, v in {
+        "type_infraction": fin.norm_ref(payload.type_infraction) or fin.DEFAULT_INFRACTION_TYPE,
+        "montant_amende": round(float(payload.montant_amende), 2) if payload.montant_amende is not None else None,
+        "frais_admin": round(float(payload.frais_admin), 2) if payload.frais_admin is not None else None,
+        "lieu_infraction": fin.norm_lieu(payload.lieu_infraction), "date_reception": dates.get("date_reception"),
+        "heure_infraction": nofile.norm_heure(payload.heure_infraction) if payload.heure_infraction else None,
+        "priorite": fin.norm_ref(payload.priorite), "dossier_interne": fin.norm_ref(payload.dossier_interne),
+        "notes_internes": fin.norm_ref(payload.notes_internes), "notes": fin.norm_ref(payload.notes),
+    }.items() if v is not None}
+    pre_errors = _fine_field_errors(fine_fields)
+    errors.extend(pre_errors)
+    if payload.heure_infraction and not fine_fields.get("heure_infraction"):
+        errors.append("heure_infraction invalide (HH:MM)")
     if errors:
         raise HTTPException(status_code=422, detail=" ; ".join(errors))
     driver = await _driver_ref(t, payload.driver_id)
@@ -3065,8 +3200,9 @@ async def create_fine_nofile(vehicle_id: str, payload: ManualFineCreate, request
         "plaque": (payload.plaque or "").strip() or None,
     }.items() if v is not None}
     v2 = _amende_to_v2(doc_data)
+    v2.update(fine_fields)
     legacy_key = _nofile_legacy_key(payload, t)
-    existing = await db.documents.find_one(legacy_key, {"_id": 0, "id": 1, "payee": 1}) if legacy_key else None
+    existing = await db.documents.find_one(legacy_key, {"_id": 0, "id": 1, "payee": 1, "fine_status": 1}) if legacy_key else None
     dup = await _fine_duplicate(t, vehicle["id"], (existing or {}).get("id"), v2.get("numero"), v2.get("fournisseur"),
                                 v2.get("date_debut"), v2.get("montant"))
     if dup and not payload.duplicate_override:
@@ -3081,6 +3217,9 @@ async def create_fine_nofile(vehicle_id: str, payload: ManualFineCreate, request
                          "detail": "Doublon probable d'amende confirmé manuellement."})
     if not v2.get("date_expiration"):
         warnings.append({"code": "DEADLINE_MISSING", "detail": "Délai de paiement absent : aucune échéance de paiement ne sera suivie."})
+    if (fine_fields.get("montant_amende") is not None and fine_fields.get("frais_admin") is not None
+            and round(fine_fields["montant_amende"] + fine_fields["frais_admin"], 2) != v2.get("montant")):
+        warnings.append({"code": "AMOUNT_MISMATCH", "detail": "Montant total ≠ amende + frais administratifs — le total saisi fait foi (coût)."})
     if doc_data.get("plaque") and vehicle.get("plaque") and _norm_plate(doc_data["plaque"]) != _norm_plate(vehicle["plaque"]):
         warnings.append({"code": "PLATE_MISMATCH", "document_plate": doc_data["plaque"], "vehicle_plate": vehicle.get("plaque"),
                          "detail": "La plaque saisie diffère de celle du véhicule — aucune réaffectation automatique."})
@@ -3089,17 +3228,23 @@ async def create_fine_nofile(vehicle_id: str, payload: ManualFineCreate, request
     rec.update({"document_data": doc_data, "business_category": "AMENDE",
                 "driver_id": driver["id"] if driver else None, "driver_validated_manually": bool(driver)})
     if not existing:
-        rec.update({"payee": False, "paid_at": None})  # statut de paiement conservé lors d'un rejeu
+        # Statut initial + faits de paiement (paid_on métier fourni, paid_at technique) ; `payee` = miroir dérivé
+        rec.update(fin.cleared_payment())
+        rec.update(fin.status_update(rec, fine_status, payload.created_at or now, rec["validated_by"],
+                                     paid_on=fin.norm_ref(payload.paid_on), payment_ref=fin.norm_ref(payload.payment_ref)))
+    else:
+        rec.pop("fine_status", None)  # rejeu idempotent : l'état métier courant n'est jamais écrasé
     doc_id, created = await _nofile_store(rec, payload, legacy_key, now)
     await audit("create" if created else "legacy_replay", "document", request, doc_id, vehicle["id"],
                 f"{'Amende' if created else 'Rejeu idempotent amende'} sans justificatif ({payload.source}"
                 + (f", motif : {rec['motif_saisie']}" if rec["motif_saisie"] else "")
                 + f") — {rec['label']} · {v2.get('montant')} {v2.get('devise')}"
+                + (f" · statut initial {rec['fine_status']}" if rec.get("fine_status") else "")
                 + (f" · contre-valeur {rec['montant_chf']} CHF" if rec.get("montant_chf") is not None else "")
                 + (f" · conducteur {drv.display_name(driver)}" if driver else ""))
     doc = await db.documents.find_one({"id": doc_id}, _NOFILE_PROJ)
     return {"ok": True, "created": created, "document_id": doc_id,
-            "document": with_statut(doc, (await th_for(request))["urgent_days"]),
+            "document": fin.strip_internal(with_statut(doc, (await th_for(request))["urgent_days"]), _role(request)),
             "cost": _nofile_cost(doc), "warnings": warnings}
 
 
@@ -3129,13 +3274,425 @@ async def attach_document_file(doc_id: str, request: Request, file: UploadFile =
     upd = {"storage_path": result["path"], "original_filename": file.filename, "content_type": content_type,
            "size": result.get("size", len(data)), "sha256": sha256, "justificatif_absent": False,
            "file_attached_at": now, "file_attached_by": _nofile_user(request), "updated_at": now}
+    if doc.get("parent_document_id"):
+        upd["file_missing"] = False
     await db.documents.update_one({"id": doc_id, "tenant_id": t}, {"$set": upd})
-    await audit("attach_file", "document", request, doc_id, doc.get("vehicle_id"),
-                f"Justificatif joint a posteriori « {file.filename} » — {doc.get('label') or doc_id} "
-                f"(montant inchangé : {doc.get('montant')} {doc.get('devise') or 'CHF'}, aucun nouveau coût)")
+    if doc.get("parent_document_id"):
+        # Pièce liée (Lot D) : fichier ajouté sur la MÊME pièce — historique porté par l'amende parente
+        await audit("fine_attachment_file", "document", request, doc["parent_document_id"], doc.get("vehicle_id"),
+                    f"Fichier « {file.filename} » joint à la pièce « {doc.get('label') or doc_id} » "
+                    f"({fin.PIECE_LABELS.get(doc.get('piece_type'), doc.get('piece_type'))}) — aucun coût, aucune échéance")
+    else:
+        await audit("attach_file", "document", request, doc_id, doc.get("vehicle_id"),
+                    f"Justificatif joint a posteriori « {file.filename} » — {doc.get('label') or doc_id} "
+                    f"(montant inchangé : {doc.get('montant')} {doc.get('devise') or 'CHF'}, aucun nouveau coût)")
     out = with_statut({**doc, **upd}, (await th_for(request))["urgent_days"])
     out["duplicate_of"] = duplicate_of
     return out
+
+
+# ---------------------------------------------------------------------------
+# Phase 4C — Lot D : amendes — 10 statuts métier (parité Journal), paiement métier (`paid_on`) ≠ technique
+# (`paid_at`), pièces liées typées (`parent_document_id`, jamais un coût ni une échéance), historique par
+# entité, vue dédiée + KPI + exports. Règles D9 appliquées via `fines.py` (fonctions uniques).
+# ---------------------------------------------------------------------------
+_FINE_QUERY_BASE = {"is_deleted": False, "archived": {"$ne": True}, "parent_document_id": None,
+                    "$or": [{"document_type": "amende"}, {"business_category": "AMENDE"}]}
+
+
+async def ensure_fine_indexes():
+    await db.documents.create_index([("tenant_id", 1), ("business_category", 1), ("fine_status", 1)], name="fine_status_idx")
+    await db.documents.create_index([("tenant_id", 1), ("parent_document_id", 1)], name="doc_parent_idx",
+                                    partialFilterExpression={"parent_document_id": {"$type": "string"}})
+
+
+async def _fine_or_404(request: Request, doc_id: str) -> dict:
+    doc = await db.documents.find_one({"id": doc_id, "tenant_id": tid(request), "is_deleted": False}, _NOFILE_PROJ)
+    if not doc or doc.get("parent_document_id"):
+        raise HTTPException(status_code=404, detail="Amende introuvable")
+    if not _is_fine(doc):
+        raise HTTPException(status_code=422, detail="Ce document n'est pas une amende")
+    return doc
+
+
+def _fine_filters(fine_status=None, vehicle_id=None, driver_id=None, fournisseur=None, type_infraction=None,
+                  date_from=None, date_to=None, due_from=None, due_to=None, montant_min=None, montant_max=None,
+                  q=None, sort=None, priorite=None) -> dict:
+    """Filtres partagés liste / stats / exports (même périmètre, documenté dans l'audit des exports)."""
+    statuses = []
+    for s in (fine_status or "").split(","):
+        if s.strip():
+            try:
+                statuses.append(fin.normalize_status(s))
+            except ValueError as e:
+                raise HTTPException(status_code=422, detail=str(e))
+    for f, v in (("date_from", date_from), ("date_to", date_to), ("due_from", due_from), ("due_to", due_to)):
+        if v and not fin.is_date(str(v)[:10]):
+            raise HTTPException(status_code=422, detail=f"{f} invalide (AAAA-MM-JJ)")
+    return {k: v for k, v in {
+        "fine_status": statuses or None, "vehicle_id": vehicle_id or None, "driver_id": driver_id or None,
+        "fournisseur": (fournisseur or "").strip().lower() or None, "type_infraction": (type_infraction or "").strip() or None,
+        "date_from": date_from or None, "date_to": date_to or None, "due_from": due_from or None, "due_to": due_to or None,
+        "montant_min": montant_min, "montant_max": montant_max, "q": (q or "").strip().lower() or None,
+        "sort": sort or None, "priorite": priorite or None}.items() if v is not None}
+
+
+async def _fines_rows(request: Request, flt: dict) -> list:
+    """Amendes du tenant enrichies (véhicule, conducteur, statut dérivé, pièces) puis filtrées en mémoire. Jamais d'écriture."""
+    t = tid(request)
+    role = _role(request)
+    th = await deadline_settings(t)
+    q = {"tenant_id": t, **_FINE_QUERY_BASE}
+    if flt.get("doc_id"):
+        q["id"] = flt["doc_id"]
+    if flt.get("vehicle_id"):
+        q["vehicle_id"] = flt["vehicle_id"]
+    if flt.get("driver_id"):
+        q["driver_id"] = flt["driver_id"]
+    docs = await db.documents.find(q, _NOFILE_PROJ).to_list(None)
+    vmap = {v["id"]: v for v in await db.vehicles.find(
+        {"tenant_id": t}, {"_id": 0, "id": 1, "plaque": 1, "marque": 1, "modele": 1}).to_list(None)}
+    dnames = await _driver_names(t, [d.get("driver_id") for d in docs])
+    att_counts = {}
+    for a in await db.documents.aggregate([
+            {"$match": {"tenant_id": t, "is_deleted": False, "parent_document_id": {"$type": "string"}}},
+            {"$group": {"_id": "$parent_document_id", "n": {"$sum": 1}}}]).to_list(None):
+        att_counts[a["_id"]] = a["n"]
+    out = []
+    for d in docs:
+        with_statut(d, th["urgent_days"])
+        fin.strip_internal(d, role)
+        v = vmap.get(d.get("vehicle_id")) or {}
+        d["plaque"] = v.get("plaque")
+        d["vehicule_label"] = " ".join(x for x in (v.get("marque"), v.get("modele")) if x)
+        d["driver_nom"] = dnames.get(d.get("driver_id"))
+        d["days_remaining"] = days_until(d.get("date_expiration")) if d["deadline_active"] else None
+        d["attachments_count"] = att_counts.get(d["id"], 0)
+        amount_chf, _ = nofile.cost_amount_chf(d) if d.get("montant") is not None else (None, False)
+        d["montant_chf_effectif"] = amount_chf
+        d["pending_fx"] = d.get("montant") is not None and amount_chf is None
+        d["lieu_label"] = fin.lieu_label(d.get("lieu_infraction"))
+        d["type_infraction_label"] = fin.INFRACTION_LABELS.get(d.get("type_infraction"), d.get("type_infraction"))
+        if flt.get("fine_status") and d["fine_status"] not in flt["fine_status"]:
+            continue
+        if flt.get("fournisseur") and flt["fournisseur"] not in (d.get("fournisseur") or "").lower():
+            continue
+        if flt.get("type_infraction") and (d.get("type_infraction") or fin.DEFAULT_INFRACTION_TYPE) != flt["type_infraction"]:
+            continue
+        if flt.get("priorite") and (d.get("priorite") or "normal") != flt["priorite"]:
+            continue
+        inf = str(d.get("date_debut") or "")[:10]
+        if flt.get("date_from") and (not inf or inf < flt["date_from"]):
+            continue
+        if flt.get("date_to") and (not inf or inf > flt["date_to"]):
+            continue
+        due = str(d.get("date_expiration") or "")[:10]
+        if flt.get("due_from") and (not due or due < flt["due_from"]):
+            continue
+        if flt.get("due_to") and (not due or due > flt["due_to"]):
+            continue
+        m = d.get("montant")
+        if flt.get("montant_min") is not None and (m is None or m < flt["montant_min"]):
+            continue
+        if flt.get("montant_max") is not None and (m is None or m > flt["montant_max"]):
+            continue
+        if flt.get("q") and flt["q"] not in fin.search_blob(d):
+            continue
+        out.append(d)
+    sort = flt.get("sort") or "-created_at"
+    desc, key = sort.startswith("-"), sort.lstrip("-")
+    if key not in ("created_at", "date_debut", "date_expiration", "montant", "fine_status", "plaque", "fournisseur", "paid_on"):
+        key = "created_at"
+    out.sort(key=lambda d: (d.get(key) is None, d.get(key) if isinstance(d.get(key), (int, float)) else str(d.get(key) or "")),
+             reverse=desc)
+    return out
+
+
+def _fines_totals(rows: list) -> dict:
+    """Totaux CHF (D7 : pending_fx exclu) sur l'ensemble filtré — D9 : annulee hors du total compté."""
+    tot = {"count": len(rows), "total_chf": 0.0, "ouvert_chf": 0.0, "paye_chf": 0.0, "annule_chf": 0.0,
+           "en_retard_chf": 0.0, "pending_fx_count": 0, "by_status": {s: 0 for s in fin.FINE_STATUSES}}
+    for d in rows:
+        st = d["fine_status"]
+        tot["by_status"][st] += 1
+        if d.get("pending_fx"):
+            tot["pending_fx_count"] += 1
+            continue
+        amt = d.get("montant_chf_effectif") or 0.0
+        if st == "annulee":
+            tot["annule_chf"] += amt  # conservé pour information, jamais sommé dans total_chf
+            continue
+        tot["total_chf"] += amt
+        if d["payee"]:
+            tot["paye_chf"] += amt
+        if d["deadline_active"]:
+            tot["ouvert_chf"] += amt
+            if d.get("days_remaining") is not None and d["days_remaining"] < 0:
+                tot["en_retard_chf"] += amt
+    for k in ("total_chf", "ouvert_chf", "paye_chf", "annule_chf", "en_retard_chf"):
+        tot[k] = round(tot[k], 2)
+    return tot
+
+
+@api_router.get("/fines")
+async def list_fines(request: Request, fine_status: Optional[str] = None, vehicle_id: Optional[str] = None,
+                     driver_id: Optional[str] = None, fournisseur: Optional[str] = None, type_infraction: Optional[str] = None,
+                     date_from: Optional[str] = None, date_to: Optional[str] = None, due_from: Optional[str] = None,
+                     due_to: Optional[str] = None, montant_min: Optional[float] = None, montant_max: Optional[float] = None,
+                     q: Optional[str] = None, sort: Optional[str] = None, priorite: Optional[str] = None,
+                     limit: int = 50, offset: int = 0):
+    flt = _fine_filters(fine_status, vehicle_id, driver_id, fournisseur, type_infraction, date_from, date_to,
+                        due_from, due_to, montant_min, montant_max, q, sort, priorite)
+    rows = await _fines_rows(request, flt)
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+    return {"items": rows[offset:offset + limit], "total": len(rows), "limit": limit, "offset": offset,
+            "totals": _fines_totals(rows), "filters": flt,
+            "statuses": [{"code": s, "label": fin.FINE_STATUS_LABELS[s]} for s in fin.FINE_STATUSES],
+            "infraction_types": [{"code": c, "label": fin.INFRACTION_LABELS[c]} for c in fin.KNOWN_INFRACTION_TYPES],
+            "piece_types": [{"code": c, "label": fin.PIECE_LABELS[c]} for c in fin.PIECE_TYPES]}
+
+
+@api_router.get("/fines/stats")
+async def fines_stats(request: Request):
+    """KPI amendes — même source que /api/fines (aucun calcul parallèle). Échéances actives = règle centrale D9/§5.5."""
+    rows = await _fines_rows(request, {})
+    th = await deadline_settings(tid(request))
+    urgent = th["urgent_days"]
+    active = [d for d in rows if d["deadline_active"]]
+    late = [d for d in active if d.get("days_remaining") is not None and d["days_remaining"] < 0]
+    soon = [d for d in active if d.get("days_remaining") is not None and 0 <= d["days_remaining"] <= urgent]
+    chf = lambda lst: round(sum(d.get("montant_chf_effectif") or 0 for d in lst if not d.get("pending_fx")), 2)  # noqa: E731
+    by_type, per_vehicle, per_driver, monthly = {}, {}, {}, {}
+    for d in rows:
+        counted = fin.cost_counted(d["fine_status"]) and not d.get("pending_fx")
+        amt = (d.get("montant_chf_effectif") or 0) if counted else 0
+        tcode = d.get("type_infraction") or fin.DEFAULT_INFRACTION_TYPE
+        bt = by_type.setdefault(tcode, {"code": tcode, "label": fin.INFRACTION_LABELS.get(tcode, tcode), "count": 0, "chf": 0.0})
+        bt["count"] += 1
+        bt["chf"] = round(bt["chf"] + amt, 2)
+        pv = per_vehicle.setdefault(d.get("vehicle_id"), {"vehicle_id": d.get("vehicle_id"), "plaque": d.get("plaque"),
+                                                           "vehicule_label": d.get("vehicule_label"), "count": 0, "chf": 0.0})
+        pv["count"] += 1
+        pv["chf"] = round(pv["chf"] + amt, 2)
+        if d.get("driver_id"):
+            pdv = per_driver.setdefault(d["driver_id"], {"driver_id": d["driver_id"], "driver_nom": d.get("driver_nom"), "count": 0, "chf": 0.0})
+            pdv["count"] += 1
+            pdv["chf"] = round(pdv["chf"] + amt, 2)
+        month = str(d.get("date_debut") or d.get("created_at") or "")[:7]
+        if month:
+            mm = monthly.setdefault(month, {"month": month, "count": 0, "chf": 0.0})
+            mm["count"] += 1
+            mm["chf"] = round(mm["chf"] + amt, 2)
+    months = sorted(monthly)[-12:]
+    return {
+        "counts": {"total": len(rows), "ouvertes": len(active), "a_payer_bientot": len(soon), "en_retard": len(late),
+                   "payees": sum(1 for d in rows if d["fine_status"] in fin.PAID_STATUSES),
+                   "refacturees": sum(1 for d in rows if d["fine_status"] == "refacturee"),
+                   "contestees": sum(1 for d in rows if d["fine_status"] == "contestee"),
+                   "cloturees": sum(1 for d in rows if d["fine_status"] == "cloturee"),
+                   "annulees": sum(1 for d in rows if d["fine_status"] == "annulee"),
+                   "conducteur_a_identifier": sum(1 for d in rows if d["fine_status"] in ("conducteur_a_identifier", "en_attente_conducteur")),
+                   "by_status": {s: sum(1 for d in rows if d["fine_status"] == s) for s in fin.FINE_STATUSES}},
+        "montants": {"ouvert_chf": chf(active), "en_retard_chf": chf(late), "a_payer_bientot_chf": chf(soon),
+                     "paye_chf": chf([d for d in rows if d["payee"] and d["fine_status"] != "annulee"]),
+                     "annule_chf": chf([d for d in rows if d["fine_status"] == "annulee"]),
+                     "total_compte_chf": chf([d for d in rows if fin.cost_counted(d["fine_status"])]),
+                     "pending_fx_count": sum(1 for d in rows if d.get("pending_fx"))},
+        "urgent_days": urgent,
+        "by_type": sorted(by_type.values(), key=lambda x: -x["count"]),
+        "top_vehicles": sorted(per_vehicle.values(), key=lambda x: (-x["count"], -x["chf"]))[:5],
+        "top_drivers": sorted(per_driver.values(), key=lambda x: (-x["count"], -x["chf"]))[:5],
+        "monthly": [monthly[m] for m in months],
+        "statuses": [{"code": s, "label": fin.FINE_STATUS_LABELS[s]} for s in fin.FINE_STATUSES],
+    }
+
+
+@api_router.get("/fines/{doc_id}")
+async def get_fine(doc_id: str, request: Request):
+    """Fiche amende enrichie (même source/dérivation que la liste). 404 cross-tenant."""
+    rows = await _fines_rows(request, {"doc_id": doc_id})
+    if not rows:
+        raise HTTPException(status_code=404, detail="Amende introuvable")
+    return rows[0]
+
+
+@api_router.post("/documents/{doc_id}/fine-status", dependencies=[Depends(require_roles("admin"))])
+async def set_fine_status(doc_id: str, payload: FineStatusChange, request: Request):
+    """Transition de statut (libre, auditée avant/après). `annulee` exige un motif (D9). Paiement : `paid_on` fourni = date
+    métier, `paid_at` = horodatage technique ; quitter un statut payé (hors cloturee) efface les faits de paiement (audité)."""
+    doc = await _fine_or_404(request, doc_id)
+    try:
+        new_status = fin.normalize_status(payload.fine_status)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    motif = (payload.motif or "").strip()
+    errors = fin.payment_errors(payload.paid_on, payload.payment_ref)
+    before_status = fin.fine_status_of(doc)
+    reverting = fin.leaving_paid(before_status, new_status)
+    if new_status == "annulee" and len(motif) < fin.MOTIF_MIN_LEN:
+        errors.append("motif obligatoire pour annuler une amende (D9)")
+    if reverting and len(motif) < fin.MOTIF_MIN_LEN:
+        errors.append("motif obligatoire pour quitter un statut payé (dé-paiement = correction métier auditée)")
+    if payload.paid_on and new_status not in fin.PAID_STATUSES:
+        errors.append("paid_on n'a de sens que pour un statut payé (payee / refacturee)")
+    if errors:
+        raise HTTPException(status_code=422, detail=" ; ".join(errors))
+    now = datetime.now(timezone.utc).isoformat()
+    user = _nofile_user(request)
+    upd = fin.status_update(doc, new_status, now, user, paid_on=fin.norm_ref(payload.paid_on),
+                            payment_ref=fin.norm_ref(payload.payment_ref) if payload.payment_ref is not None else None)
+    upd["updated_at"] = now
+    if new_status == "annulee":
+        upd.update({"cancel_motif": motif, "cancelled_at": now, "cancelled_by": user})
+    await db.documents.update_one({"id": doc_id, "tenant_id": tid(request)}, {"$set": upd})
+    pay_diff = " · ".join(f"{k}: {fin.fmt_diff(doc.get(k), upd.get(k))}" for k in ("paid_on", "paid_at", "payment_ref")
+                          if k in upd and upd.get(k) != doc.get(k))
+    detail = (f"Statut amende : {before_status} ({fin.FINE_STATUS_LABELS[before_status]}) → {new_status} "
+              f"({fin.FINE_STATUS_LABELS[new_status]})" + (f" — motif : {motif}" if motif else "")
+              + (f" — paiement : {pay_diff}" if pay_diff else "")
+              + f" — montant conservé : {doc.get('montant')} {doc.get('devise') or 'CHF'}")
+    if new_status == "annulee":
+        detail += " — exclue des coûts et des échéances actives (D9), document conservé"
+    if reverting:
+        detail += " — " + fin.payment_revert_detail(doc, before_status, new_status, motif, user, now)
+    await audit(fin.PAYMENT_REVERT_ACTION if reverting else fin.STATUS_AUDIT_ACTION.get(new_status, "fine_status_change"),
+                "document", request, doc_id, doc.get("vehicle_id"), detail)
+    return fin.strip_internal(with_statut({**doc, **upd}, (await th_for(request))["urgent_days"]), _role(request))
+
+
+@api_router.get("/documents/{doc_id}/history")
+async def document_history(doc_id: str, request: Request):
+    """Historique métier d'un document (amende) : audit filtré par entité, ordre chronologique, tenant-scopé."""
+    t = tid(request)
+    doc = await db.documents.find_one({"id": doc_id, "tenant_id": t}, {"_id": 0, "id": 1, "vehicle_id": 1})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    rows = await db.audit_logs.find({"tenant_id": t, "entity": "document", "entity_id": doc_id},
+                                    {"_id": 0}).sort("created_at", 1).to_list(500)
+    admin = _role(request) in ("admin", "superadmin")
+    return [{"id": r["id"], "action": r["action"], "detail": r.get("detail"), "user": r.get("user"),
+             "created_at": r.get("created_at"), **({"ip": r.get("ip")} if admin else {})} for r in rows]
+
+
+def _attachment_out(a: dict) -> dict:
+    a["piece_type_label"] = fin.PIECE_LABELS.get(a.get("piece_type"), a.get("piece_type"))
+    a["file_missing"] = not a.get("storage_path")
+    return a
+
+
+@api_router.get("/documents/{doc_id}/attachments")
+async def list_fine_attachments(doc_id: str, request: Request):
+    await _fine_or_404(request, doc_id)
+    rows = await db.documents.find({"tenant_id": tid(request), "parent_document_id": doc_id, "is_deleted": False},
+                                   _NOFILE_PROJ).sort("created_at", 1).to_list(None)
+    return [_attachment_out(a) for a in rows]
+
+
+@api_router.post("/documents/{doc_id}/attachments", dependencies=[Depends(require_roles("admin"))])
+async def add_fine_attachment(doc_id: str, request: Request, piece_type: str = Form(...), titre: str = Form(...),
+                              date_piece: Optional[str] = Form(None), note: Optional[str] = Form(None),
+                              file: Optional[UploadFile] = File(None)):
+    """Pièce liée typée (fichier OPTIONNEL : métadonnées seules autorisées, `file_missing=true`). Même tenant et
+    même véhicule que l'amende parente ; ni montant ni échéance → jamais un coût, jamais une seconde amende."""
+    parent = await _fine_or_404(request, doc_id)
+    t, now, user = tid(request), datetime.now(timezone.utc).isoformat(), _nofile_user(request)
+    errors = []
+    if piece_type not in fin.PIECE_TYPES:
+        errors.append("piece_type : " + ", ".join(fin.PIECE_TYPES))
+    if len((titre or "").strip()) < 2:
+        errors.append("titre obligatoire")
+    if date_piece and not fin.is_date(date_piece[:10]):
+        errors.append("date_piece invalide (AAAA-MM-JJ)")
+    if errors:
+        raise HTTPException(status_code=422, detail=" ; ".join(errors))
+    rec = {"id": str(uuid.uuid4()), "tenant_id": t, "vehicle_id": parent["vehicle_id"], "parent_document_id": doc_id,
+           "document_type": "piece_jointe", "piece_type": piece_type, "label": titre.strip(), "note": fin.norm_ref(note),
+           "date_piece": date_piece[:10] if date_piece else None, "folder": parent.get("folder"), "source": "attachment",
+           "extraction_status": "n/a", "a_verifier": False, "storage_path": None, "original_filename": None,
+           "content_type": None, "size": 0, "sha256": None, "pages": [], "justificatif_absent": True, "file_missing": True,
+           "is_deleted": False, "created_at": now, "created_by": user, "updated_at": now}
+    duplicate_of = None
+    if file is not None and file.filename:
+        data = await file.read()
+        validate_upload(file.filename, len(data), ALLOWED_MEDIA_EXTS)
+        path = f"{APP_NAME}/media/{parent['vehicle_id']}/{uuid.uuid4()}.{_ext_of(file.filename)}"
+        content_type = guess_mime(file.filename)
+        try:
+            result = put_object(path, data, content_type)
+        except Exception as e:
+            logger.error(f"Attachment upload failed: {e}")
+            raise HTTPException(status_code=502, detail="Échec du téléversement")
+        sha256 = _file_sha256(data)
+        duplicate_of = await _same_file_duplicate(t, parent["vehicle_id"], sha256)
+        rec.update({"storage_path": result["path"], "original_filename": file.filename, "content_type": content_type,
+                    "size": result.get("size", len(data)), "sha256": sha256, "justificatif_absent": False, "file_missing": False})
+    await db.documents.insert_one(dict(rec))
+    await audit("fine_attachment_add", "document", request, doc_id, parent.get("vehicle_id"),
+                f"Pièce liée ajoutée « {rec['label']} » ({fin.PIECE_LABELS[piece_type]}) — "
+                + (f"fichier « {rec['original_filename']} »" if rec["storage_path"] else "sans fichier (métadonnées seules)")
+                + " — aucun coût, aucune échéance, amende inchangée")
+    out = _attachment_out(clean(rec))
+    out["duplicate_of"] = duplicate_of
+    return out
+
+
+@api_router.delete("/documents/{doc_id}/attachments/{att_id}", dependencies=[Depends(require_roles("admin"))])
+async def remove_fine_attachment(doc_id: str, att_id: str, request: Request):
+    """Soft-delete d'une pièce liée (binaire conservé — l'Object Storage n'offre pas de DELETE)."""
+    parent = await _fine_or_404(request, doc_id)
+    t = tid(request)
+    att = await db.documents.find_one({"id": att_id, "tenant_id": t, "parent_document_id": doc_id, "is_deleted": False}, _NOFILE_PROJ)
+    if not att:
+        raise HTTPException(status_code=404, detail="Pièce introuvable")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.documents.update_one({"id": att_id, "tenant_id": t},
+                                  {"$set": {"is_deleted": True, "deleted_at": now, "deleted_by": _nofile_user(request)}})
+    await audit("fine_attachment_remove", "document", request, doc_id, parent.get("vehicle_id"),
+                f"Pièce liée retirée « {att.get('label')} » ({fin.PIECE_LABELS.get(att.get('piece_type'), '—')}) — soft-delete")
+    return {"ok": True}
+
+
+_FINE_EXPORT_CAP = 10000
+
+
+async def _fines_export(request: Request, fmt: str, **params):
+    flt = _fine_filters(**params)
+    rows = (await _fines_rows(request, flt))[:_FINE_EXPORT_CAP]
+    for d in rows:
+        d.pop("notes_internes", None)  # jamais exporté, quel que soit le rôle
+    totals = _fines_totals(rows)
+    meta = {"tenant_id": tid(request), "user": _nofile_user(request), "role": _role(request), "filters": flt,
+            "count": len(rows), "generated_at": datetime.now(timezone.utc).isoformat()}
+    if fmt == "csv":
+        content, media, ext = "\ufeff" + build_fines_csv(rows), "text/csv; charset=utf-8", "csv"
+    elif fmt == "xlsx":
+        content, media, ext = build_fines_xlsx(rows, totals, meta), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx"
+    else:
+        content, media, ext = build_fines_pdf(rows, totals, meta), "application/pdf", "pdf"
+    await audit("download", "report", request, f"amendes_{fmt}", None,
+                f"Export {fmt.upper()} amendes — {len(rows)} ligne(s) · rôle {meta['role']} · filtres {json.dumps(flt, ensure_ascii=False)}")
+    return Response(content=content, media_type=media,
+                    headers={"Content-Disposition": f'attachment; filename="amendes-logitrak.{ext}"',
+                             "Cache-Control": "private, no-store"})
+
+
+def _fine_export_route(fmt: str):
+    async def route(request: Request, fine_status: Optional[str] = None, vehicle_id: Optional[str] = None,
+                    driver_id: Optional[str] = None, fournisseur: Optional[str] = None, type_infraction: Optional[str] = None,
+                    date_from: Optional[str] = None, date_to: Optional[str] = None, due_from: Optional[str] = None,
+                    due_to: Optional[str] = None, montant_min: Optional[float] = None, montant_max: Optional[float] = None,
+                    q: Optional[str] = None, sort: Optional[str] = None, priorite: Optional[str] = None):
+        return await _fines_export(request, fmt, fine_status=fine_status, vehicle_id=vehicle_id, driver_id=driver_id,
+                                   fournisseur=fournisseur, type_infraction=type_infraction, date_from=date_from,
+                                   date_to=date_to, due_from=due_from, due_to=due_to, montant_min=montant_min,
+                                   montant_max=montant_max, q=q, sort=sort, priorite=priorite)
+    route.__name__ = f"fines_export_{fmt}"
+    return route
+
+
+for _fmt in ("csv", "xlsx", "pdf"):
+    api_router.add_api_route(f"/reports/amendes.{_fmt}", _fine_export_route(_fmt), methods=["GET"])
 
 
 # ---------------------------------------------------------------------------
@@ -3509,7 +4066,7 @@ async def dashboard(request: Request):
     th = await deadline_settings(t)
     vehicles = await db.vehicles.find({"tenant_id": t}, {"_id": 0}).to_list(None)
     documents = await db.documents.find(
-        {"is_deleted": False, "tenant_id": t},
+        {"is_deleted": False, "tenant_id": t, "parent_document_id": None},
         {"_id": 0, "vehicle_id": 1, "folder": 1, "date_expiration": 1,
          "preavis_jours": 1, "a_verifier": 1, "en_renouvellement": 1, "archived": 1}
     ).to_list(None)
@@ -4861,7 +5418,8 @@ async def vehicle_report(vehicle_id: str, request: Request):
     history = await db.audit_logs.find(
         {"vehicle_id": vehicle_id}, {"_id": 0}).sort("created_at", -1).to_list(30)
     documents = await db.documents.find(
-        {"vehicle_id": vehicle_id, "is_deleted": False}, {"_id": 0}).sort("created_at", -1).to_list(200)
+        {"vehicle_id": vehicle_id, "is_deleted": False, "parent_document_id": None},
+        {"_id": 0}).sort("created_at", -1).to_list(200)
     pdf_bytes = build_vehicle_pdf(vehicle, history, documents,
                                   {k: v["label"] for k, v in DOC_TYPES.items()})
     await audit("download", "report", request, f"vehicule_{vehicle_id}", vehicle_id,
@@ -6125,6 +6683,7 @@ async def startup():
                                       ("threshold", 1), ("due_date", 1)])
         await legacy_identity.ensure_legacy_indexes(db)
         await ensure_driver_indexes()
+        await ensure_fine_indexes()
         if NAVIXY_HASH:
             await db.tenant_integrations.update_one(
                 {"tenant_id": "default", "provider": "navixy"},

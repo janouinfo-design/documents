@@ -398,3 +398,127 @@ def build_vehicle_pdf(vehicle: dict, history: list, documents: list, doc_type_la
         pdf.cell(0, 6, _tx("Aucun événement enregistré."), new_x="LMARGIN", new_y="NEXT")
 
     return bytes(pdf.output())
+
+
+# ---------------------------------------------------------------------------
+# Phase 4C — Lot D : exports Amendes (CSV / XLSX / PDF). Lignes = périmètre filtré de /api/fines ;
+# `notes_internes` jamais exporté ; `paid_on` = date métier (jamais `paid_at`) ; `payment_ref` seulement si présente.
+# ---------------------------------------------------------------------------
+FINE_EXPORT_COLUMNS = [
+    ("Référence", lambda d: d.get("numero") or ""),
+    ("Dossier interne", lambda d: d.get("dossier_interne") or ""),
+    ("Véhicule", lambda d: d.get("plaque") or ""),
+    ("Marque / modèle", lambda d: d.get("vehicule_label") or ""),
+    ("Conducteur", lambda d: d.get("driver_nom") or ""),
+    ("Statut", lambda d: d.get("fine_status_label") or d.get("fine_status") or ""),
+    ("Type d'infraction", lambda d: d.get("type_infraction_label") or d.get("type_infraction") or ""),
+    ("Autorité", lambda d: d.get("fournisseur") or ""),
+    ("Lieu", lambda d: d.get("lieu_label") or ""),
+    ("Date infraction", lambda d: _date_fr(d.get("date_debut")) if d.get("date_debut") else ""),
+    ("Échéance", lambda d: _date_fr(d.get("date_expiration")) if d.get("date_expiration") else ""),
+    ("Montant", lambda d: _n(d.get("montant")) if d.get("montant") is not None else ""),
+    ("Devise", lambda d: d.get("devise") or "CHF"),
+    ("Montant CHF", lambda d: "conversion en attente" if d.get("pending_fx") else (_n(d.get("montant_chf_effectif")) if d.get("montant_chf_effectif") is not None else "")),
+    ("Frais admin", lambda d: _n(d.get("frais_admin")) if d.get("frais_admin") is not None else ""),
+    ("Priorité", lambda d: d.get("priorite") or ""),
+    ("Payée le", lambda d: _date_fr(d.get("paid_on")) if d.get("paid_on") else ""),
+    ("Réf. paiement", lambda d: d.get("payment_ref") or ""),
+    ("Sans justificatif", lambda d: "oui" if d.get("justificatif_absent") else ""),
+    ("Pièces liées", lambda d: d.get("attachments_count") or 0),
+]
+
+
+def build_fines_csv(rows: list) -> str:
+    buf = io.StringIO()
+    w = csv.writer(buf, delimiter=";", lineterminator="\r\n")
+    w.writerow([c for c, _ in FINE_EXPORT_COLUMNS])
+    for d in rows:
+        w.writerow([f(d) for _, f in FINE_EXPORT_COLUMNS])
+    return buf.getvalue()
+
+
+def build_fines_xlsx(rows: list, totals: dict, meta: dict) -> bytes:
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Amendes"
+    ws.append([c for c, _ in FINE_EXPORT_COLUMNS])
+    for cell in ws[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="0F172A")
+    for d in rows:
+        ws.append([f(d) for _, f in FINE_EXPORT_COLUMNS])
+    for col in ws.columns:
+        ws.column_dimensions[col[0].column_letter].width = max(12, min(40, max(len(str(c.value or "")) for c in col) + 2))
+    ws.freeze_panes = "A2"
+    s = wb.create_sheet("Synthèse")
+    s.append(["Généré le", _dt_fr(meta.get("generated_at"))])
+    s.append(["Lignes", totals.get("count", len(rows))])
+    s.append(["Total compté CHF (hors annulées, hors conversion en attente)", totals.get("total_chf", 0)])
+    s.append(["Ouvert CHF (échéances actives)", totals.get("ouvert_chf", 0)])
+    s.append(["Payé CHF", totals.get("paye_chf", 0)])
+    s.append(["Annulé CHF (montant conservé, exclu du total)", totals.get("annule_chf", 0)])
+    s.append(["Conversion en attente (lignes)", totals.get("pending_fx_count", 0)])
+    s.append(["Filtres", ", ".join(f"{k}={v}" for k, v in (meta.get("filters") or {}).items()) or "aucun"])
+    for st, n in (totals.get("by_status") or {}).items():
+        s.append([f"Statut {st}", n])
+    s.column_dimensions["A"].width = 62
+    s.column_dimensions["B"].width = 24
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue()
+
+
+class _FinesReport(FPDF):
+    def footer(self):
+        self.set_y(-12)
+        self.set_font("helvetica", "I", 8)
+        self.set_text_color(130)
+        self.cell(0, 8, _tx(f"LogiTrak Documents — Amendes — page {self.page_no()}"), align="C")
+        self.set_text_color(0)
+
+
+def build_fines_pdf(rows: list, totals: dict, meta: dict) -> bytes:
+    pdf = _FinesReport(orientation="L", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=16)
+    pdf.add_page()
+    pdf.set_font("helvetica", "B", 16)
+    pdf.cell(0, 9, _tx("Amendes — export"), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("helvetica", "", 9)
+    pdf.set_text_color(100)
+    filters = ", ".join(f"{k}={v}" for k, v in (meta.get("filters") or {}).items()) or "aucun filtre"
+    pdf.cell(0, 5, _tx(f"Généré le {_dt_fr(meta.get('generated_at'))} UTC · {len(rows)} amende(s) · Filtres : {filters}"),
+             new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(0)
+    pdf.ln(3)
+    _section(pdf, "Synthèse")
+    pdf.set_font("helvetica", "", 10)
+    pdf.cell(0, 6, _tx(f"Total compté : {totals.get('total_chf', 0):.2f} CHF   ·   Ouvert : {totals.get('ouvert_chf', 0):.2f} CHF   ·   "
+                       f"Payé : {totals.get('paye_chf', 0):.2f} CHF   ·   Annulé (exclu) : {totals.get('annule_chf', 0):.2f} CHF   ·   "
+                       f"Conversion en attente : {totals.get('pending_fx_count', 0)}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(4)
+    _section(pdf, "Détail")
+    pdf.set_font("helvetica", "", 7.5)
+    cols = [("Référence", 30), ("Véhicule", 22), ("Conducteur", 30), ("Statut", 26), ("Type", 24), ("Autorité", 36),
+            ("Infraction", 20), ("Échéance", 20), ("Montant", 22), ("Payée le", 20), ("Réf. paiement", 27)]
+    getters = {c: f for c, f in FINE_EXPORT_COLUMNS}
+    with pdf.table(col_widths=tuple(w for _, w in cols), line_height=5.5, padding=1) as table:
+        head = table.row()
+        for c, _ in cols:
+            head.cell(_tx(c))
+        for d in rows:
+            row = table.row()
+            row.cell(_tx(getters["Référence"](d) or d.get("dossier_interne") or "-"))
+            row.cell(_tx(getters["Véhicule"](d) or "-"))
+            row.cell(_tx(getters["Conducteur"](d) or "-"))
+            row.cell(_tx(getters["Statut"](d)))
+            row.cell(_tx(getters["Type d'infraction"](d) or "-"))
+            row.cell(_tx(getters["Autorité"](d) or "-"))
+            row.cell(_tx(getters["Date infraction"](d) or "-"))
+            row.cell(_tx(getters["Échéance"](d) or "-"))
+            m = d.get("montant")
+            row.cell(_tx(f"{m:.2f} {d.get('devise') or 'CHF'}" if m is not None else "-"))
+            row.cell(_tx(getters["Payée le"](d) or "-"))
+            row.cell(_tx(getters["Réf. paiement"](d) or "-"))
+    return bytes(pdf.output())

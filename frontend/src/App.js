@@ -20,6 +20,7 @@ import ScanPage from "@/pages/ScanPage";
 import ArchivesPage from "@/pages/ArchivesPage";
 import LegacyMappingPage from "@/pages/LegacyMappingPage";
 import DriversPage from "@/pages/DriversPage";
+import FinesPage from "@/pages/FinesPage";
 import SsoNotConfigured from "@/pages/SsoNotConfigured";
 import { useLocation } from "react-router-dom";
 
@@ -62,6 +63,7 @@ function App() {
                           <Route path="/couts" element={<CostsPage />} />
                           <Route path="/energie" element={<EnergyPage />} />
                           <Route path="/conducteurs" element={<DriversPage />} />
+                          <Route path="/amendes" element={<FinesPage />} />
                           <Route path="/alertes" element={<AlertsPage />} />
                           <Route path="/integrite" element={<IntegrityPage />} />
                           <Route path="/admin" element={<AdminPage />} />

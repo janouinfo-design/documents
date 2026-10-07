@@ -10,9 +10,10 @@ import {
   Banknote,
   ArrowRight,
   CalendarDays,
+  Gavel,
 } from "lucide-react";
-import { getDashboard, getDeadlines, getCosts } from "@/lib/api";
-import { chf, dateFr } from "@/lib/format";
+import { getDashboard, getDeadlines, getCosts, getFinesStats } from "@/lib/api";
+import { chf, chfExact, dateFr } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import KpiCard from "@/components/KpiCard";
 import StatusBadge from "@/components/StatusBadge";
@@ -81,6 +82,28 @@ function SecondaryCostCard({ costs, onClick }) {
   );
 }
 
+// Lot D — carte synthétique Amendes : même source que /amendes (GET /api/fines/stats), aucun calcul parallèle.
+function SecondaryFinesCard({ stats, onClick }) {
+  const c = stats?.counts, m = stats?.montants;
+  return (
+    <button onClick={onClick} data-testid="kpi-amendes"
+            className="flex min-h-[120px] items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+      <div>
+        <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+          <Gavel className="h-4 w-4 text-slate-700" /> Amendes à payer
+        </p>
+        <p className="mt-2 font-display text-2xl font-bold tracking-tight text-slate-900">
+          {c ? <>{c.ouvertes}<span className="ml-2 text-base font-semibold text-red-600" data-testid="kpi-amendes-late">{c.en_retard} en retard</span></> : "—"}
+        </p>
+        <p className="mt-1 text-xs text-slate-500">
+          {m ? `${chfExact(m.ouvert_chf)} ouvert · ${chfExact(m.en_retard_chf)} en retard — annulées exclues (D9)` : "Donnée non disponible — voir la page Amendes"}
+        </p>
+      </div>
+      <ArrowRight className="h-5 w-5 shrink-0 text-slate-300" />
+    </button>
+  );
+}
+
 export default function Dashboard() {
   const { openVehicle } = useVehicleDrawer();
   const navigate = useNavigate();
@@ -88,6 +111,7 @@ export default function Dashboard() {
   const { data: kpi, isLoading, isError, error } = useQuery({ queryKey: ["dashboard"], queryFn: getDashboard });
   const { data: dl, isError: dlIsError, error: dlError } = useQuery({ queryKey: ["deadlines"], queryFn: () => getDeadlines() });
   const { data: costs } = useQuery({ queryKey: ["costs"], queryFn: () => getCosts() });
+  const { data: finesStats } = useQuery({ queryKey: ["fines-stats"], queryFn: getFinesStats });
 
   const th = kpi?.deadline_thresholds || { urgent_days: 30, warning_days: 90 };
   const summary = dl?.summary;
@@ -135,9 +159,10 @@ export default function Dashboard() {
       </div>
 
       {/* KPI secondaires — conformité & finance */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <SecondaryConformityCard conformes={conformes} total={total} onClick={go("/integrite")} />
         <SecondaryCostCard costs={costs} onClick={go("/couts")} />
+        <SecondaryFinesCard stats={finesStats} onClick={go("/amendes?view=late")} />
       </div>
 
       {/* Prochaines actions — les plus urgentes d'abord, puis chronologique */}

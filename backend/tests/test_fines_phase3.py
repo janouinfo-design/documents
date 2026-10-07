@@ -67,7 +67,9 @@ def _validate(doc_id, fields, category="AMENDE", creds=ADMIN_A, **extra):
 
 
 def _paid(doc_id, payee=True, creds=ADMIN_A):
-    return requests.post(f"{_BASE}/api/documents/{doc_id}/paid", json={"payee": payee}, headers=_h(creds), timeout=30)
+    # Lot D : le dé-paiement (payee=false) exige un motif (correction métier auditée `fine_payment_reverted`)
+    body = {"payee": payee} if payee else {"payee": False, "motif": "pytest : correction de paiement"}
+    return requests.post(f"{_BASE}/api/documents/{doc_id}/paid", json=body, headers=_h(creds), timeout=30)
 
 
 def _costs(creds=ADMIN_A):

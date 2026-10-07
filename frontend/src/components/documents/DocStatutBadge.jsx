@@ -11,6 +11,10 @@ export const DOC_STATUT_META = {
   A_PAYER: { label: "À payer", cls: "bg-amber-50 text-amber-700 border-amber-200" },
   EN_RETARD: { label: "En retard", cls: "bg-red-50 text-red-700 border-red-200" },
   PAYEE: { label: "Payée", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  // Lot D — statuts métier dérivés (10 statuts, D9)
+  CONTESTEE: { label: "Contestée", cls: "bg-orange-50 text-orange-700 border-orange-200" },
+  CLOTUREE: { label: "Clôturée", cls: "bg-slate-100 text-slate-600 border-slate-200" },
+  ANNULEE: { label: "Annulée", cls: "bg-slate-200 text-slate-700 border-slate-300" },
 };
 
 export const DocStatutBadge = ({ statut }) => {

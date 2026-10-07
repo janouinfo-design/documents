@@ -58,6 +58,20 @@ class ManualFineCreate(BaseModel):
     legacy_source: Optional[str] = None
     legacy_id: Optional[str] = None
     created_at: Optional[str] = None
+    # Lot D — parité Journal (tous optionnels ; jamais inventés)
+    fine_status: Optional[str] = None
+    type_infraction: Optional[str] = None
+    montant_amende: Optional[float] = None
+    frais_admin: Optional[float] = None
+    lieu_infraction: Optional[dict] = None
+    date_reception: Optional[str] = None
+    heure_infraction: Optional[str] = None
+    priorite: Optional[str] = None
+    dossier_interne: Optional[str] = None
+    notes_internes: Optional[str] = None
+    notes: Optional[str] = None
+    paid_on: Optional[str] = None
+    payment_ref: Optional[str] = None
 
 
 def norm_currency(dev) -> str:
