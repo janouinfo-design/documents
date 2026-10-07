@@ -4,7 +4,7 @@ import { getVehicleEnergy } from "@/lib/api";
 import { chfExact, fmtQty, dateFr } from "@/lib/format";
 import { SectionCard, Stat } from "@/components/Field";
 import QueryErrorState from "@/components/QueryErrorState";
-import { energyLabel, qtyLabel, unitPriceLabel, txDateLabel } from "@/pages/EnergyPage";
+import { energyLabel, qtyLabel, unitPriceLabel, txDateLabel, DeclarativeMark } from "@/pages/EnergyPage";
 
 const SOURCE_FR = { can: "Mesure CAN embarquée", fuel_transactions: "Tickets carburant", manual: "Saisie manuelle" };
 
@@ -62,7 +62,7 @@ export default function EnergyTab({ vehicle }) {
           {txs.map((tx) => (
             <div key={tx.id} className="flex items-center justify-between gap-3 py-3" data-testid={`vehicle-energy-${tx.id}`}>
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-slate-800">{tx.station || "Station inconnue"}</p>
+                <p className="truncate text-sm font-medium text-slate-800">{tx.station || "Station inconnue"}<DeclarativeMark tx={tx} /></p>
                 <p className="text-xs text-slate-400">
                   {txDateLabel(tx)} · {energyLabel(tx)} · {qtyLabel(tx)} · {unitPriceLabel(tx)}
                   {tx.kilometrage ? ` · ${tx.kilometrage} km` : ""}

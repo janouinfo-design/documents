@@ -7,6 +7,8 @@ import { chf, chfExact } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import KpiCard from "@/components/KpiCard";
 import QueryErrorState from "@/components/QueryErrorState";
+import { PendingFxSection, CostAmount } from "@/components/documents/PendingFx";
+import { NoFileBadge } from "@/components/documents/NoFileBadge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
@@ -31,6 +33,7 @@ export default function CostsPage() {
     (vehicle === ALL || i.vehicle_id === vehicle) &&
     (category === ALL || i.category === category)
   ), [data, vehicle, category]);
+  const pendingFx = useMemo(() => (data?.pending_fx || []).filter((i) => vehicle === ALL || i.vehicle_id === vehicle), [data, vehicle]);
 
   const categoryOptions = useMemo(() => {
     const names = new Set(categories.map((c) => c.name));
@@ -49,8 +52,11 @@ export default function CostsPage() {
 
       {isError && <QueryErrorState error={error} testId="costs-error" />}
 
+      <PendingFxSection items={pendingFx} onOpenVehicle={(vid) => openVehicle(vid, "documents")} />
+
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard testId="costs-kpi-annuel" label={`Coût annuel ${year || ""}`} value={isLoading ? "—" : chf(totals.annuel)} accent="slate" icon={Wallet} sub="Tous postes actifs" />
+        <KpiCard testId="costs-kpi-annuel" label={`Coût annuel ${year || ""}`} value={isLoading ? "—" : chf(totals.annuel)} accent="slate" icon={Wallet}
+          sub={totals.pending_fx_count ? `Tous postes actifs · ${totals.pending_fx_count} conversion(s) en attente exclue(s)` : "Tous postes actifs"} />
         <KpiCard testId="costs-kpi-mensuel" label="Équivalent mensuel" value={isLoading ? "—" : chf(totals.mensuel)} accent="slate" icon={Banknote} sub="Coût annuel / 12" />
         <KpiCard testId="costs-kpi-postes" label="Postes actifs" value={isLoading ? "—" : totals.postes_actifs} accent="sky" icon={Layers} sub="Documents & contrats" />
         <KpiCard testId="costs-kpi-topcat" label="Poste principal" value={isLoading ? "—" : topCat ? topCat.category : "—"} accent="indigo" icon={PieIcon} sub={topCat ? chf(topCat.total_annuel) + " / an" : "Aucun montant saisi"} />
@@ -163,6 +169,7 @@ export default function CostsPage() {
                   {i.source === "legacy" && (
                     <span className="inline-flex rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Fiche véhicule</span>
                   )}
+                  {i.justificatif_absent && <NoFileBadge doc={{ id: i.document_id, justificatif_absent: true }} />}
                 </TableCell>
                 <TableCell>
                   <span data-testid={`cost-category-${i.key}`} className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold",
@@ -170,7 +177,7 @@ export default function CostsPage() {
                     {i.category}
                   </span>
                 </TableCell>
-                <TableCell className="text-sm text-slate-600">{chfExact(i.montant, i.devise)}</TableCell>
+                <TableCell className="text-sm text-slate-600"><CostAmount item={i} /></TableCell>
                 <TableCell className="text-sm text-slate-600">{FREQ_FR[i.frequence] || i.frequence}</TableCell>
                 <TableCell className="text-sm font-semibold text-slate-900">
                   {chfExact(i.cout_annuel, i.devise)}

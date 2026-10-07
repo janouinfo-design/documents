@@ -34,6 +34,7 @@ export default function DocumentEditDialog({ doc, categories = [], open, onOpenC
         fournisseur: doc.fournisseur || "", numero: doc.numero || "",
         date_debut: (doc.date_debut || "").slice(0, 10), date_expiration: (doc.date_expiration || "").slice(0, 10),
         preavis_jours: doc.preavis_jours ?? "", montant: doc.montant ?? "", devise: doc.devise || "CHF",
+        montant_chf: doc.montant_chf ?? "",
         frequence: doc.frequence || "", responsable: doc.responsable || "",
         business_category: doc.business_category || "", montant_ht: doc.montant_ht ?? "",
         tva_chf: doc.tva_chf ?? "", kilometrage_releve: doc.kilometrage_releve ?? "",
@@ -58,6 +59,7 @@ export default function DocumentEditDialog({ doc, categories = [], open, onOpenC
         preavis_jours: f.preavis_jours === "" ? null : Number(f.preavis_jours),
         montant: f.montant === "" ? null : Number(f.montant),
         devise: f.devise, frequence: f.frequence || null, responsable: f.responsable || null,
+        montant_chf: f.devise !== "CHF" && f.montant_chf !== "" ? Number(f.montant_chf) : null,
         business_category: f.business_category || null,
         montant_ht: f.montant_ht === "" ? null : Number(f.montant_ht),
         tva_chf: f.tva_chf === "" ? null : Number(f.tva_chf),
@@ -117,6 +119,11 @@ export default function DocumentEditDialog({ doc, categories = [], open, onOpenC
               <SelectContent>{["CHF", "EUR", "USD"].map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
             </Select>
           </F>
+          {f.devise !== "CHF" && (
+            <F label="Contre-valeur CHF (vide = conversion en attente)">
+              <Input data-testid="doc-edit-montant-chf" type="number" min="0" step="0.05" value={f.montant_chf} onChange={setI("montant_chf")} placeholder="Exclu du total CHF tant que vide" />
+            </F>
+          )}
           <F label="Fréquence">
             <Select value={f.frequence || "__none__"} onValueChange={(v) => set("frequence")(v === "__none__" ? "" : v)}>
               <SelectTrigger data-testid="doc-edit-frequence"><SelectValue placeholder="—" /></SelectTrigger>

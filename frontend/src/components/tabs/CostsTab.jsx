@@ -4,6 +4,7 @@ import { getVehicleCosts } from "@/lib/api";
 import { chf, chfExact } from "@/lib/format";
 import { SectionCard, Stat } from "@/components/Field";
 import QueryErrorState from "@/components/QueryErrorState";
+import { PendingFxSection, CostAmount } from "@/components/documents/PendingFx";
 
 const FREQ_FR = { unique: "Unique", mensuel: "Mensuel", trimestriel: "Trimestriel", semestriel: "Semestriel", annuel: "Annuel" };
 
@@ -23,6 +24,7 @@ export default function CostsTab({ vehicle }) {
         <Stat label={`Coût annuel ${data?.year || ""}`} value={chf(totals.annuel)} icon={Wallet} />
         <Stat label="Postes actifs" value={totals.postes_actifs} icon={Wallet} />
       </div>
+      <PendingFxSection items={data?.pending_fx || []} compact />
       <SectionCard title="Postes de coût" description="Dérivés des montants des documents et des contrats — sans double comptage." testId="vehicle-costs-list">
         {isLoading && (
           <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-400">
@@ -50,7 +52,7 @@ export default function CostsTab({ vehicle }) {
               <div className="text-right">
                 <p className="text-sm font-semibold text-slate-900">{chfExact(i.cout_annuel, i.devise)}<span className="text-xs font-normal text-slate-400">/an</span></p>
                 <p className="text-[11px] text-slate-400">
-                  {chfExact(i.montant, i.devise)} {FREQ_FR[i.frequence]?.toLowerCase() || ""}
+                  <CostAmount item={i} /> {FREQ_FR[i.frequence]?.toLowerCase() || ""}
                   {!i.actif && <span className="ml-1 text-amber-600">· hors {data?.year}</span>}
                 </p>
               </div>

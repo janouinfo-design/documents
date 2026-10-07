@@ -298,4 +298,13 @@ export const adminLegacyTenantCandidates = (data) => http.post("/admin/legacy/te
 export const adminLegacyTenantConfirm = (data) => http.post("/admin/legacy/tenant-map/confirm", data).then((r) => r.data);
 export const adminLegacyTenantRevoke = (data) => http.post("/admin/legacy/tenant-map/revoke", data).then((r) => r.data);
 
+// Phase 4C — Lot B : documents métier SANS fichier (D1) + justificatif joint a posteriori
+export const createFuelNoFile = (vehicleId, data) => http.post(`/vehicles/${vehicleId}/fuel-transactions`, data).then((r) => r.data);
+export const createFineNoFile = (vehicleId, data) => http.post(`/vehicles/${vehicleId}/fines`, data).then((r) => r.data);
+export const attachDocumentFile = (docId, file) => {
+  const form = new FormData();
+  form.append("file", file);
+  return http.post(`/documents/${docId}/attach-file`, form, { headers: { "Content-Type": "multipart/form-data" } }).then((r) => r.data);
+};
+
 export default http;

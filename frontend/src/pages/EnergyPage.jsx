@@ -1,16 +1,32 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Fuel, Droplets, Tag, Gauge } from "lucide-react";
+import { Fuel, Droplets, Tag, Gauge, PenLine } from "lucide-react";
 import { getEnergy, getVehicles } from "@/lib/api";
 import { chfExact, fmtQty, dateFr } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import KpiCard from "@/components/KpiCard";
 import QueryErrorState from "@/components/QueryErrorState";
+import ManualFuelDialog from "@/components/documents/ManualFuelDialog";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
+import { useAuth } from "@/context/AuthContext";
 
 const ALL = "__all__";
+
+export const isDeclarative = (tx) => ["manual", "legacy_import"].includes(tx?.created_from);
+
+// Pictogramme « déclaratif » : transaction saisie sans justificatif (manuelle ou importée)
+export function DeclarativeMark({ tx }) {
+  if (!isDeclarative(tx)) return null;
+  return (
+    <span data-testid={`energy-declaratif-${tx.id}`} title={tx.motif_saisie ? `Déclaratif — ${tx.motif_saisie}` : "Déclaratif (sans justificatif)"}
+      className="ml-1 inline-flex items-center gap-0.5 rounded-full border border-dashed border-amber-400 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
+      <PenLine className="h-2.5 w-2.5" /> déclaratif
+    </span>
+  );
+}
 
 export const energyLabel = (tx) =>
   tx.type_carburant || (tx.energie === "electrique" ? "Électricité" : "Carburant");
@@ -27,7 +43,10 @@ export const txDateLabel = (tx) => `${dateFr(tx.date)}${tx.heure ? ` ${tx.heure}
 
 export default function EnergyPage() {
   const { openVehicle } = useVehicleDrawer();
+  const { user } = useAuth();
+  const isAdmin = ["admin", "superadmin"].includes(user?.role);
   const [vehicle, setVehicle] = useState(ALL);
+  const [fuelOpen, setFuelOpen] = useState(false);
 
   const { data, isLoading, isError, error } = useQuery({ queryKey: ["energy"], queryFn: () => getEnergy() });
   const { data: vehicles = [] } = useQuery({ queryKey: ["vehicles"], queryFn: getVehicles });
@@ -48,11 +67,18 @@ export default function EnergyPage() {
 
   return (
     <div className="space-y-6 animate-fade-in" data-testid="energy-page">
-      <div>
-        <h2 className="font-display text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">Énergie & carburant</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Transactions dérivées des tickets validés dans Documents. Le montant est déjà compté dans Coûts (jamais deux fois).
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="font-display text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">Énergie & carburant</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Transactions dérivées des tickets validés dans Documents. Le montant est déjà compté dans Coûts (jamais deux fois).
+          </p>
+        </div>
+        {isAdmin && (
+          <Button data-testid="energy-manual-fuel-btn" size="sm" variant="outline" onClick={() => setFuelOpen(true)} className="gap-1.5 border-amber-300 text-amber-800 hover:bg-amber-50">
+            <PenLine className="h-4 w-4" /> Plein sans justificatif
+          </Button>
+        )}
       </div>
 
       {isError && <QueryErrorState error={error} testId="energy-error" />}
@@ -112,6 +138,7 @@ export default function EnergyPage() {
                 </TableCell>
                 <TableCell className="text-sm text-slate-700">
                   {tx.station || "—"}
+                  <DeclarativeMark tx={tx} />
                   {tx.carte_last4 && <span className="ml-1 text-[11px] text-slate-400">· carte ****{tx.carte_last4}</span>}
                   {tx.kilometrage && <span className="ml-1 text-[11px] text-slate-400">· {tx.kilometrage} km</span>}
                 </TableCell>
@@ -131,6 +158,7 @@ export default function EnergyPage() {
           </TableBody>
         </Table>
       </div>
+      <ManualFuelDialog open={fuelOpen} onOpenChange={setFuelOpen} />
     </div>
   );
 }

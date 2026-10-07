@@ -32,18 +32,22 @@ function ArchiveDocs({ vehicleId }) {
           <div className="flex min-w-0 items-center gap-2.5">
             <FileText className="h-4 w-4 shrink-0 text-slate-400" />
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-slate-700">{d.original_filename}</p>
+              <p className="truncate text-sm font-medium text-slate-700">{d.label || d.original_filename}</p>
               <p className="text-xs text-slate-400">{d.folder} · {fmtSize(d.size)} · ajouté le {dateFr(d.created_at)}</p>
             </div>
           </div>
-          <button
-            onClick={() => window.open(fileUrl(d.storage_path, { download: true, filename: d.original_filename }), "_blank", "noopener")}
-            data-testid={`archive-doc-download-${d.id}`}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-            aria-label="Télécharger"
-          >
-            <Download className="h-4 w-4" />
-          </button>
+          {d.storage_path ? (
+            <button
+              onClick={() => window.open(fileUrl(d.storage_path, { download: true, filename: d.original_filename }), "_blank", "noopener")}
+              data-testid={`archive-doc-download-${d.id}`}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              aria-label="Télécharger"
+            >
+              <Download className="h-4 w-4" />
+            </button>
+          ) : (
+            <span data-testid={`archive-doc-nofile-${d.id}`} className="shrink-0 rounded-full border border-dashed border-amber-400 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800">Aucun justificatif</span>
+          )}
         </div>
       ))}
     </div>

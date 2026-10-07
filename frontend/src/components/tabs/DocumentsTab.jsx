@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   FileText, ShieldCheck, ScrollText, ClipboardCheck, Receipt, Images,
-  FileSignature, FolderArchive, Plus, Search, Ticket,
+  FileSignature, FolderArchive, Plus, Search, Ticket, Fuel, FileX2,
 } from "lucide-react";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { SectionCard } from "@/components/Field";
 import DocFolderSection from "@/components/DocFolderSection";
 import ScanDocumentDialog from "@/components/ScanDocumentDialog";
+import ManualFuelDialog from "@/components/documents/ManualFuelDialog";
+import ManualFineDialog from "@/components/documents/ManualFineDialog";
 import { getDocCategories } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
@@ -23,6 +25,8 @@ export default function DocumentsTab({ vehicle, onSaved, docs, refetchDocs }) {
   const { user } = useAuth();
   const readOnly = user?.role === "read_only";
   const [scanOpen, setScanOpen] = useState(false);
+  const [fuelOpen, setFuelOpen] = useState(false);
+  const [fineOpen, setFineOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [openFolders, setOpenFolders] = useState(["Leasing"]);
   const onChange = () => { refetchDocs?.(); onSaved?.(); };
@@ -48,9 +52,17 @@ export default function DocumentsTab({ vehicle, onSaved, docs, refetchDocs }) {
         testId="documents-tab"
         action={
           readOnly ? null : (
-            <Button data-testid="add-document-btn" size="sm" onClick={() => setScanOpen(true)} className="gap-1.5 bg-slate-900 hover:bg-slate-800">
-              <Plus className="h-4 w-4" /> Ajouter un document
-            </Button>
+            <div className="flex flex-wrap justify-end gap-1.5">
+              <Button data-testid="manual-fuel-open-btn" size="sm" variant="outline" onClick={() => setFuelOpen(true)} className="gap-1.5 border-amber-300 text-amber-800 hover:bg-amber-50">
+                <Fuel className="h-4 w-4" /> Plein sans justificatif
+              </Button>
+              <Button data-testid="manual-fine-open-btn" size="sm" variant="outline" onClick={() => setFineOpen(true)} className="gap-1.5 border-amber-300 text-amber-800 hover:bg-amber-50">
+                <FileX2 className="h-4 w-4" /> Amende sans fichier
+              </Button>
+              <Button data-testid="add-document-btn" size="sm" onClick={() => setScanOpen(true)} className="gap-1.5 bg-slate-900 hover:bg-slate-800">
+                <Plus className="h-4 w-4" /> Ajouter un document
+              </Button>
+            </div>
           )
         }
       >
@@ -91,6 +103,8 @@ export default function DocumentsTab({ vehicle, onSaved, docs, refetchDocs }) {
         askType
         onValidated={onChange}
       />
+      <ManualFuelDialog open={fuelOpen} onOpenChange={setFuelOpen} vehicle={vehicle} onCreated={onChange} />
+      <ManualFineDialog open={fineOpen} onOpenChange={setFineOpen} vehicle={vehicle} onCreated={onChange} />
     </>
   );
 }

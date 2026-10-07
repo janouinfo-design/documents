@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { Search, FolderCog, ListChecks, Pencil, Download, FolderOpen, Loader2, Sparkles } from "lucide-react";
+import { Search, FolderCog, ListChecks, Pencil, Download, FolderOpen, Loader2, Sparkles, FileX2 } from "lucide-react";
 import { getAllDocuments, getDocCategories, getDeadlineSettings, getVehicles, fileUrl } from "@/lib/api";
 import { dateFr } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,8 @@ import DocumentEditDialog from "@/components/documents/DocumentEditDialog";
 import { FineSummary, FinePaidButton, isFineDoc } from "@/components/documents/FineMeta";
 import DocCategoriesDialog from "@/components/documents/DocCategoriesDialog";
 import DocRequirementsDialog from "@/components/documents/DocRequirementsDialog";
+import ManualFineDialog from "@/components/documents/ManualFineDialog";
+import { NoFileBadge, AttachFileButton, hasNoFile } from "@/components/documents/NoFileBadge";
 import { useAuth } from "@/context/AuthContext";
 import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
 
@@ -35,6 +37,7 @@ export default function DocumentsPage() {
   const [editDoc, setEditDoc] = useState(null);
   const [catsOpen, setCatsOpen] = useState(false);
   const [reqsOpen, setReqsOpen] = useState(false);
+  const [fineOpen, setFineOpen] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setQDebounced(q), 300);
@@ -81,7 +84,10 @@ export default function DocumentsPage() {
           </p>
         </div>
         {isAdmin && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button data-testid="manual-fine-open-btn" size="sm" onClick={() => setFineOpen(true)} className="gap-1.5 bg-slate-900 hover:bg-slate-800">
+              <FileX2 className="h-4 w-4" /> Amende sans fichier
+            </Button>
             <Button data-testid="manage-categories-btn" variant="outline" size="sm" onClick={() => setCatsOpen(true)} className="gap-1.5">
               <FolderCog className="h-4 w-4" /> Catégories
             </Button>
@@ -187,6 +193,7 @@ export default function DocumentsPage() {
                       Analysé — à valider
                     </span>
                   )}
+                  <NoFileBadge doc={d} className="mt-0.5" />
                   <FineSummary doc={d} className="mt-0.5 block max-w-[320px]" />
                 </TableCell>
                 <TableCell>
@@ -204,12 +211,16 @@ export default function DocumentsPage() {
                 <TableCell>
                   <div className="flex justify-end gap-1">
                     <FinePaidButton doc={d} disabled={!isAdmin} />
-                    <button
-                      onClick={() => window.open(fileUrl(d.storage_path, { download: true, filename: d.original_filename }), "_blank", "noopener")}
-                      data-testid={`doc-page-download-${d.id}`}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Télécharger">
-                      <Download className="h-4 w-4" />
-                    </button>
+                    {hasNoFile(d) ? (
+                      isAdmin && <AttachFileButton doc={d} compact />
+                    ) : (
+                      <button
+                        onClick={() => window.open(fileUrl(d.storage_path, { download: true, filename: d.original_filename }), "_blank", "noopener")}
+                        data-testid={`doc-page-download-${d.id}`}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Télécharger">
+                        <Download className="h-4 w-4" />
+                      </button>
+                    )}
                     {isAdmin && (
                       <button onClick={() => setEditDoc(d)} data-testid={`doc-page-edit-${d.id}`}
                         className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Modifier la fiche">
@@ -227,6 +238,7 @@ export default function DocumentsPage() {
       <DocumentEditDialog doc={editDoc} categories={categories} open={!!editDoc} onOpenChange={(o) => !o && setEditDoc(null)} />
       <DocCategoriesDialog categories={categories} open={catsOpen} onOpenChange={setCatsOpen} />
       <DocRequirementsDialog categories={categories} open={reqsOpen} onOpenChange={setReqsOpen} />
+      <ManualFineDialog open={fineOpen} onOpenChange={setFineOpen} />
     </div>
   );
 }

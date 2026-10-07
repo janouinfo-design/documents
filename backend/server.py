@@ -33,6 +33,8 @@ from auth import (authenticate_request, check_lockout, clear_failures, create_ac
 from storage import get_object, guess_mime, init_storage, put_object
 import legacy_identity
 from legacy_identity import norm_vin as _norm_vin, norm_plate as _norm_plate, identity as _identity
+import nofile
+from nofile import ManualFuelCreate, ManualFineCreate
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -1293,7 +1295,7 @@ async def list_archive_documents(vehicle_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Véhicule archivé introuvable")
     docs = await db.documents.find(
         {"tenant_id": t, "vehicle_id": vehicle_id, "deleted_reason": "vehicle_removed"},
-        {"_id": 0, "id": 1, "original_filename": 1, "folder": 1, "document_type": 1,
+        {"_id": 0, "id": 1, "original_filename": 1, "label": 1, "justificatif_absent": 1, "folder": 1, "document_type": 1,
          "size": 1, "created_at": 1, "deleted_at": 1, "storage_path": 1, "content_type": 1}).to_list(None)
     docs.sort(key=lambda d: d.get("created_at") or "", reverse=True)
     return docs
@@ -1861,8 +1863,10 @@ async def _transaction_duplicate(tenant_id: str, vehicle_id: str, exclude_doc_id
             "original_filename": (d or {}).get("original_filename")}
 
 
-async def _upsert_fuel_transaction(doc_id: str, doc_data: dict, vehicle: dict, tenant_id: str, user: str) -> dict:
-    """1 document validé = au plus 1 fuel_transaction (upsert par source_document_id)."""
+async def _upsert_fuel_transaction(doc_id: str, doc_data: dict, vehicle: dict, tenant_id: str, user: str,
+                                   extra: dict = None) -> dict:
+    """1 document validé = au plus 1 fuel_transaction (upsert par source_document_id).
+    `extra` (lot B) : created_from manual/legacy_import, motif, convention D5, clé legacy."""
     now = datetime.now(timezone.utc).isoformat()
     kind = _energy_kind(doc_data.get("type_carburant"), doc_data.get("litres"), doc_data.get("energie_kwh"))
     dt, heure = doc_data.get("date"), (doc_data.get("heure") or "").strip()
@@ -1883,6 +1887,8 @@ async def _upsert_fuel_transaction(doc_id: str, doc_data: dict, vehicle: dict, t
         "created_from": "document", "validated_by": user, "validated_at": now, "updated_at": now,
         "is_deleted": False,
     }
+    if extra:
+        rec.update(extra)
     existing = await db.fuel_transactions.find_one({"tenant_id": tenant_id, "source_document_id": doc_id},
                                                    {"_id": 0, "id": 1, "created_at": 1})
     if existing:
@@ -2452,32 +2458,44 @@ async def collect_costs(tenant_id: str) -> dict:
         {"tenant_id": tenant_id, "is_deleted": False, "archived": {"$ne": True},
          "montant": {"$gt": 0}},
         {"_id": 0, "id": 1, "vehicle_id": 1, "folder": 1, "label": 1, "original_filename": 1,
-         "montant": 1, "devise": 1, "frequence": 1, "date_debut": 1, "date_expiration": 1,
-         "business_category": 1, "fournisseur": 1, "numero": 1}
+         "montant": 1, "devise": 1, "montant_chf": 1, "frequence": 1, "date_debut": 1, "date_expiration": 1,
+         "business_category": 1, "fournisseur": 1, "numero": 1, "justificatif_absent": 1}
     ).to_list(None)
     vmap = {v["id"]: v for v in vehicles}
-    items, covered = [], set()
+    items, covered, pending_fx = [], set(), []
 
     for d in docs:
         v = vmap.get(d.get("vehicle_id")) or {}
         freq = d.get("frequence") or "unique"
         factor = COST_FREQ_FACTOR.get(freq, 0)
         recurrent = factor > 0
-        annuel = round(float(d["montant"]) * (factor or 1), 2)
-        # Équivalent V2 avec montant : masque la source de coût legacy de la catégorie (clé = dossier)
-        covered.add((d.get("vehicle_id"), d.get("folder")))
         cat_label, cat_code, cat_source = _cost_category(d)
-        items.append({
+        base = {
             "key": f"doc:{d['id']}", "source": "document", "document_id": d["id"],
             "vehicle_id": d.get("vehicle_id"), "plaque": v.get("plaque"),
             "marque": v.get("marque"), "modele": v.get("modele"),
             "category": cat_label, "business_category": cat_code, "category_source": cat_source,
             "fournisseur": d.get("fournisseur"), "numero": d.get("numero"),
             "label": d.get("label") or d.get("original_filename") or "Document",
-            "montant": round(float(d["montant"]), 2), "devise": d.get("devise") or "CHF",
-            "frequence": freq, "recurrent": recurrent, "cout_annuel": annuel,
+            "frequence": freq, "recurrent": recurrent,
             "date_debut": str(d["date_debut"])[:10] if d.get("date_debut") else None,
             "date_expiration": str(d["date_expiration"])[:10] if d.get("date_expiration") else None,
+            "justificatif_absent": bool(d.get("justificatif_absent")),
+        }
+        # D7 : CHF → montant ; non-CHF + montant_chf → montant_chf ; non-CHF sans montant_chf → exclu du total
+        amount_chf, converted = nofile.cost_amount_chf(d)
+        if amount_chf is None:
+            pending_fx.append({**base, "montant": round(float(d["montant"]), 2),
+                               "devise": nofile.norm_currency(d.get("devise")), "status": "pending_fx",
+                               "reason": "Conversion en attente : montant_chf absent — exclu du total CHF"})
+            continue
+        annuel = round(amount_chf * (factor or 1), 2)
+        # Équivalent V2 avec montant : masque la source de coût legacy de la catégorie (clé = dossier)
+        covered.add((d.get("vehicle_id"), d.get("folder")))
+        items.append({
+            **base, "montant": amount_chf, "devise": "CHF", "cout_annuel": annuel,
+            "montant_origine": round(float(d["montant"]), 2) if converted else None,
+            "devise_origine": nofile.norm_currency(d.get("devise")) if converted else None,
             "years": _cost_years(d.get("date_debut"), d.get("date_expiration"), recurrent),
         })
 
@@ -2537,12 +2555,13 @@ async def collect_costs(tenant_id: str) -> dict:
     items.sort(key=lambda i: (-i["cout_annuel"], i.get("plaque") or ""))
     return {
         "items": items,
+        "pending_fx": pending_fx,
         "by_vehicle": sorted(by_vehicle.values(), key=lambda x: -x["total_annuel"]),
         "by_category": [{"category": k, "total_annuel": v}
                         for k, v in sorted(by_category.items(), key=lambda kv: -kv[1])],
         "series": series,
         "totals": {"annuel": total_annuel, "mensuel": round(total_annuel / 12, 2),
-                   "postes_actifs": len(actifs)},
+                   "postes_actifs": len(actifs), "pending_fx_count": len(pending_fx)},
         "year": cur,
     }
 
@@ -2619,6 +2638,7 @@ async def list_costs(request: Request, vehicle_id: Optional[str] = None):
     data = await collect_costs(tid(request))
     if vehicle_id:
         data["items"] = [i for i in data["items"] if i["vehicle_id"] == vehicle_id]
+        data["pending_fx"] = [i for i in data["pending_fx"] if i["vehicle_id"] == vehicle_id]
     return data
 
 
@@ -2627,11 +2647,12 @@ async def vehicle_costs(vehicle_id: str, request: Request):
     await find_tenant_vehicle(request, vehicle_id, {"_id": 1})
     data = await collect_costs(tid(request))
     items = [i for i in data["items"] if i["vehicle_id"] == vehicle_id]
+    pending = [i for i in data["pending_fx"] if i["vehicle_id"] == vehicle_id]
     cur = data["year"]
     actifs = [i for i in items if cur in i["years"]]
-    return {"items": items, "year": cur,
+    return {"items": items, "pending_fx": pending, "year": cur,
             "totals": {"annuel": round(sum(i["cout_annuel"] for i in actifs), 2),
-                       "postes_actifs": len(actifs)}}
+                       "postes_actifs": len(actifs), "pending_fx_count": len(pending)}}
 
 
 class DocumentUpdate(BaseModel):
@@ -2657,6 +2678,10 @@ class DocumentUpdate(BaseModel):
     montant_ht: Optional[float] = None
     tva_chf: Optional[float] = None
     kilometrage_releve: Optional[int] = None
+    montant_chf: Optional[float] = None  # D7 : contre-valeur CHF saisie (devise ≠ CHF uniquement)
+
+
+_COST_AUDIT_KEYS = ("montant", "devise", "montant_chf")
 
 
 @api_router.patch("/documents/{doc_id}")
@@ -2677,9 +2702,13 @@ async def update_document(doc_id: str, payload: DocumentUpdate, request: Request
         raise HTTPException(status_code=422, detail="Catégorie inconnue")
     if updates.get("preavis_jours") is not None and not (0 <= updates["preavis_jours"] <= 730):
         raise HTTPException(status_code=422, detail="Préavis : 0 à 730 jours")
-    for f in ("montant", "montant_ht", "tva_chf", "kilometrage_releve"):
+    for f in ("montant", "montant_ht", "tva_chf", "kilometrage_releve", "montant_chf"):
         if updates.get(f) is not None and updates[f] < 0:
             raise HTTPException(status_code=422, detail="Montant invalide")
+    if "montant_chf" in updates or "devise" in updates:
+        # D7 : montant_chf ignoré (None) dès que la devise est CHF
+        updates["montant_chf"] = nofile.montant_chf_for(updates.get("devise", doc.get("devise")),
+                                                        updates.get("montant_chf", doc.get("montant_chf")))
     if updates.get("business_category") and updates["business_category"] not in BUSINESS_CATEGORY_LABELS:
         raise HTTPException(status_code=422, detail="Catégorie métier inconnue")
     if updates.get("frequence") and updates["frequence"] not in DOC_FREQUENCES:
@@ -2691,9 +2720,12 @@ async def update_document(doc_id: str, payload: DocumentUpdate, request: Request
         return with_statut(doc, preavis)
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.documents.update_one({"id": doc_id, "tenant_id": t}, {"$set": updates})
+    cost_changes = [f"{k}: {doc.get(k) if doc.get(k) is not None else '—'} → {updates[k] if updates[k] is not None else '—'}"
+                    for k in _COST_AUDIT_KEYS if k in updates and updates[k] != doc.get(k)]
     await audit("modify", "document", request, doc_id, doc.get("vehicle_id"),
                 "Fiche document mise à jour ("
-                + ", ".join(k for k in updates if k != "updated_at") + ")")
+                + ", ".join(k for k in updates if k != "updated_at") + ")"
+                + (" — coût : " + " ; ".join(cost_changes) if cost_changes else ""))
     return with_statut({**doc, **updates}, preavis)
 
 
@@ -2853,6 +2885,225 @@ async def delete_document(doc_id: str, request: Request):
     await audit("delete", "document", request, doc_id, doc.get("vehicle_id"),
                 f"Suppression document « {doc.get('original_filename') or doc_id} »")
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Phase 4C — Lot B : documents métier SANS fichier (D1). Le document (storage_path=None,
+# justificatif_absent=True) reste la source unique du coût ; plein → 1 fuel_transaction max.
+# Justificatif joint a posteriori : même document, jamais un deuxième coût.
+# ---------------------------------------------------------------------------
+_NOFILE_PROJ = {"_id": 0, "pages": 0, "extracted_fields": 0}
+
+
+def _nofile_user(request: Request) -> str:
+    return (getattr(request.state, "user", None) or {}).get("email") or "utilisateur"
+
+
+def _nofile_legacy_key(payload, tenant_id: str):
+    if payload.source != "legacy_import":
+        return None
+    return {"tenant_id": tenant_id, "legacy_source": _legacy_source(payload.legacy_source or "journal"),
+            "legacy_id": str(payload.legacy_id).strip()}
+
+
+def _nofile_record(vehicle: dict, tenant_id: str, payload, dtype: str, label: str, user: str, now: str) -> dict:
+    return {
+        "vehicle_id": vehicle["id"], "tenant_id": tenant_id, "folder": DOC_TYPES[dtype]["folder"],
+        "label": label, "original_filename": None, "storage_path": None, "content_type": None,
+        "size": 0, "sha256": None, "pages": [], "source": payload.source, "justificatif_absent": True,
+        "motif_saisie": (payload.motif or "").strip() or None,
+        "document_type": dtype, "extraction_status": "validated", "a_verifier": False,
+        "validated_at": now, "validated_by": "import" if payload.source == "legacy_import" else user,
+        "montant_chf": nofile.montant_chf_for(payload.devise, payload.montant_chf),
+        "is_deleted": False, "updated_at": now,
+    }
+
+
+async def _nofile_store(rec: dict, payload, legacy_key, now: str):
+    """Insertion, ou rejeu idempotent `(tenant, legacy_source, legacy_id)` → (doc_id, created)."""
+    if legacy_key:
+        res = await legacy_identity.upsert_legacy_record(
+            db, "documents", legacy_key["tenant_id"], legacy_key["legacy_source"], legacy_key["legacy_id"],
+            {**rec, "created_at": payload.created_at or now})
+        return res["id"], res["created"]
+    rec.update({"id": str(uuid.uuid4()), "created_at": now})
+    await db.documents.insert_one(dict(rec))
+    return rec["id"], True
+
+
+def _nofile_cost(doc: dict) -> dict:
+    amount_chf, _ = nofile.cost_amount_chf(doc)
+    return {"document_id": doc["id"], "montant": doc.get("montant"), "devise": doc.get("devise"),
+            "montant_chf": amount_chf, "pending_fx": amount_chf is None, "frequence": "unique",
+            "business_category": doc.get("business_category"),
+            "category_label": BUSINESS_CATEGORY_LABELS.get(doc.get("business_category"), COST_UNCLASSIFIED_LABEL)}
+
+
+@api_router.post("/vehicles/{vehicle_id}/fuel-transactions", dependencies=[Depends(require_roles("admin"))])
+async def create_fuel_transaction_nofile(vehicle_id: str, payload: ManualFuelCreate, request: Request):
+    """Plein / recharge SANS justificatif : 1 document sans fichier (= le coût) + 1 fuel_transaction. Réponse ≈ validate."""
+    vehicle = await find_tenant_vehicle(request, vehicle_id)
+    t, user, now = tid(request), _nofile_user(request), datetime.now(timezone.utc).isoformat()
+    errors = nofile.check_source(payload)
+    date_ = normalize_value(payload.date, "date")
+    if not date_:
+        errors.append("date invalide (AAAA-MM-JJ)")
+    if payload.heure and not nofile.norm_heure(payload.heure):
+        errors.append("heure invalide (HH:MM)")
+    if payload.business_category not in nofile.FUEL_CATEGORIES:
+        errors.append("business_category : CARBURANT ou ENERGIE_ELECTRIQUE")
+    for f in ("litres", "prix_litre", "energie_kwh", "prix_kwh", "kilometrage"):
+        if getattr(payload, f) is not None and getattr(payload, f) < 0:
+            errors.append(f"{f} invalide")
+    if errors:
+        raise HTTPException(status_code=422, detail=" ; ".join(errors))
+    heure = nofile.norm_heure(payload.heure)
+    doc_data = {k: v for k, v in {
+        "station": (payload.station or "").strip() or None, "date": date_, "heure": heure,
+        "montant": round(float(payload.montant), 2), "devise": nofile.norm_currency(payload.devise),
+        "litres": payload.litres, "prix_litre": payload.prix_litre, "type_carburant": payload.type_carburant,
+        "energie_kwh": payload.energie_kwh, "prix_kwh": payload.prix_kwh, "kilometrage": payload.kilometrage,
+        "carte_last4": _last4(payload.carte_last4), "plaque": (payload.plaque or "").strip() or None,
+    }.items() if v is not None}
+    legacy_key = _nofile_legacy_key(payload, t)
+    existing = await db.documents.find_one(legacy_key, {"_id": 0, "id": 1}) if legacy_key else None
+    dup = await _transaction_duplicate(t, vehicle["id"], (existing or {}).get("id"), date_,
+                                       doc_data["montant"], doc_data.get("litres"))
+    if dup and not payload.duplicate_override:
+        raise HTTPException(status_code=409, detail={
+            "code": "DUPLICATE_SUSPECTED", "kind": "transaction",
+            "message": "Doublon probable : une transaction carburant du même véhicule, même date, même montant "
+                       "et même quantité existe déjà.",
+            "existing_document_id": dup.get("document_id"), "existing_filename": dup.get("original_filename")})
+    warnings = _ticket_checks(doc_data, vehicle)
+    if dup:
+        warnings.insert(0, {"code": "DUPLICATE_OVERRIDDEN", "existing_document_id": dup.get("document_id"),
+                            "detail": "Doublon probable de transaction confirmé manuellement."})
+    if doc_data.get("plaque") and vehicle.get("plaque") and _norm_plate(doc_data["plaque"]) != _norm_plate(vehicle["plaque"]):
+        warnings.append({"code": "PLATE_MISMATCH", "document_plate": doc_data["plaque"], "vehicle_plate": vehicle.get("plaque"),
+                         "detail": "La plaque saisie diffère de celle du véhicule — aucune réaffectation automatique."})
+    electric = payload.business_category == "ENERGIE_ELECTRIQUE"
+    rec = _nofile_record(vehicle, t, payload, "ticket_carburant",
+                         nofile.fuel_label(doc_data.get("station"), date_, electric), user, now)
+    rec.update(_ticket_to_v2(doc_data))
+    rec.update({"document_data": doc_data, "business_category": payload.business_category})
+    doc_id, created = await _nofile_store(rec, payload, legacy_key, now)
+    extra = {"created_from": payload.source, "motif_saisie": rec["motif_saisie"],
+             **nofile.date_heure_fields(date_, heure, payload.source, payload.date_heure_tz_assumed)}
+    if legacy_key:
+        extra.update({"legacy_source": legacy_key["legacy_source"], "legacy_id": legacy_key["legacy_id"],
+                      "migration_version": legacy_identity.MIGRATION_VERSION})
+    fuel_tx = await _upsert_fuel_transaction(doc_id, doc_data, vehicle, t, user, extra)
+    await audit("create" if created else "legacy_replay", "document", request, doc_id, vehicle["id"],
+                f"{'Document' if created else 'Rejeu idempotent'} sans justificatif ({payload.source}"
+                + (f", motif : {rec['motif_saisie']}" if rec["motif_saisie"] else "")
+                + f") — {rec['label']} · {doc_data['montant']} {doc_data['devise']}"
+                + (f" · contre-valeur {rec['montant_chf']} CHF" if rec.get("montant_chf") is not None else ""))
+    await audit("create" if created else "modify", "fuel_transaction", request, fuel_tx["id"], vehicle["id"],
+                f"Transaction énergie {payload.source} ({'créée' if created else 'actualisée'}) — "
+                f"{doc_data.get('station') or '—'} · {doc_data['montant']} {doc_data['devise']} · "
+                + (f"{doc_data.get('litres')} L" if doc_data.get("litres") else f"{doc_data.get('energie_kwh') or 0} kWh"))
+    conso_update = await _apply_transaction_conso(vehicle["id"], t)
+    doc = await db.documents.find_one({"id": doc_id}, _NOFILE_PROJ)
+    return {"ok": True, "created": created, "document_id": doc_id,
+            "document": with_statut(doc, (await th_for(request))["urgent_days"]),
+            "fuel_transaction": fuel_tx, "cost": _nofile_cost(doc), "warnings": warnings, "conso_update": conso_update}
+
+
+@api_router.post("/vehicles/{vehicle_id}/fines", dependencies=[Depends(require_roles("admin"))])
+async def create_fine_nofile(vehicle_id: str, payload: ManualFineCreate, request: Request):
+    """Amende SANS fichier : document validé (coût + échéance de paiement), règles Phase 3 réutilisées."""
+    vehicle = await find_tenant_vehicle(request, vehicle_id)
+    t, user, now = tid(request), _nofile_user(request), datetime.now(timezone.utc).isoformat()
+    errors = nofile.check_source(payload)
+    if not (payload.autorite or "").strip():
+        errors.append("autorité obligatoire")
+    dates = {}
+    for f in ("date_infraction", "delai_paiement"):
+        raw = getattr(payload, f)
+        if raw:
+            dates[f] = normalize_value(raw, "date")
+            if not dates[f]:
+                errors.append(f"{f} invalide (AAAA-MM-JJ)")
+    if errors:
+        raise HTTPException(status_code=422, detail=" ; ".join(errors))
+    doc_data = {k: v for k, v in {
+        "autorite": payload.autorite.strip(), "numero_amende": (payload.numero_amende or "").strip() or None,
+        "date_infraction": dates.get("date_infraction"), "montant_chf": round(float(payload.montant), 2),
+        "devise": nofile.norm_currency(payload.devise), "delai_paiement": dates.get("delai_paiement"),
+        "plaque": (payload.plaque or "").strip() or None,
+    }.items() if v is not None}
+    v2 = _amende_to_v2(doc_data)
+    legacy_key = _nofile_legacy_key(payload, t)
+    existing = await db.documents.find_one(legacy_key, {"_id": 0, "id": 1, "payee": 1}) if legacy_key else None
+    dup = await _fine_duplicate(t, vehicle["id"], (existing or {}).get("id"), v2.get("numero"), v2.get("fournisseur"),
+                                v2.get("date_debut"), v2.get("montant"))
+    if dup and not payload.duplicate_override:
+        raise HTTPException(status_code=409, detail={
+            "code": "DUPLICATE_SUSPECTED", "kind": "amende",
+            "message": "Doublon probable : une amende du même véhicule avec le même n° (ou même autorité, "
+                       "date et montant) existe déjà.",
+            "existing_document_id": dup["document_id"], "existing_filename": dup.get("original_filename")})
+    warnings = []
+    if dup:
+        warnings.append({"code": "DUPLICATE_OVERRIDDEN", "existing_document_id": dup["document_id"],
+                         "detail": "Doublon probable d'amende confirmé manuellement."})
+    if not v2.get("date_expiration"):
+        warnings.append({"code": "DEADLINE_MISSING", "detail": "Délai de paiement absent : aucune échéance de paiement ne sera suivie."})
+    if doc_data.get("plaque") and vehicle.get("plaque") and _norm_plate(doc_data["plaque"]) != _norm_plate(vehicle["plaque"]):
+        warnings.append({"code": "PLATE_MISMATCH", "document_plate": doc_data["plaque"], "vehicle_plate": vehicle.get("plaque"),
+                         "detail": "La plaque saisie diffère de celle du véhicule — aucune réaffectation automatique."})
+    rec = _nofile_record(vehicle, t, payload, "amende", nofile.fine_label(doc_data["autorite"], v2.get("numero")), user, now)
+    rec.update(v2)
+    rec.update({"document_data": doc_data, "business_category": "AMENDE"})
+    if not existing:
+        rec.update({"payee": False, "paid_at": None})  # statut de paiement conservé lors d'un rejeu
+    doc_id, created = await _nofile_store(rec, payload, legacy_key, now)
+    await audit("create" if created else "legacy_replay", "document", request, doc_id, vehicle["id"],
+                f"{'Amende' if created else 'Rejeu idempotent amende'} sans justificatif ({payload.source}"
+                + (f", motif : {rec['motif_saisie']}" if rec["motif_saisie"] else "")
+                + f") — {rec['label']} · {v2.get('montant')} {v2.get('devise')}"
+                + (f" · contre-valeur {rec['montant_chf']} CHF" if rec.get("montant_chf") is not None else ""))
+    doc = await db.documents.find_one({"id": doc_id}, _NOFILE_PROJ)
+    return {"ok": True, "created": created, "document_id": doc_id,
+            "document": with_statut(doc, (await th_for(request))["urgent_days"]),
+            "cost": _nofile_cost(doc), "warnings": warnings}
+
+
+@api_router.post("/documents/{doc_id}/attach-file", dependencies=[Depends(require_roles("admin"))])
+async def attach_document_file(doc_id: str, request: Request, file: UploadFile = File(...)):
+    """Joint a posteriori le justificatif d'un document créé sans fichier — même document, aucun nouveau coût."""
+    t = tid(request)
+    doc = await db.documents.find_one({"id": doc_id, "tenant_id": t, "is_deleted": False}, _NOFILE_PROJ)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    if doc.get("storage_path"):
+        raise HTTPException(status_code=409, detail={
+            "code": "FILE_ALREADY_PRESENT", "message": "Ce document possède déjà un justificatif."})
+    data = await file.read()
+    validate_upload(file.filename, len(data), ALLOWED_MEDIA_EXTS)
+    ext = _ext_of(file.filename)
+    path = f"{APP_NAME}/media/{doc['vehicle_id']}/{uuid.uuid4()}.{ext}"
+    content_type = guess_mime(file.filename)
+    try:
+        result = put_object(path, data, content_type)
+    except Exception as e:
+        logger.error(f"Attach-file upload failed: {e}")
+        raise HTTPException(status_code=502, detail="Échec du téléversement")
+    sha256 = _file_sha256(data)
+    duplicate_of = await _same_file_duplicate(t, doc["vehicle_id"], sha256, exclude_id=doc_id)
+    now = datetime.now(timezone.utc).isoformat()
+    upd = {"storage_path": result["path"], "original_filename": file.filename, "content_type": content_type,
+           "size": result.get("size", len(data)), "sha256": sha256, "justificatif_absent": False,
+           "file_attached_at": now, "file_attached_by": _nofile_user(request), "updated_at": now}
+    await db.documents.update_one({"id": doc_id, "tenant_id": t}, {"$set": upd})
+    await audit("attach_file", "document", request, doc_id, doc.get("vehicle_id"),
+                f"Justificatif joint a posteriori « {file.filename} » — {doc.get('label') or doc_id} "
+                f"(montant inchangé : {doc.get('montant')} {doc.get('devise') or 'CHF'}, aucun nouveau coût)")
+    out = with_statut({**doc, **upd}, (await th_for(request))["urgent_days"])
+    out["duplicate_of"] = duplicate_of
+    return out
+
 
 
 # ---------------------------------------------------------------------------
@@ -3523,6 +3774,10 @@ async def scan_vehicle_document(vehicle_id: str, request: Request,
             {"id": document_id, "vehicle_id": vehicle_id, "is_deleted": False}, {"_id": 0})
         if not record:
             raise HTTPException(status_code=404, detail="Document introuvable")
+        if not record.get("storage_path"):
+            raise HTTPException(status_code=409, detail={
+                "code": "NO_FILE", "message": "Document sans justificatif : aucun fichier à analyser. "
+                                              "Joignez d'abord un justificatif."})
         pages = record.get("pages") or [{"storage_path": record["storage_path"],
                                          "content_type": record.get("content_type", "")}]
         for page in pages:
@@ -3685,6 +3940,10 @@ async def get_document_extraction(doc_id: str, request: Request):
         {"id": doc_id, "is_deleted": False, "tenant_id": tid(request)}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Document introuvable")
+    if doc.get("justificatif_absent") and not doc.get("extracted_fields"):
+        raise HTTPException(status_code=409, detail={
+            "code": "NO_FILE", "message": "Document saisi sans justificatif : aucune analyse OCR — "
+                                          "les données métier sont celles de la saisie."})
     if doc.get("extraction_status") not in ("done", "validated", "failed"):
         raise HTTPException(status_code=404, detail="Aucun résultat d'analyse pour ce document")
     vehicle = await find_tenant_vehicle(request, doc["vehicle_id"])
