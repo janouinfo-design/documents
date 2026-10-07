@@ -37,8 +37,10 @@ export default function AssignmentDialog({ open, onOpenChange, vehicle, onCreate
       onOpenChange(false);
     } catch (e) {
       const d = e?.response?.data?.detail;
-      if (e?.response?.status === 409 && d?.code === "ASSIGNMENT_OVERLAP") setConflict(d);
-      else toast.error((typeof d === "string" && d) || d?.message || "Affectation impossible");
+      if (e?.response?.status === 409 && d?.code === "ASSIGNMENT_OVERLAP") {
+        setConflict(d);
+        if (replace) toast.error(d.message || "Remplacement impossible", { duration: 9000 });
+      } else toast.error((typeof d === "string" && d) || d?.message || "Affectation impossible");
     } finally {
       setBusy(false);
     }

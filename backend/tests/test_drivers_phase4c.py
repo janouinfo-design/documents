@@ -204,6 +204,18 @@ class TestAffectations:
         # remplacement refusé si le conflit n'est pas une affectation EN COURS (clôture explicite requise)
         r = _assign(_S["veh_a"], {"driver_id": _S["drv"], "valid_from": "2026-06-15", "replace": True, "motif": "Essai"})
         assert r.status_code == 409
+        # remplacement le JOUR MÊME du début de l'affectation en cours : autorisé, l'ancienne se termine le jour de passation
+        r = _assign(_S["veh_a2"], {"driver_id": _S["drv2"], "valid_from": "2026-08-01"})
+        assert r.status_code == 200
+        same_day_old = r.json()["id"]
+        r = _assign(_S["veh_a2"], {"driver_id": _S["drv"], "valid_from": "2026-08-01", "replace": True, "motif": "Erreur de saisie"})
+        assert r.status_code == 200, r.text
+        _S["assign_sameday"] = r.json()["id"]
+        old = _mongo().driver_assignments.find_one({"id": same_day_old}, {"_id": 0})
+        assert old["valid_to"] == "2026-08-01" and old["replaced"] is True
+        at = _req("GET", f"/vehicles/{_S['veh_a2']}/driver-at", params={"date": "2026-08-01"}).json()
+        assert at["driver"]["driver_id"] == _S["drv"] and at["ambiguous"] is False and len(at["candidates"]) == 2
+        assert _req("GET", f"/vehicles/{_S['veh_a2']}/driver-at", params={"date": "2026-08-02"}).json()["driver"]["driver_id"] == _S["drv"]
         # affectation secondaire : cohabite sans conflit
         r = _assign(_S["veh_a"], {"driver_id": _S["drv"], "valid_from": "2026-06-15", "principal": False})
         assert r.status_code == 200 and r.json()["principal"] is False
@@ -218,7 +230,8 @@ class TestAffectations:
         at = _req("GET", f"/vehicles/{_S['veh_a']}/driver-at", params={"date": "2026-02-01"}).json()
         assert at["driver"]["driver_id"] == _S["drv"]
         assert _mongo().audit_logs.count_documents({"tenant_id": TENANT_A, "entity": "driver_assignment",
-                                                    "entity_id": {"$nin": [_S["assign1"], _S["assign2"], _S["assign_sec"]]}}) == 0
+                                                    "entity_id": {"$nin": [_S["assign1"], _S["assign2"], _S["assign_sec"], _S["assign_sameday"]]},
+                                                    "vehicle_id": _S["veh_a"]}) == 0
         assert _mongo().drivers.index_information().get("uniq_driver_tenant_id")
         assert not any(k for k, v in _mongo().drivers.index_information().items() if any(f[0] in ("nom", "prenom") for f in v["key"]))
 

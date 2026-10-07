@@ -4,6 +4,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "@/index.css";
 import App from "@/App";
 
+// Avertissement navigateur bénin (combobox Popover + cmdk) : ne doit pas déclencher l'overlay d'erreur en développement
+window.addEventListener("error", (e) => {
+  if (typeof e.message === "string" && e.message.includes("ResizeObserver loop")) e.stopImmediatePropagation();
+}, true);
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

@@ -3383,16 +3383,18 @@ async def create_vehicle_assignment(vehicle_id: str, payload: AssignmentCreate, 
         raise HTTPException(status_code=409, detail={
             "code": "ASSIGNMENT_OVERLAP", "conflicts": conflict_out,
             "message": "Une affectation principale chevauche cette période : clôturez-la ou confirmez le remplacement (motif)."})
-    if conflicts and any(c.get("valid_to") is not None or c["valid_from"] >= payload.valid_from for c in conflicts):
+    if conflicts and any(c.get("valid_to") is not None or c["valid_from"] > payload.valid_from for c in conflicts):
         raise HTTPException(status_code=409, detail={
             "code": "ASSIGNMENT_OVERLAP", "conflicts": conflict_out,
-            "message": "Remplacement impossible : seule une affectation EN COURS commencée avant la nouvelle date "
-                       "peut être remplacée (sinon clôturez-la explicitement)."})
+            "message": "Remplacement impossible : seule une affectation EN COURS (sans date de fin) commencée au plus tard "
+                       "à la nouvelle date peut être remplacée — sinon clôturez-la explicitement."})
     now, user = datetime.now(timezone.utc).isoformat(), _nofile_user(request)
     motif = drv.clean_str(payload.motif)
     closed = []
     for c in conflicts:
-        new_to = (datetime.strptime(payload.valid_from, "%Y-%m-%d") - timedelta(days=1)).date().isoformat()
+        # Clôture la veille ; remplacement le jour même → l'ancienne se termine le jour de son début (jour de passation)
+        prev_day = (datetime.strptime(payload.valid_from, "%Y-%m-%d") - timedelta(days=1)).date().isoformat()
+        new_to = max(prev_day, c["valid_from"])
         await db.driver_assignments.update_one({"id": c["id"], "tenant_id": t}, {"$set": {
             "valid_to": new_to, "closed_at": now, "closed_by": user, "close_motif": motif, "replaced": True}})
         await audit("replace", "driver_assignment", request, c["id"], vehicle_id,
@@ -3455,6 +3457,9 @@ async def driver_at(vehicle_id: str, request: Request, date: Optional[str] = Non
     candidates = [r for r in rows if drv.covers(r["valid_from"], r.get("valid_to"), day)]
     candidates.sort(key=lambda r: (not r.get("principal"), r["valid_from"]), reverse=False)
     principals = [c for c in candidates if c.get("principal")]
+    if len(principals) > 1:
+        # Jour de passation : l'affectation remplacée qui se termine ce jour-là s'efface devant la nouvelle
+        principals = [c for c in principals if not (c.get("replaced") and c.get("valid_to") == day)] or principals
     return {"vehicle_id": vehicle_id, "date": day, "candidates": candidates,
             "driver": principals[0] if len(principals) == 1 else None,
             "ambiguous": len(principals) > 1, "written": 0}
