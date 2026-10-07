@@ -200,7 +200,7 @@ export default function Dashboard() {
                   const t = EVENT_TYPES[e.type] || EVENT_TYPES.document || {};
                   return (
                     <TableRow key={e.key || i} data-testid={`next-action-row-${i}`}
-                              onClick={() => openVehicle(e.vehicle_id, tabForType(e.type))}
+                              onClick={() => (e.type === "carte_carburant" ? navigate(`/energie/cartes?id=${e.card_id}`) : openVehicle(e.vehicle_id, tabForType(e.type)))}
                               className="cursor-pointer hover:bg-slate-50">
                       <TableCell>
                         <span className="text-sm font-semibold text-slate-900">{e.plaque || "—"}</span>

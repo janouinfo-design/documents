@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import KpiCard from "@/components/KpiCard";
 import QueryErrorState from "@/components/QueryErrorState";
 import ManualFuelDialog from "@/components/documents/ManualFuelDialog";
+import EnergyTabs from "@/components/energy/EnergyTabs";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -84,6 +85,8 @@ export default function EnergyPage() {
       </div>
 
       {isError && <QueryErrorState error={error} testId="energy-error" />}
+
+      <EnergyTabs />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard testId="energy-kpi-depenses" label="Dépenses" value={isLoading ? "—" : chfExact(shown.depenses || 0)} accent="slate" icon={Fuel} sub={`${shown.transactions || 0} transaction(s)`} />

@@ -57,7 +57,7 @@ function TopTabs() {
   return (
     <nav className="no-scrollbar -mb-px flex items-center gap-1 overflow-x-auto" data-testid="top-nav">
       {items.map(({ to, label, icon: Icon, testId }) => {
-        const active = pathname === to;
+        const active = pathname === to || (to !== "/" && pathname.startsWith(`${to}/`));
         return (
           <Link
             key={to}

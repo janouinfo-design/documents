@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { CalendarClock, CalendarDays, FileClock, FileX, Loader2, Settings2 } from "lucide-react";
 import { getDeadlines, getDocCategories, getVehicles } from "@/lib/api";
 import { dateFr } from "@/lib/format";
@@ -32,6 +32,9 @@ const PERIODS = [
 export default function TimelinePage() {
   const { user } = useAuth();
   const { openVehicle } = useVehicleDrawer();
+  const navigate = useNavigate();
+  // Échéance carte carburant (Lot E) : ouvre la fiche carte, pas un véhicule (la carte peut n'avoir aucun véhicule)
+  const openItem = (e) => (e.type === "carte_carburant" ? navigate(`/energie/cartes?id=${e.card_id}`) : openVehicle(e.vehicle_id, tabForType(e.type)));
   const isAdmin = ["admin", "superadmin"].includes(user?.role);
   const [searchParams] = useSearchParams();
   const [vehicle, setVehicle] = useState(searchParams.get("vehicle_id") || ALL);
@@ -173,10 +176,10 @@ export default function TimelinePage() {
               return (
                 <TableRow key={e.key} data-testid={`deadline-row-${e.key}`} className="hover:bg-slate-50">
                   <TableCell>
-                    <button onClick={() => openVehicle(e.vehicle_id, tabForType(e.type))}
+                    <button onClick={() => openItem(e)}
                             data-testid={`deadline-open-vehicle-${e.key}`}
                             className="text-sm font-semibold text-slate-800 underline-offset-2 hover:underline">
-                      {e.plaque || "—"}
+                      {e.plaque || (e.type === "carte_carburant" ? "Carte" : "—")}
                     </button>
                     <p className="text-xs text-slate-400">{[e.marque, e.modele].filter(Boolean).join(" ")}</p>
                   </TableCell>

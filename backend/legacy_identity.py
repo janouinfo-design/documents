@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 
 LEGACY_SOURCE_DEFAULT = "journal"
 LEGACY_SOURCE_RE = re.compile(r"^[a-z0-9_-]{1,40}$")
-LEGACY_COLLECTIONS = ("documents", "fuel_transactions", "drivers", "driver_assignments")  # lot E : fuel_cards, ...
+LEGACY_COLLECTIONS = ("documents", "fuel_transactions", "drivers", "driver_assignments", "fuel_cards", "fuel_card_assignments")
 TENANT_MATCH_KEY = "navixy_master_user_id"
 MIGRATION_VERSION = 1
 

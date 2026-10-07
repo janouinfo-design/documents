@@ -342,4 +342,18 @@ export const createVehicleAssignment = (vehicleId, data) => http.post(`/vehicles
 export const closeAssignment = (id, data) => http.post(`/driver-assignments/${id}/close`, data).then((r) => r.data);
 export const getDriverAt = (vehicleId, date) => http.get(`/vehicles/${vehicleId}/driver-at`, { params: date ? { date } : {} }).then((r) => r.data);
 
+// Phase 4C — Lot E : cartes carburant (référentiel + affectations datées + resolve lecture seule)
+export const getFuelCards = (params = {}) => http.get("/fuel-cards", { params }).then((r) => r.data);
+export const getFuelCard = (id) => http.get(`/fuel-cards/${id}`).then((r) => r.data);
+export const createFuelCard = (data) => http.post("/fuel-cards", data).then((r) => r.data);
+export const updateFuelCard = (id, data) => http.patch(`/fuel-cards/${id}`, data).then((r) => r.data);
+export const setFuelCardStatus = (id, data) => http.post(`/fuel-cards/${id}/status`, data).then((r) => r.data);
+export const archiveFuelCard = (id, data) => http.post(`/fuel-cards/${id}/archive`, data).then((r) => r.data);
+export const restoreFuelCard = (id, data = {}) => http.post(`/fuel-cards/${id}/restore`, data).then((r) => r.data);
+export const getFuelCardAssignments = (id) => http.get(`/fuel-cards/${id}/assignments`).then((r) => r.data);
+export const createFuelCardAssignment = (id, data) => http.post(`/fuel-cards/${id}/assignments`, data).then((r) => r.data);
+export const closeFuelCardAssignment = (assignmentId, data = {}) => http.post(`/fuel-card-assignments/${assignmentId}/close`, data).then((r) => r.data);
+export const getFuelCardHistory = (id) => http.get(`/fuel-cards/${id}/history`).then((r) => r.data);
+export const resolveFuelCard = (params) => http.get("/fuel-cards/resolve", { params }).then((r) => r.data);
+
 export default http;

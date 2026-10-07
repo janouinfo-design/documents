@@ -36,6 +36,7 @@ from legacy_identity import norm_vin as _norm_vin, norm_plate as _norm_plate, id
 import nofile
 from nofile import ManualFuelCreate, ManualFineCreate
 import drivers as drv
+import fuel_cards as fc
 from drivers import DriverCreate, DriverUpdate, AssignmentCreate, AssignmentClose
 import fines as fin
 from fines import FineStatusChange, FinePaid
@@ -2370,6 +2371,27 @@ async def collect_deadlines(tenant_id: str, th: dict = None) -> dict:
                       "provenance": "CARTE_GRISE",
                       "date": due, "days_remaining": days_until(due), "responsable": None})
 
+    # Lot E : expiration des cartes carburant (non archivées, statut ≠ remplacee/bloquee) — MÊME moteur de seuils,
+    # aucune écriture de statut ; véhicule = affectation « vehicule » courante (lecture seule), sinon sans véhicule
+    cards = await db.fuel_cards.find({"tenant_id": tenant_id, "is_deleted": False, "expire_le": {"$type": "string"},
+                                      "statut": {"$nin": ["remplacee", "bloquee"]}},
+                                     {"_id": 0, "id": 1, "fournisseur": 1, "last4": 1, "expire_le": 1, "statut": 1}).to_list(None)
+    if cards:
+        today = drv.today_zurich()
+        assigns = await db.fuel_card_assignments.find({"tenant_id": tenant_id, "card_id": {"$in": [c["id"] for c in cards]},
+                                                       "type": "vehicule"}, {"_id": 0}).to_list(None)
+        by_card = {}
+        for a in assigns:
+            by_card.setdefault(a["card_id"], []).append(a)
+        for c in cards:
+            cur = fc.current_by_type(by_card.get(c["id"], []), today).get("vehicule")
+            v = vmap.get((cur or {}).get("vehicle_id")) or {}
+            push({"key": f"fuel_card:{c['id']}", "source": "fuel_card", "is_document_deadline": False, "document_id": None,
+                  "card_id": c["id"], "vehicle_id": v.get("id"), "plaque": v.get("plaque"), "marque": v.get("marque"),
+                  "modele": v.get("modele"), "type": "carte_carburant", "category": "Carte carburant",
+                  "label": f"Carte carburant {fc.display_label(c)} — expiration", "card_statut": c.get("statut"),
+                  "date": c["expire_le"][:10], "days_remaining": days_until(c["expire_le"]), "responsable": None})
+
     # Urgent d'abord, puis chronologique
     items.sort(key=lambda i: (_DL_RANK[i["statut"]], i.get("date") or "9999-12-31",
                               i.get("plaque") or ""))
@@ -4028,6 +4050,476 @@ async def driver_at(vehicle_id: str, request: Request, date: Optional[str] = Non
     return {"vehicle_id": vehicle_id, "date": day, "candidates": candidates,
             "driver": principals[0] if len(principals) == 1 else None,
             "ambiguous": len(principals) > 1, "written": 0}
+
+
+# ---------------------------------------------------------------------------
+# Phase 4C — Lot E : cartes carburant (`fuel_cards`) + affectations datées (`fuel_card_assignments`).
+# D2 : `(fournisseur, last4)` NON unique → collision = avertissement + confirmation, jamais d'auto-fusion ;
+# aucun fingerprint HMAC Journal. Statut déclaré (jamais modifié automatiquement) ; `expiration_state` dérivé.
+# `resolve` = lecture seule (found | ambiguous | not_found). Lot F (transactions, matching, anomalies) : NON.
+# ---------------------------------------------------------------------------
+async def ensure_fuel_card_indexes():
+    await db.fuel_cards.create_index([("tenant_id", 1), ("id", 1)], unique=True, name="uniq_fuel_card_tenant_id")
+    await db.fuel_cards.create_index([("tenant_id", 1), ("fournisseur", 1), ("last4", 1)], name="fuel_card_identity_non_unique")
+    await db.fuel_cards.create_index([("tenant_id", 1), ("is_deleted", 1), ("statut", 1)], name="fuel_card_state")
+    await db.fuel_card_assignments.create_index([("tenant_id", 1), ("id", 1)], unique=True, name="uniq_fuel_card_assignment_tenant_id")
+    await db.fuel_card_assignments.create_index([("tenant_id", 1), ("card_id", 1), ("valid_from", -1)], name="fuel_card_assign_card")
+    await db.fuel_card_assignments.create_index([("tenant_id", 1), ("vehicle_id", 1)], name="fuel_card_assign_vehicle")
+    await db.fuel_card_assignments.create_index([("tenant_id", 1), ("driver_id", 1)], name="fuel_card_assign_driver")
+
+
+async def _card_or_404(tenant_id: str, card_id: str, include_archived: bool = True) -> dict:
+    q = {"tenant_id": tenant_id, "id": card_id}
+    if not include_archived:
+        q["is_deleted"] = False
+    c = await db.fuel_cards.find_one(q, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Carte carburant introuvable")
+    return c
+
+
+async def _card_assignments_out(tenant_id: str, query: dict) -> list:
+    rows = await db.fuel_card_assignments.find({"tenant_id": tenant_id, **query}, {"_id": 0}).to_list(None)
+    names = await _driver_names(tenant_id, [r.get("driver_id") for r in rows])
+    vids = list({r["vehicle_id"] for r in rows if r.get("vehicle_id")})
+    vmap = {v["id"]: v for v in await db.vehicles.find({"tenant_id": tenant_id, "id": {"$in": vids}},
+                                                       {"_id": 0, "id": 1, "plaque": 1, "marque": 1, "modele": 1}).to_list(None)} if vids else {}
+    today = drv.today_zurich()
+    for r in rows:
+        v = vmap.get(r.get("vehicle_id")) or {}
+        r.update({"type_label": fc.ASSIGNMENT_TYPE_LABELS.get(r.get("type"), r.get("type")),
+                  "driver_nom": names.get(r.get("driver_id")), "plaque": v.get("plaque"),
+                  "vehicule_label": " ".join(x for x in (v.get("marque"), v.get("modele")) if x) or None,
+                  "cible": v.get("plaque") or names.get(r.get("driver_id")) or fc.ASSIGNMENT_TYPE_LABELS.get(r.get("type")),
+                  "active": fc.covers(r.get("valid_from"), r.get("valid_to"), today)})
+    rows.sort(key=lambda r: (r.get("valid_to") is not None, r.get("valid_from") or fc.FLOOR), reverse=False)
+    rows.sort(key=lambda r: r.get("valid_from") or fc.FLOOR, reverse=True)
+    return rows
+
+
+async def _cards_out(tenant_id: str, cards: list, th: dict, day: Optional[str] = None) -> list:
+    """Enrichit : identité humaine, expiration dérivée, affectations courantes par type, avertissements, utilisable."""
+    day = day or drv.today_zurich()
+    ids = [c["id"] for c in cards]
+    assigns = await _card_assignments_out(tenant_id, {"card_id": {"$in": ids}}) if ids else []
+    by_card = {}
+    for a in assigns:
+        by_card.setdefault(a["card_id"], []).append(a)
+    vids = {a["vehicle_id"] for a in assigns if a.get("vehicle_id")}
+    dids = {a["driver_id"] for a in assigns if a.get("driver_id")}
+    live_v = {v["id"] for v in await db.vehicles.find({"tenant_id": tenant_id, "id": {"$in": list(vids)}}, {"_id": 0, "id": 1}).to_list(None)} if vids else set()
+    live_d = {d["id"] for d in await db.drivers.find({"tenant_id": tenant_id, "id": {"$in": list(dids)}, "is_deleted": False, "actif": True},
+                                                      {"_id": 0, "id": 1}).to_list(None)} if dids else set()
+    out = []
+    for c in cards:
+        rows = by_card.get(c["id"], [])
+        current = fc.current_by_type(rows, day)
+        exp = fc.expiration(c.get("expire_le"), days_until(c.get("expire_le")),
+                            deadline_statut(c.get("expire_le"), days_until(c.get("expire_le")), th))
+        refs_ok = {}
+        for t, a in current.items():
+            if t == "vehicule":
+                refs_ok[a["id"]] = a.get("vehicle_id") in live_v
+            elif t == "conducteur":
+                refs_ok[a["id"]] = a.get("driver_id") in live_d
+        cur_v, cur_d = current.get("vehicule"), current.get("conducteur")
+        out.append({**c, "label": fc.display_label(c), "statut_label": fc.STATUS_LABELS.get(c.get("statut"), c.get("statut")),
+                    "type_affectation_label": fc.ASSIGNMENT_TYPE_LABELS.get(c.get("type_affectation"), c.get("type_affectation")),
+                    **exp, "utilisable": fc.usable(c.get("statut"), exp["expiration_state"]),
+                    "affectations_courantes": {t: {k: a.get(k) for k in ("id", "type", "vehicle_id", "driver_id", "plaque", "vehicule_label",
+                                                                           "driver_nom", "cible", "valid_from", "valid_to", "ambiguous")}
+                                               for t, a in current.items()},
+                    "vehicule_courant": {k: cur_v.get(k) for k in ("vehicle_id", "plaque", "vehicule_label")} if cur_v else None,
+                    "conducteur_courant": {k: cur_d.get(k) for k in ("driver_id", "driver_nom")} if cur_d else None,
+                    "assignments_count": len(rows), "warnings": fc.warnings_for(c, exp, current, refs_ok)})
+    return out
+
+
+def _card_collision_detail(others: list) -> dict:
+    return {"code": "LAST4_COLLISION",
+            "message": "Une autre carte du tenant a le même fournisseur et les mêmes 4 derniers chiffres — identité NON unique (D2) : "
+                       "confirmez explicitement qu'il s'agit bien d'une carte distincte (aucune fusion automatique).",
+            "cards": [{"id": o["id"], "label": fc.display_label(o), "statut": o.get("statut"), "external_card_id": o.get("external_card_id"),
+                       "is_deleted": o.get("is_deleted", False)} for o in others]}
+
+
+async def _card_collisions(tenant_id: str, fournisseur: str, last4: str, exclude_id: Optional[str] = None) -> list:
+    q = {"tenant_id": tenant_id, "fournisseur": fournisseur, "last4": last4}
+    if exclude_id:
+        q["id"] = {"$ne": exclude_id}
+    return await db.fuel_cards.find(q, {"_id": 0, "id": 1, "fournisseur": 1, "last4": 1, "statut": 1, "external_card_id": 1, "is_deleted": 1}).to_list(None)
+
+
+@api_router.get("/fuel-cards")
+async def list_fuel_cards(request: Request, q: Optional[str] = None, fournisseur: Optional[str] = None, statut: Optional[str] = None,
+                          expiration_state: Optional[str] = None, archived: Optional[str] = None, affectation: Optional[str] = None,
+                          vehicle_id: Optional[str] = None, driver_id: Optional[str] = None, utilisable: Optional[str] = None):
+    """Référentiel du tenant courant. `archived` : absent/`false` = non archivées · `true` = archivées · `all` = toutes."""
+    t = tid(request)
+    query = {"tenant_id": t}
+    if archived in (None, "", "false", "0"):
+        query["is_deleted"] = False
+    elif archived in ("true", "1"):
+        query["is_deleted"] = True
+    elif archived != "all":
+        raise HTTPException(status_code=422, detail="archived : true | false | all")
+    if statut:
+        try:
+            query["statut"] = {"$in": [fc.normalize_status(s) for s in statut.split(",") if s.strip()]}
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    if fournisseur:
+        query["fournisseur"] = fournisseur
+    if expiration_state and expiration_state not in fc.EXPIRATION_STATES:
+        raise HTTPException(status_code=422, detail=f"expiration_state : {', '.join(fc.EXPIRATION_STATES)}")
+    if affectation and affectation not in ("avec", "sans"):
+        raise HTTPException(status_code=422, detail="affectation : avec | sans")
+    th = await th_for(request)
+    cards = await db.fuel_cards.find(query, {"_id": 0}).to_list(None)
+    rows = await _cards_out(t, cards, th)
+    term = (q or "").strip().lower()
+    if term:
+        rows = [r for r in rows if term in " ".join(str(r.get(k) or "") for k in
+                                                     ("fournisseur", "last4", "label", "compte_fournisseur", "external_card_id", "numero_masque", "notes")).lower()
+                or term in str((r.get("vehicule_courant") or {}).get("plaque") or "").lower()
+                or term in str((r.get("conducteur_courant") or {}).get("driver_nom") or "").lower()]
+    if expiration_state:
+        rows = [r for r in rows if r["expiration_state"] == expiration_state]
+    if affectation == "avec":
+        rows = [r for r in rows if r["affectations_courantes"]]
+    elif affectation == "sans":
+        rows = [r for r in rows if not r["affectations_courantes"]]
+    if vehicle_id:
+        rows = [r for r in rows if (r.get("vehicule_courant") or {}).get("vehicle_id") == vehicle_id]
+    if driver_id:
+        rows = [r for r in rows if (r.get("conducteur_courant") or {}).get("driver_id") == driver_id]
+    if utilisable in ("true", "false"):
+        rows = [r for r in rows if r["utilisable"] is (utilisable == "true")]
+    rows.sort(key=lambda r: (r.get("fournisseur") or "", r.get("last4") or ""))
+    all_cards = await _cards_out(t, await db.fuel_cards.find({"tenant_id": t, "is_deleted": False}, {"_id": 0}).to_list(None), th)
+    stats = {"total": len(all_cards), "utilisables": sum(1 for r in all_cards if r["utilisable"]),
+             "by_status": {s: sum(1 for r in all_cards if r.get("statut") == s) for s in fc.STATUSES},
+             "by_expiration": {s: sum(1 for r in all_cards if r["expiration_state"] == s) for s in fc.EXPIRATION_STATES},
+             "sans_affectation": sum(1 for r in all_cards if not r["affectations_courantes"]),
+             "avec_avertissement": sum(1 for r in all_cards if r["warnings"]),
+             "archivees": await db.fuel_cards.count_documents({"tenant_id": t, "is_deleted": True})}
+    return {"items": rows, "total": len(rows), "stats": stats, "thresholds": th,
+            "fournisseurs": sorted({c.get("fournisseur") for c in await db.fuel_cards.find({"tenant_id": t}, {"_id": 0, "fournisseur": 1}).to_list(None) if c.get("fournisseur")}),
+            "statuses": [{"code": s, "label": fc.STATUS_LABELS[s]} for s in fc.STATUSES],
+            "assignment_types": [{"code": s, "label": fc.ASSIGNMENT_TYPE_LABELS[s]} for s in fc.ASSIGNMENT_TYPES],
+            "expiration_states": [{"code": s, "label": fc.EXPIRATION_LABELS[s]} for s in fc.EXPIRATION_STATES]}
+
+
+@api_router.get("/fuel-cards/resolve")
+async def resolve_fuel_card(request: Request, fournisseur: Optional[str] = None, last4: Optional[str] = None, date: Optional[str] = None):
+    """LECTURE SEULE : found | ambiguous | not_found sur le référentiel du tenant (jamais sur les transactions).
+    Plusieurs cartes = `ambiguous` + candidats pour décision humaine. N'écrit rien, ne résout jamais automatiquement."""
+    t = tid(request)
+    last4 = (last4 or "").strip()
+    if not fc.LAST4_RE.match(last4):
+        raise HTTPException(status_code=422, detail="last4 : exactement 4 chiffres")
+    day = date or drv.today_zurich()
+    if not fc.is_date(day):
+        raise HTTPException(status_code=422, detail="date invalide (AAAA-MM-JJ)")
+    q = {"tenant_id": t, "last4": last4, "is_deleted": False}
+    if clean := fc.clean_str(fournisseur):
+        q["fournisseur"] = clean
+    cards = await _cards_out(t, await db.fuel_cards.find(q, {"_id": 0}).to_list(None), await th_for(request), day)
+    cands = [{k: c.get(k) for k in ("id", "label", "fournisseur", "last4", "statut", "statut_label", "expire_le", "expiration_state",
+                                     "utilisable", "external_card_id", "affectations_courantes")} for c in cards]
+    status = "found" if len(cands) == 1 else "ambiguous" if len(cands) > 1 else "not_found"
+    return {"status": status, "fournisseur": fc.clean_str(fournisseur), "last4": last4, "date": day,
+            "card": cands[0] if status == "found" else None, "candidates": cands, "written": 0}
+
+
+@api_router.get("/fuel-cards/{card_id}")
+async def get_fuel_card(card_id: str, request: Request):
+    t = tid(request)
+    c = await _card_or_404(t, card_id)
+    out = (await _cards_out(t, [c], await th_for(request)))[0]
+    out["assignments"] = await _card_assignments_out(t, {"card_id": card_id})
+    return out
+
+
+@api_router.post("/fuel-cards", dependencies=[Depends(require_roles("admin"))])
+async def create_fuel_card(payload: fc.FuelCardCreate, request: Request):
+    """Création. Collision `(fournisseur, last4)` → 409 LAST4_COLLISION tant que `collision_confirmed` est faux (D2)."""
+    t = tid(request)
+    data = fc.normalize_card(payload.model_dump())
+    errors = fc.card_errors(data) + fc.source_errors(payload)
+    statut = "active"
+    try:
+        statut = fc.normalize_status(payload.statut)
+    except ValueError as e:
+        errors.append(str(e))
+    if errors:
+        raise HTTPException(status_code=422, detail=" ; ".join(errors))
+    legacy_key = None
+    if payload.source == "legacy_import":
+        legacy_key = {"tenant_id": t, "legacy_source": _legacy_source(payload.legacy_source or "journal"), "legacy_id": str(payload.legacy_id).strip()}
+    existing = await db.fuel_cards.find_one(legacy_key, {"_id": 0, "id": 1}) if legacy_key else None
+    others = await _card_collisions(t, data["fournisseur"], data["last4"], existing["id"] if existing else None)
+    if others and not payload.collision_confirmed and not existing:
+        raise HTTPException(status_code=409, detail=_card_collision_detail(others))
+    now, user = datetime.now(timezone.utc).isoformat(), _nofile_user(request)
+    rec = {"tenant_id": t, **{k: data.get(k) for k in fc.CARD_FIELDS}, "statut": statut, "remplacee_par": None, "source": payload.source,
+           "is_deleted": False, "created_by": "import" if legacy_key else user, "updated_at": now, "updated_by": user}
+    rec["produits_autorises"] = rec.get("produits_autorises") or []
+    rec["pays_autorises"] = rec.get("pays_autorises") or []
+    if legacy_key:
+        if existing:
+            for k in fc.LIFECYCLE_FIELDS:  # un rejeu n'écrase jamais le cycle de vie courant
+                rec.pop(k, None)
+        res = await legacy_identity.upsert_legacy_record(db, "fuel_cards", t, legacy_key["legacy_source"], legacy_key["legacy_id"],
+                                                         {**rec, "created_at": payload.created_at or now})
+        card_id, created = res["id"], res["created"]
+    else:
+        card_id, created = str(uuid.uuid4()), True
+        await db.fuel_cards.insert_one({**rec, "id": card_id, "created_at": now})
+    label = fc.display_label(rec)
+    await audit("create" if created else "legacy_replay", "fuel_card", request, card_id, None,
+                f"{'Carte carburant créée' if created else 'Rejeu idempotent carte carburant'} ({payload.source}) : {label}"
+                f" · statut {statut} · expire_le {fc.fmt(rec.get('expire_le'))} · type {rec.get('type_affectation')}"
+                + (f" · collision (fournisseur, last4) confirmée avec {len(others)} autre(s) carte(s)" if others else ""))
+    out = (await _cards_out(t, [await _card_or_404(t, card_id)], await th_for(request)))[0]
+    return {**out, "created": created, "collision_with": [o["id"] for o in others]}
+
+
+@api_router.patch("/fuel-cards/{card_id}", dependencies=[Depends(require_roles("admin"))])
+async def update_fuel_card(card_id: str, payload: fc.FuelCardUpdate, request: Request):
+    t = tid(request)
+    before = await _card_or_404(t, card_id)
+    if before.get("is_deleted"):
+        raise HTTPException(status_code=409, detail={"code": "CARD_ARCHIVED", "message": "Carte archivée : restaurez-la avant modification."})
+    raw = payload.model_dump(exclude_unset=True)
+    confirmed = raw.pop("collision_confirmed", False)
+    updates = fc.normalize_card(raw)
+    if not updates:
+        raise HTTPException(status_code=422, detail="Aucun champ à modifier")
+    merged = {**{k: before.get(k) for k in fc.CARD_FIELDS}, **updates}
+    errors = fc.card_errors(merged)
+    if errors:
+        raise HTTPException(status_code=422, detail=" ; ".join(errors))
+    updates = {k: merged[k] for k in updates}  # valeurs normalisées (ex. type_affectation)
+    others = []
+    if ("fournisseur" in updates or "last4" in updates) and (merged["fournisseur"], merged["last4"]) != (before.get("fournisseur"), before.get("last4")):
+        others = await _card_collisions(t, merged["fournisseur"], merged["last4"], card_id)
+        if others and not confirmed:
+            raise HTTPException(status_code=409, detail=_card_collision_detail(others))
+    changes = fc.diff_fields(before, updates)
+    if not changes:
+        return (await _cards_out(t, [before], await th_for(request)))[0]
+    now, user = datetime.now(timezone.utc).isoformat(), _nofile_user(request)
+    await db.fuel_cards.update_one({"id": card_id, "tenant_id": t}, {"$set": {**updates, "updated_at": now, "updated_by": user}})
+    after = await _card_or_404(t, card_id)
+    detail = f"Carte {fc.display_label(before)} modifiée : " + " · ".join(changes)
+    if "expire_le" in updates and updates["expire_le"] != before.get("expire_le"):
+        detail += f" — expiration {fc.fmt(before.get('expire_le'))} → {fc.fmt(updates['expire_le'])} (statut déclaré inchangé : {before.get('statut')})"
+    if others:
+        detail += f" — collision (fournisseur, last4) confirmée avec {len(others)} autre(s) carte(s)"
+    await audit("modify", "fuel_card", request, card_id, None, detail)
+    return (await _cards_out(t, [after], await th_for(request)))[0]
+
+
+@api_router.post("/fuel-cards/{card_id}/status", dependencies=[Depends(require_roles("admin"))])
+async def set_fuel_card_status(card_id: str, payload: fc.FuelCardStatus, request: Request):
+    """Changement de statut déclaré — motif obligatoire, audit avant/après. Jamais automatique."""
+    t = tid(request)
+    before = await _card_or_404(t, card_id)
+    if before.get("is_deleted"):
+        raise HTTPException(status_code=409, detail={"code": "CARD_ARCHIVED", "message": "Carte archivée : restaurez-la avant de changer son statut."})
+    errors = []
+    new = before.get("statut")
+    try:
+        new = fc.normalize_status(payload.statut)
+    except ValueError as e:
+        errors.append(str(e))
+    motif = fc.clean_str(payload.motif) or ""
+    if len(motif) < fc.MOTIF_MIN_LEN:
+        errors.append("motif obligatoire pour changer le statut d'une carte")
+    replacement = fc.clean_str(payload.remplacee_par)
+    if replacement:
+        if replacement == card_id:
+            errors.append("remplacee_par : une carte ne peut pas se remplacer elle-même")
+        elif not await db.fuel_cards.find_one({"tenant_id": t, "id": replacement}, {"_id": 1}):
+            errors.append("remplacee_par : carte de remplacement introuvable dans le tenant")
+    if errors:
+        raise HTTPException(status_code=422, detail=" ; ".join(errors))
+    if new == before.get("statut") and (replacement or None) == before.get("remplacee_par"):
+        raise HTTPException(status_code=409, detail={"code": "STATUS_UNCHANGED", "message": f"La carte est déjà « {fc.STATUS_LABELS[new]} »."})
+    now, user = datetime.now(timezone.utc).isoformat(), _nofile_user(request)
+    upd = {"statut": new, "updated_at": now, "updated_by": user, "statut_changed_at": now, "statut_changed_by": user, "statut_motif": motif}
+    if new == "remplacee" or replacement:
+        upd["remplacee_par"] = replacement
+    await db.fuel_cards.update_one({"id": card_id, "tenant_id": t}, {"$set": upd})
+    await audit("status", "fuel_card", request, card_id, None,
+                f"Statut carte {fc.display_label(before)} : {before.get('statut')} ({fc.STATUS_LABELS.get(before.get('statut'), '?')}) → {new} "
+                f"({fc.STATUS_LABELS[new]}) — motif : {motif}"
+                + (f" — remplacee_par : {fc.fmt(before.get('remplacee_par'))} → {fc.fmt(upd.get('remplacee_par'))}" if "remplacee_par" in upd else "")
+                + f" — expire_le inchangé : {fc.fmt(before.get('expire_le'))}")
+    return (await _cards_out(t, [await _card_or_404(t, card_id)], await th_for(request)))[0]
+
+
+@api_router.post("/fuel-cards/{card_id}/archive", dependencies=[Depends(require_roles("admin"))])
+async def archive_fuel_card(card_id: str, payload: fc.FuelCardArchive, request: Request):
+    """Archivage = soft-delete `is_deleted` (motif obligatoire) ; statut métier et historique conservés, aucune suppression physique."""
+    t = tid(request)
+    c = await _card_or_404(t, card_id)
+    if c.get("is_deleted"):
+        raise HTTPException(status_code=409, detail={"code": "ALREADY_ARCHIVED", "message": "Carte déjà archivée."})
+    motif = fc.clean_str(payload.motif) or ""
+    if len(motif) < fc.MOTIF_MIN_LEN:
+        raise HTTPException(status_code=422, detail="motif obligatoire pour archiver une carte")
+    now, user = datetime.now(timezone.utc).isoformat(), _nofile_user(request)
+    await db.fuel_cards.update_one({"id": card_id, "tenant_id": t}, {"$set": {
+        "is_deleted": True, "archived_at": now, "archived_by": user, "archive_motif": motif, "updated_at": now, "updated_by": user}})
+    open_n = await db.fuel_card_assignments.count_documents({"tenant_id": t, "card_id": card_id, "valid_to": None})
+    await audit("archive", "fuel_card", request, card_id, None,
+                f"Carte {fc.display_label(c)} archivée (is_deleted false → true) — motif : {motif} — statut métier conservé : {c.get('statut')}"
+                f" — {open_n} affectation(s) ouverte(s) conservée(s) en l'état")
+    return (await _cards_out(t, [await _card_or_404(t, card_id)], await th_for(request)))[0]
+
+
+@api_router.post("/fuel-cards/{card_id}/restore", dependencies=[Depends(require_roles("admin"))])
+async def restore_fuel_card(card_id: str, payload: fc.FuelCardArchive, request: Request):
+    t = tid(request)
+    c = await _card_or_404(t, card_id)
+    if not c.get("is_deleted"):
+        raise HTTPException(status_code=409, detail={"code": "NOT_ARCHIVED", "message": "Carte non archivée."})
+    now, user = datetime.now(timezone.utc).isoformat(), _nofile_user(request)
+    motif = fc.clean_str(payload.motif)
+    await db.fuel_cards.update_one({"id": card_id, "tenant_id": t}, {"$set": {"is_deleted": False, "restored_at": now, "restored_by": user,
+                                                                               "updated_at": now, "updated_by": user}})
+    await audit("restore", "fuel_card", request, card_id, None,
+                f"Carte {fc.display_label(c)} restaurée (is_deleted true → false) — statut métier conservé : {c.get('statut')}"
+                + (f" — motif : {motif}" if motif else ""))
+    return (await _cards_out(t, [await _card_or_404(t, card_id)], await th_for(request)))[0]
+
+
+@api_router.get("/fuel-cards/{card_id}/assignments")
+async def list_fuel_card_assignments(card_id: str, request: Request):
+    t = tid(request)
+    await _card_or_404(t, card_id)
+    return await _card_assignments_out(t, {"card_id": card_id})
+
+
+@api_router.get("/fuel-cards/{card_id}/history")
+async def fuel_card_history(card_id: str, request: Request):
+    """Historique = audit central par entité (carte + ses affectations), chronologique, tenant-scopé."""
+    t = tid(request)
+    await _card_or_404(t, card_id)
+    a_ids = [a["id"] for a in await db.fuel_card_assignments.find({"tenant_id": t, "card_id": card_id}, {"_id": 0, "id": 1}).to_list(None)]
+    rows = await db.audit_logs.find({"tenant_id": t, "$or": [{"entity": "fuel_card", "entity_id": card_id},
+                                                            {"entity": "fuel_card_assignment", "entity_id": {"$in": a_ids}}]},
+                                    {"_id": 0}).to_list(None)
+    rows.sort(key=lambda r: r.get("created_at") or "")
+    admin = _role(request) in ("admin", "superadmin")
+    return [{"id": r["id"], "action": r["action"], "entity": r["entity"], "entity_id": r.get("entity_id"), "detail": r.get("detail"),
+             "user": r.get("user"), "created_at": r.get("created_at"), **({"ip": r.get("ip")} if admin else {})} for r in rows]
+
+
+@api_router.post("/fuel-cards/{card_id}/assignments", dependencies=[Depends(require_roles("admin"))])
+async def create_fuel_card_assignment(card_id: str, payload: fc.CardAssignmentCreate, request: Request):
+    """Affectation datée carte → véhicule | conducteur | pool | autre. 1 seule affectation OUVERTE par type et par carte ;
+    chevauchement même type → 409 ASSIGNMENT_OVERLAP sauf `replace=true` + motif (clôture explicite auditée, règle Lot C)."""
+    t = tid(request)
+    card = await _card_or_404(t, card_id)
+    if card.get("is_deleted"):
+        raise HTTPException(status_code=409, detail={"code": "CARD_ARCHIVED", "message": "Carte archivée : restaurez-la avant de l'affecter."})
+    errors = fc.assignment_errors(payload)
+    if errors:
+        raise HTTPException(status_code=422, detail=" ; ".join(errors))
+    vehicle, driver = None, None
+    if payload.type == "vehicule":
+        vehicle = await db.vehicles.find_one({"tenant_id": t, "id": payload.vehicle_id}, {"_id": 0, "id": 1, "plaque": 1})
+        if not vehicle:
+            raise HTTPException(status_code=404, detail="Véhicule introuvable")  # autre tenant = introuvable (fail-closed)
+    if payload.type == "conducteur":
+        driver = await _driver_or_404(t, payload.driver_id)
+        if not driver.get("actif"):
+            raise HTTPException(status_code=422, detail="Conducteur désactivé : réactivez-le avant de l'affecter")
+    legacy_key = None
+    if payload.source == "legacy_import":
+        legacy_key = {"tenant_id": t, "legacy_source": _legacy_source(payload.legacy_source or "journal"), "legacy_id": str(payload.legacy_id).strip()}
+    existing = await db.fuel_card_assignments.find_one(legacy_key, {"_id": 0, "id": 1}) if legacy_key else None
+    q = {"tenant_id": t, "card_id": card_id, "type": payload.type}
+    if existing:
+        q["id"] = {"$ne": existing["id"]}
+    conflicts = [a for a in await db.fuel_card_assignments.find(q, {"_id": 0}).to_list(None)
+                 if fc.overlaps(a.get("valid_from"), a.get("valid_to"), payload.valid_from, payload.valid_to)]
+    names = await _driver_names(t, [c.get("driver_id") for c in conflicts])
+    conflict_out = [{"id": c["id"], "type": c["type"], "vehicle_id": c.get("vehicle_id"), "driver_id": c.get("driver_id"),
+                     "driver_nom": names.get(c.get("driver_id")), "valid_from": c.get("valid_from"), "valid_to": c.get("valid_to")} for c in conflicts]
+    if conflicts and not payload.replace:
+        raise HTTPException(status_code=409, detail={
+            "code": "ASSIGNMENT_OVERLAP", "conflicts": conflict_out,
+            "message": f"Une affectation « {fc.ASSIGNMENT_TYPE_LABELS[payload.type]} » chevauche cette période : clôturez-la ou confirmez le remplacement (motif)."})
+    new_from = payload.valid_from or fc.FLOOR
+    if conflicts and any(c.get("valid_to") is not None or (c.get("valid_from") or fc.FLOOR) > new_from for c in conflicts):
+        raise HTTPException(status_code=409, detail={
+            "code": "ASSIGNMENT_OVERLAP", "conflicts": conflict_out,
+            "message": "Remplacement impossible : seule une affectation EN COURS (sans date de fin) commencée au plus tard à la nouvelle date "
+                       "peut être remplacée — sinon clôturez-la explicitement."})
+    now, user = datetime.now(timezone.utc).isoformat(), _nofile_user(request)
+    motif = fc.clean_str(payload.motif)
+    closed = []
+    for c in conflicts:
+        # Clôture la veille ; remplacement le jour même → l'ancienne se termine le jour de son début (jour de passation, règle Lot C)
+        prev_day = (datetime.strptime(payload.valid_from, "%Y-%m-%d") - timedelta(days=1)).date().isoformat() if payload.valid_from else fc.FLOOR
+        new_to = max(prev_day, c.get("valid_from") or fc.FLOOR)
+        await db.fuel_card_assignments.update_one({"id": c["id"], "tenant_id": t}, {"$set": {
+            "valid_to": new_to, "closed_at": now, "closed_by": user, "close_motif": motif, "replaced": True, "updated_at": now}})
+        await audit("replace", "fuel_card_assignment", request, c["id"], c.get("vehicle_id"),
+                    f"Affectation {fc.ASSIGNMENT_TYPE_LABELS[c['type']]} de la carte {fc.display_label(card)} clôturée par remplacement "
+                    f"(valid_to — → {new_to}) — motif : {motif}")
+        closed.append({**c, "valid_to": new_to})
+    rec = {"tenant_id": t, "card_id": card_id, "type": payload.type, "vehicle_id": vehicle["id"] if vehicle else None,
+           "driver_id": driver["id"] if driver else None, "valid_from": payload.valid_from, "valid_to": payload.valid_to,
+           "motif": motif, "source": payload.source, "created_by": "import" if legacy_key else user, "closed_by": None, "closed_at": None,
+           "replaced": False, "updated_at": now}
+    if legacy_key:
+        if existing:
+            for k in ("valid_to", "closed_by", "closed_at", "close_motif", "replaced"):
+                rec.pop(k, None)  # un rejeu ne rouvre ni ne referme une affectation
+        res = await legacy_identity.upsert_legacy_record(db, "fuel_card_assignments", t, legacy_key["legacy_source"], legacy_key["legacy_id"],
+                                                         {**rec, "created_at": payload.created_at or now})
+        assign_id, created = res["id"], res["created"]
+    else:
+        assign_id, created = str(uuid.uuid4()), True
+        await db.fuel_card_assignments.insert_one({**rec, "id": assign_id, "created_at": now})
+    cible = (vehicle or {}).get("plaque") or drv.display_name(driver) or fc.ASSIGNMENT_TYPE_LABELS[payload.type]
+    await audit("create" if created else "legacy_replay", "fuel_card_assignment", request, assign_id, rec["vehicle_id"],
+                f"{'Affectation créée' if created else 'Rejeu idempotent affectation'} ({payload.source}) : carte {fc.display_label(card)} → "
+                f"{fc.ASSIGNMENT_TYPE_LABELS[payload.type]} {cible} "
+                + (f"du {payload.valid_from}" if payload.valid_from else "depuis toujours (legacy valid_from null)")
+                + (f" au {payload.valid_to}" if payload.valid_to else " (en cours)") + (f" — motif : {motif}" if motif else "")
+                + (f" — remplace {len(closed)} affectation(s)" if closed else ""))
+    out = await _card_assignments_out(t, {"id": assign_id})
+    return {**out[0], "created": created, "replaced": closed}
+
+
+@api_router.post("/fuel-card-assignments/{assignment_id}/close", dependencies=[Depends(require_roles("admin"))])
+async def close_fuel_card_assignment(assignment_id: str, payload: fc.CardAssignmentClose, request: Request):
+    t = tid(request)
+    a = await db.fuel_card_assignments.find_one({"tenant_id": t, "id": assignment_id}, {"_id": 0})
+    if not a:
+        raise HTTPException(status_code=404, detail="Affectation introuvable")
+    if a.get("valid_to") is not None:
+        raise HTTPException(status_code=409, detail={"code": "ALREADY_CLOSED", "valid_to": a["valid_to"], "message": "Affectation déjà clôturée."})
+    valid_to = payload.valid_to or drv.today_zurich()
+    if not fc.is_date(valid_to):
+        raise HTTPException(status_code=422, detail="valid_to invalide (AAAA-MM-JJ)")
+    if a.get("valid_from") and valid_to < a["valid_from"]:
+        raise HTTPException(status_code=422, detail="valid_to antérieure à valid_from")
+    now, user = datetime.now(timezone.utc).isoformat(), _nofile_user(request)
+    motif = fc.clean_str(payload.motif)
+    await db.fuel_card_assignments.update_one({"id": assignment_id, "tenant_id": t}, {"$set": {
+        "valid_to": valid_to, "closed_at": now, "closed_by": user, "close_motif": motif, "updated_at": now}})
+    card = await db.fuel_cards.find_one({"tenant_id": t, "id": a["card_id"]}, {"_id": 0, "fournisseur": 1, "last4": 1}) or {}
+    await audit("close", "fuel_card_assignment", request, assignment_id, a.get("vehicle_id"),
+                f"Affectation {fc.ASSIGNMENT_TYPE_LABELS.get(a.get('type'), a.get('type'))} de la carte {fc.display_label(card)} clôturée "
+                f"(valid_to — → {valid_to})" + (f" — motif : {motif}" if motif else ""))
+    return (await _card_assignments_out(t, {"id": assignment_id}))[0]
 
 
 
@@ -6691,6 +7183,7 @@ async def startup():
                                       ("threshold", 1), ("due_date", 1)])
         await legacy_identity.ensure_legacy_indexes(db)
         await ensure_driver_indexes()
+        await ensure_fuel_card_indexes()
         await ensure_fine_indexes()
         if NAVIXY_HASH:
             await db.tenant_integrations.update_one(

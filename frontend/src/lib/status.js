@@ -62,6 +62,7 @@ export const EVENT_TYPES = {
   maintenance: { label: "Maintenance", color: "#10b981", bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
   document: { label: "Document", color: "#64748b", bg: "bg-slate-100", text: "text-slate-700", border: "border-slate-200" },
   amende: { label: "Amende", color: "#e11d48", bg: "bg-rose-50", text: "text-rose-700", border: "border-rose-200" },
+  carte_carburant: { label: "Carte carburant", color: "#0d9488", bg: "bg-teal-50", text: "text-teal-700", border: "border-teal-200" },
 };
 
 // Statuts du moteur central d'échéances (étape 4)
