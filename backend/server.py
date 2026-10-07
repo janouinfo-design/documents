@@ -3169,14 +3169,21 @@ async def create_fine_nofile(vehicle_id: str, payload: ManualFineCreate, request
             dates[f] = normalize_value(raw, "date")
             if not dates[f]:
                 errors.append(f"{f} invalide (AAAA-MM-JJ)")
-    # Lot D — statut initial (code Documents ou Journal), paiement métier, champs parité
+    # Lot D — statut initial (code Documents ou Journal), champs parité. Clôture : aucune création directe dans un état
+    # terminal (payee / refacturee / cloturee / annulee) ni avec des faits de paiement : ces états passent par les actions
+    # métier dédiées (`/paid`, `/fine-status`) qui garantissent motif, paid_on/paid_at/payment_ref et audit. Un futur
+    # import legacy (dry-run/migration, non autorisé ici) devra disposer d'un mécanisme dédié séparé.
     fine_status = fin.DEFAULT_FINE_STATUS
     if payload.fine_status:
         try:
             fine_status = fin.normalize_status(payload.fine_status)
         except ValueError as e:
             errors.append(str(e))
-    errors.extend(fin.payment_errors(payload.paid_on, payload.payment_ref))
+        if fine_status in fin.CREATION_FORBIDDEN:
+            errors.append(f"création directe en « {fine_status} » interdite : utiliser l'action métier dédiée "
+                          f"(paiement : POST /documents/{{id}}/paid · statut : POST /documents/{{id}}/fine-status avec motif)")
+    if payload.paid_on is not None or payload.payment_ref is not None:
+        errors.append("paid_on / payment_ref interdits à la création : marquer le paiement via POST /documents/{id}/paid")
     fine_fields = {k: v for k, v in {
         "type_infraction": fin.norm_ref(payload.type_infraction) or fin.DEFAULT_INFRACTION_TYPE,
         "montant_amende": round(float(payload.montant_amende), 2) if payload.montant_amende is not None else None,
@@ -3228,10 +3235,9 @@ async def create_fine_nofile(vehicle_id: str, payload: ManualFineCreate, request
     rec.update({"document_data": doc_data, "business_category": "AMENDE",
                 "driver_id": driver["id"] if driver else None, "driver_validated_manually": bool(driver)})
     if not existing:
-        # Statut initial + faits de paiement (paid_on métier fourni, paid_at technique) ; `payee` = miroir dérivé
+        # Statut initial (jamais terminal) ; `payee` = miroir dérivé ; faits de paiement vides (action /paid dédiée)
         rec.update(fin.cleared_payment())
-        rec.update(fin.status_update(rec, fine_status, payload.created_at or now, rec["validated_by"],
-                                     paid_on=fin.norm_ref(payload.paid_on), payment_ref=fin.norm_ref(payload.payment_ref)))
+        rec.update(fin.status_update(rec, fine_status, payload.created_at or now, rec["validated_by"]))
     else:
         rec.pop("fine_status", None)  # rejeu idempotent : l'état métier courant n'est jamais écrasé
     doc_id, created = await _nofile_store(rec, payload, legacy_key, now)

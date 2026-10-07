@@ -154,19 +154,31 @@ class TestStatutsParite:
 
     def test_03_mapping_journal_1_pour_1_sans_perte(self):
         for j, code in JOURNAL.items():
-            if code in ("payee", "refacturee"):
-                continue  # couvert par les tests de paiement (paid_on requis côté UI, optionnel côté API)
+            if code in DEADLINE_INACTIVE:
+                continue  # états terminaux : jamais à la création (test_03b), mapping couvert par les transitions
             doc_id = _mk(fine_status=j, delai_paiement=None, motif="test mapping")
-            if code == "annulee":
-                # création directement annulée : acceptée (import), montant conservé, hors coûts
-                assert _get(doc_id)["fine_status"] == "annulee" and _get(doc_id)["cost_counted"] is False
-            else:
-                assert _get(doc_id)["fine_status"] == code, (j, code)
+            assert _get(doc_id)["fine_status"] == code, (j, code)
         r = _fine(fine_status="inconnu_xyz")
         assert r.status_code == 422 and "fine_status inconnu" in r.text
         r = _status(_S["doc"], "to_pay")  # code Journal accepté en transition → code Documents
         assert r.status_code == 200 and r.json()["fine_status"] == "a_payer"
         assert _status(_S["doc"], "n_importe_quoi").status_code == 422
+        for j, code in (("paid", "payee"), ("recharged", "refacturee"), ("closed", "cloturee"), ("cancelled", "annulee")):
+            tmp = _mk()
+            r = _status(tmp, j, motif="mapping terminal", **({"paid_on": _D(-1)} if code in ("payee", "refacturee") else {}))
+            assert r.status_code == 200 and r.json()["fine_status"] == code, (j, code)
+
+    def test_03b_creation_directe_etat_terminal_ou_paiement_interdite(self):
+        n = _mongo().documents.count_documents({"tenant_id": TENANT_A})
+        for code in ("payee", "refacturee", "cloturee", "annulee", "paid", "recharged", "closed", "cancelled"):
+            r = _fine(fine_status=code)
+            assert r.status_code == 422 and "création directe" in r.text, (code, r.text)
+        assert _fine(fine_status="annulee", source="legacy_import", legacy_source="j-test", legacy_id=f"X-{_RUN}", motif=None).status_code == 422
+        r = _fine(paid_on=_D(-1))
+        assert r.status_code == 422 and "paid_on / payment_ref interdits" in r.text
+        assert _fine(payment_ref="REF").status_code == 422
+        assert _mongo().documents.count_documents({"tenant_id": TENANT_A}) == n  # aucune écriture
+        assert _mongo().documents.count_documents({"tenant_id": TENANT_A, "legacy_id": f"X-{_RUN}"}) == 0
 
     def test_04_compat_lecture_phase3_sans_fine_status_aucune_ecriture(self):
         now = datetime.now(timezone.utc).isoformat()
@@ -525,7 +537,7 @@ class TestFiltresEtCompat:
         doc_id = _S["legacy"]
         assert _status(doc_id, "a_payer").status_code == 200
         r = _fine(type_infraction="code_legacy_inconnu", source="legacy_import", legacy_source="journal-test",
-                  legacy_id=f"FINE-{_RUN}-X", fine_status="cancelled", motif=None)
+                  legacy_id=f"FINE-{_RUN}-X", fine_status="to_analyze", motif=None)
         assert r.status_code == 200 and r.json()["created"] is False and r.json()["document_id"] == doc_id
         assert _db(doc_id)["fine_status"] == "a_payer"  # l'état métier courant n'est jamais écrasé par un rejeu
         assert _mongo().documents.count_documents({"tenant_id": TENANT_A, "legacy_id": f"FINE-{_RUN}-X"}) == 1

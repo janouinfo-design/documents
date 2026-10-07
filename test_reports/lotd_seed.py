@@ -50,13 +50,13 @@ def main(mode):
         (v2, {"autorite": "Police municipale Nyon", "numero_amende": "LOTD-003", "date_infraction": D(-30), "delai_paiement": D(20), "montant": 180.0,
               "type_infraction": "speeding", "fine_status": "contestee", "driver_id": d1}),
         (v2, {"autorite": "Police cantonale vaudoise", "numero_amende": "LOTD-004", "date_infraction": D(-60), "delai_paiement": D(-30), "montant": 90.0,
-              "type_infraction": "parking", "fine_status": "payee", "paid_on": D(-35), "payment_ref": "VIR-LOTD-004", "driver_id": d2}),
+              "type_infraction": "parking", "driver_id": d2}),
         (v1, {"autorite": "Ville de Lausanne", "numero_amende": "LOTD-005", "date_infraction": D(-50), "delai_paiement": D(-20), "montant": 60.0,
               "type_infraction": "parking"}),
         (v2, {"autorite": "Police cantonale fribourgeoise", "numero_amende": "LOTD-006", "date_infraction": D(-15), "delai_paiement": D(25), "montant": 40.0,
               "type_infraction": "other", "fine_status": "conducteur_a_identifier"}),
         (v1, {"autorite": "Police cantonale bernoise", "numero_amende": "LOTD-007", "date_infraction": D(-70), "delai_paiement": D(-40), "montant": 300.0,
-              "type_infraction": "speeding", "fine_status": "refacturee", "paid_on": D(-42), "driver_id": d1}),
+              "type_infraction": "speeding", "driver_id": d1}),
         (v2, {"autorite": "Ville de Genève", "numero_amende": "LOTD-008", "date_infraction": D(-3), "montant": 40.0, "type_infraction": "parking", "fine_status": "recue"}),
     ]
     ids = []
@@ -64,6 +64,11 @@ def main(mode):
         r = post(f"/vehicles/{vid}/fines", {**base, **body})
         assert r.status_code == 200, r.text
         ids.append(r.json()["document_id"])
+    # états terminaux UNIQUEMENT via les actions métier dédiées (jamais à la création)
+    r = post(f"/documents/{ids[3]}/paid", {"payee": True, "paid_on": D(-35), "payment_ref": "VIR-LOTD-004"})
+    assert r.status_code == 200, r.text
+    r = post(f"/documents/{ids[6]}/fine-status", {"fine_status": "refacturee", "paid_on": D(-42), "motif": "Refacturée au conducteur"})
+    assert r.status_code == 200, r.text
     r = post(f"/documents/{ids[4]}/fine-status", {"fine_status": "annulee", "motif": "Amende retirée par l'autorité (doublon)"})
     assert r.status_code == 200, r.text
     r = requests.post(f"{BASE}/api/documents/{ids[0]}/attachments", data={"piece_type": "courrier", "titre": "Courrier de l'autorité", "date_piece": D(-18),

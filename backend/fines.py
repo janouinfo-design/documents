@@ -24,6 +24,7 @@ DEFAULT_FINE_STATUS = "a_payer"
 PAID_STATUSES = ("payee", "refacturee")
 DEADLINE_INACTIVE = ("payee", "refacturee", "cloturee", "annulee")  # D9 + table §5.5
 COST_EXCLUDED = ("annulee",)  # D9 : montant conservé, document conservé, exclue des totaux
+CREATION_FORBIDDEN = DEADLINE_INACTIVE  # états terminaux : jamais à la création, uniquement via action métier auditée
 STATUS_AUDIT_ACTION = {"annulee": "fine_cancel", "refacturee": "fine_recharge", "cloturee": "fine_close",
                        "contestee": "fine_dispute", "payee": "fine_paid"}
 PAYMENT_REVERT_ACTION = "fine_payment_reverted"  # dé-paiement = correction métier motivée, auditée avant/après
