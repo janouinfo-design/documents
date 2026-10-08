@@ -10,6 +10,8 @@ import { dateFr } from "@/lib/format";
 import { EVENT_TYPES } from "@/lib/status";
 import { cn } from "@/lib/utils";
 import KpiCard from "@/components/KpiCard";
+import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import StatusBadge from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import QueryErrorState from "@/components/QueryErrorState";
@@ -28,9 +30,11 @@ const STATUS_CLS = {
 export default function AlertsPage() {
   const qc = useQueryClient();
   const { openVehicle } = useVehicleDrawer();
+  const { user } = useAuth();
+  const canAdmin = can(user, "alerts.admin");
   const [running, setRunning] = useState(false);
   const { data, isLoading, isError, error } = useQuery({ queryKey: ["alerts"], queryFn: getAlerts });
-  const { data: log = [] } = useQuery({ queryKey: ["alerts-log"], queryFn: getAlertsLog });
+  const { data: log = [] } = useQuery({ queryKey: ["alerts-log"], queryFn: getAlertsLog, enabled: canAdmin });
 
   const items = data?.items || [];
   const stats = data?.stats || { total: 0, expired: 0, critical: 0, warning: 0 };
@@ -62,10 +66,12 @@ export default function AlertsPage() {
             Moteur central d'échéances — documents (seuils ≤ {th.urgent_days} j / ≤ {th.warning_days} j) · contrats hérités : Leasing 180/90/30 · Assurance 90/60/30 · Contrôle 90/60/30/7 j
           </p>
         </div>
-        <Button onClick={onRun} disabled={running} data-testid="alerts-run-btn" className="gap-2 bg-slate-900 hover:bg-slate-800">
-          {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          Lancer la vérification
-        </Button>
+        {canAdmin && (
+          <Button onClick={onRun} disabled={running} data-testid="alerts-run-btn" className="gap-2 bg-slate-900 hover:bg-slate-800">
+            {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Lancer la vérification
+          </Button>
+        )}
       </div>
 
       {isError && <QueryErrorState error={error} testId="alerts-error" />}
@@ -148,7 +154,8 @@ export default function AlertsPage() {
           </div>
         </div>
 
-        {/* Email log */}
+        {/* Email log — journal tenant-global : administrateurs uniquement (403 serveur pour le manager) */}
+        {canAdmin && (
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="alerts-log">
           <div className="flex items-center gap-2 border-b border-slate-100 px-6 py-4">
             <History className="h-4 w-4 text-slate-400" />
@@ -173,6 +180,7 @@ export default function AlertsPage() {
             ))}
           </div>
         </div>
+        )}
       </div>
     </div>
   );

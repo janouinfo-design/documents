@@ -14,6 +14,7 @@ import StatusBadge from "@/components/StatusBadge";
 import VehiclePhotoMenu from "@/components/VehiclePhotoMenu";
 import DeleteVehicleButton from "@/components/DeleteVehicleButton";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import GeneralTab from "@/components/tabs/GeneralTab";
 import LeasingTab from "@/components/tabs/LeasingTab";
 import AssuranceTab from "@/components/tabs/AssuranceTab";
@@ -66,7 +67,8 @@ function HeaderPhoto({ vehicle }) {
 export default function VehicleDrawer({ open, onOpenChange, vehicleId, initialTab = "general" }) {
   const qc = useQueryClient();
   const { user } = useAuth();
-  const readOnly = user?.role === "read_only";
+  const canPhoto = can(user, "photo.write");
+  const canDelete = can(user, "vehicles.delete");
   const [tab, setTab] = useState(initialTab);
 
   useEffect(() => {
@@ -117,7 +119,7 @@ export default function VehicleDrawer({ open, onOpenChange, vehicleId, initialTa
                   <div className="h-28 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 sm:h-24 sm:w-40">
                     <HeaderPhoto vehicle={vehicle} />
                   </div>
-                  {!readOnly && (
+                  {canPhoto && (
                     <VehiclePhotoMenu vehicle={vehicle} docs={docs} onChanged={refresh} />
                   )}
                 </div>
@@ -142,7 +144,7 @@ export default function VehicleDrawer({ open, onOpenChange, vehicleId, initialTa
                     >
                       <FileDown className="h-3.5 w-3.5" /> Fiche PDF
                     </Button>
-                    {!readOnly && (vehicle.navixy_absent || vehicle.source !== "navixy") && (
+                    {canDelete && (vehicle.navixy_absent || vehicle.source !== "navixy") && (
                       <DeleteVehicleButton
                         vehicle={vehicle}
                         onDeleted={() => {

@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { Download, FileSpreadsheet, FileText, Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import { getFines, getFinesStats, finesExportUrl, refreshFileToken } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import QueryErrorState from "@/components/QueryErrorState";
@@ -30,7 +31,7 @@ const PAGE = 50;
 
 export default function FinesPage() {
   const { user } = useAuth();
-  const isAdmin = ["admin", "superadmin"].includes(user?.role);
+  const isAdmin = can(user, "fines.write");
   const [params, setParams] = useSearchParams();
   const [view, setView] = useState(params.get("view") || "all");
   const [status, setStatus] = useState(params.get("fine_status") || "");

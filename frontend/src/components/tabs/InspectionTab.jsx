@@ -13,6 +13,7 @@ import DropZone from "@/components/DropZone";
 import FilePreview from "@/components/FilePreview";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 
 const ANGLES = [
   { key: "avant_gauche", label: "Avant gauche" },
@@ -141,7 +142,7 @@ function Compare({ inspections }) {
 
 export default function InspectionTab({ vehicle }) {
   const { user } = useAuth();
-  const readOnly = user?.role === "read_only";
+  const readOnly = !can(user, "inspections.write");
   const [addOpen, setAddOpen] = useState(false);
   const [preview, setPreview] = useState(null);
   const { data: inspections = [], refetch } = useQuery({ queryKey: ["inspections", vehicle.id], queryFn: () => getInspections(vehicle.id) });
@@ -182,7 +183,7 @@ export default function InspectionTab({ vehicle }) {
                   <span className="flex items-center gap-1.5 text-slate-600"><User className="h-4 w-4 text-slate-400" /> {ins.responsable || "—"}</span>
                   <span className="flex items-center gap-1.5 text-slate-600"><Gauge className="h-4 w-4 text-slate-400" /> {fmtKm(ins.kilometrage)}</span>
                 </div>
-                {!readOnly && (
+                {can(user, "inspections.delete") && (
                   <button onClick={() => handleDelete(ins.id)} data-testid={`inspection-delete-${ins.id}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label="Supprimer"><Trash2 className="h-4 w-4" /></button>
                 )}
               </div>

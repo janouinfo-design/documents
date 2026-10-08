@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { getFuelStatement } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import Pill from "@/components/energy/Pill";
 import ExportButtons from "@/components/energy/ExportButtons";
 import DeclaredSection from "@/components/energy/DeclaredSection";
@@ -20,7 +21,7 @@ const Row = ({ k, v, testId }) => (
 // Fiche décompte : A. informations · B. snapshot Documents · C. relevé déclaré + D. écarts · E. blockers · F. clôture · G. lignes — actions admin selon statut, aucun reopen
 export default function StatementDrawer({ statementId, onOpenChange, onOpenTransaction, onOpenStatement }) {
   const { user } = useAuth();
-  const isAdmin = ["admin", "superadmin"].includes(user?.role);
+  const isAdmin = can(user, "statements.write");
   const { data: st, isError, error } = useQuery({ queryKey: ["fuel-statement", statementId], queryFn: () => getFuelStatement(statementId), enabled: !!statementId });
   const [dlg, setDlg] = useState(null);
   const closed = st?.status === "cloture";

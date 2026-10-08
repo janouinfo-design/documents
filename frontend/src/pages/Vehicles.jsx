@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import StatusBadge from "@/components/StatusBadge";
 import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import NewVehicleDialog from "@/components/NewVehicleDialog";
 import SyncButton from "@/components/SyncButton";
 import ConfigBanner from "@/components/ConfigBanner";
@@ -26,7 +27,7 @@ export default function Vehicles() {
   const { openVehicle } = useVehicleDrawer();
   const { user } = useAuth();
   const navigate = useNavigate();
-  const readOnly = user?.role === "read_only";
+  const canCreate = can(user, "vehicles.create");
   const [q, setQ] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [astraOpen, setAstraOpen] = useState(false);
@@ -61,7 +62,7 @@ export default function Vehicles() {
               className="w-full pl-9 sm:w-72"
             />
           </div>
-          {!readOnly && (
+          {canCreate && (
             <Button data-testid="add-vehicle-btn" onClick={() => setCreateOpen(true)} className="gap-2 bg-slate-900 hover:bg-slate-800">
               <Plus className="h-4 w-4" /> Véhicule
             </Button>
@@ -102,9 +103,11 @@ export default function Vehicles() {
               <DropdownMenuItem data-testid="report-csv-btn" onClick={() => window.open(costsCsvUrl(), "_blank", "noopener")}>
                 Coûts de la flotte (CSV)
               </DropdownMenuItem>
-              <DropdownMenuItem data-testid="archives-menu-item" onClick={() => navigate("/archives")}>
-                <Archive className="mr-2 h-4 w-4 text-slate-400" /> Véhicules archivés
-              </DropdownMenuItem>
+              {can(user, "pages.archives") && (
+                <DropdownMenuItem data-testid="archives-menu-item" onClick={() => navigate("/archives")}>
+                  <Archive className="mr-2 h-4 w-4 text-slate-400" /> Véhicules archivés
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
           <SyncButton />

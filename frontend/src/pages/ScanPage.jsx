@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { getVehicle } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import ScanDocumentDialog, { DOC_TYPE_OPTIONS } from "@/components/ScanDocumentDialog";
 
 export default function ScanPage() {
@@ -21,7 +22,7 @@ export default function ScanPage() {
 
   const done = () => navigate("/vehicules", { replace: true });
 
-  if (user?.role === "read_only") return <Navigate to="/vehicules" replace />;
+  if (!can(user, "documents.write")) return <Navigate to="/vehicules" replace />;
 
   return (
     <div className="mx-auto max-w-2xl space-y-4" data-testid="scan-page">

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { chfExact, dateFr } from "@/lib/format";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import Pill from "@/components/energy/Pill";
 import AnomalyDecisionDialog from "@/components/energy/AnomalyDecisionDialog";
 import { ANOMALY_STATUS_META, SEVERITY_META, ANOMALY_TYPE_LABELS } from "@/lib/fuelImport";
@@ -17,7 +18,7 @@ const fmt = (v) => (v === null || v === undefined ? "—" : typeof v === "boolea
 // Fiche anomalie (Sheet) : type, sévérité, statut, explication, contexte de détection (breakdown), transaction, décision humaine, historique
 export default function AnomalyDrawer({ anomaly, onOpenChange, onOpenTransaction }) {
   const { user } = useAuth();
-  const isAdmin = ["admin", "superadmin"].includes(user?.role);
+  const isAdmin = can(user, "anomalies.decide");
   const [decide, setDecide] = useState(false);
   const tx = anomaly?.transaction || {};
   return (

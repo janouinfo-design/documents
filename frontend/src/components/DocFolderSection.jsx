@@ -17,6 +17,7 @@ import { FineSummary, FinePaidButton } from "@/components/documents/FineMeta";
 import { DocStatutBadge } from "@/components/documents/DocStatutBadge";
 import { NoFileBadge, AttachFileButton, hasNoFile } from "@/components/documents/NoFileBadge";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
 
 const iconFor = (ct = "", noFile = false) => {
@@ -46,7 +47,9 @@ const isVehiclePhotoCandidate = (d) => /^image\/(jpeg|png|webp)$/.test(d.content
 
 export default function DocFolderSection({ vehicleId, folder, docs = [], onChange, compact = false }) {
   const { user } = useAuth();
-  const readOnly = user?.role === "read_only";
+  const canWrite = can(user, "documents.write");
+  const canDelete = can(user, "documents.delete");
+  const readOnly = !canWrite;
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState(null);
   const [analyzingId, setAnalyzingId] = useState(null);
@@ -231,7 +234,7 @@ export default function DocFolderSection({ vehicleId, folder, docs = [], onChang
                       <Download className="h-4 w-4" />
                     </button>
                   )}
-                  {!readOnly && (
+                  {canDelete && (
                     <button onClick={() => handleDelete(d.id)} data-testid={`doc-delete-${d.id}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label="Supprimer">
                       <Trash2 className="h-4 w-4" />
                     </button>

@@ -5,6 +5,7 @@ import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import Pill from "@/components/energy/Pill";
 import { JustifyDialog } from "@/components/energy/ReconciliationDialogs";
 import { RECO_STATUS_META, CONSO_SOURCE_META, BLOCKER_META, na, signed, periodLabel, fmtDateTime } from "@/lib/fuelStatements";
@@ -23,7 +24,7 @@ const Block = ({ icon: Icon, title, hint, children, testId }) => (
 // Fiche rapprochement : A. Achats · B. Consommation réelle (CAN) · C. Référence ASTRA — jamais mélangés ; écart, seuils, statut, justification, historique
 export default function ReconciliationDrawer({ item, onOpenChange }) {
   const { user } = useAuth();
-  const isAdmin = ["admin", "superadmin"].includes(user?.role);
+  const isAdmin = can(user, "reconciliations.justify");
   const [justify, setJustify] = useState(false);
   const c = item?.consommation || {};
   const a = item?.achats || {};

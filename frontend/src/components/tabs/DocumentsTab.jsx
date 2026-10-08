@@ -14,6 +14,7 @@ import ManualFuelDialog from "@/components/documents/ManualFuelDialog";
 import ManualFineDialog from "@/components/documents/ManualFineDialog";
 import { getDocCategories } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 
 const FOLDER_ICONS = {
   Leasing: FileText, Assurance: ShieldCheck, "Carte grise": ScrollText,
@@ -23,7 +24,7 @@ const FOLDER_ICONS = {
 
 export default function DocumentsTab({ vehicle, onSaved, docs, refetchDocs }) {
   const { user } = useAuth();
-  const readOnly = user?.role === "read_only";
+  const readOnly = !can(user, "documents.write");
   const [scanOpen, setScanOpen] = useState(false);
   const [fuelOpen, setFuelOpen] = useState(false);
   const [fineOpen, setFineOpen] = useState(false);

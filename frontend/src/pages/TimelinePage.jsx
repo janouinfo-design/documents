@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
 
 const ALL = "__all__";
@@ -35,7 +36,7 @@ export default function TimelinePage() {
   const navigate = useNavigate();
   // Échéance carte carburant (Lot E) : ouvre la fiche carte, pas un véhicule (la carte peut n'avoir aucun véhicule)
   const openItem = (e) => (e.type === "carte_carburant" ? navigate(`/energie/cartes?id=${e.card_id}`) : openVehicle(e.vehicle_id, tabForType(e.type)));
-  const isAdmin = ["admin", "superadmin"].includes(user?.role);
+  const isAdmin = can(user, "settings");
   const [searchParams] = useSearchParams();
   const [vehicle, setVehicle] = useState(searchParams.get("vehicle_id") || ALL);
   const [category, setCategory] = useState(searchParams.get("category") || ALL);

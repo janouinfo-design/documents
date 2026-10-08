@@ -18,6 +18,7 @@ import ReservoirSuggestDialog from "@/components/ReservoirSuggestDialog";
 import ConsoSuggestDialog from "@/components/ConsoSuggestDialog";
 import Co2SuggestDialog from "@/components/Co2SuggestDialog";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 
 const CG_FIELDS = [
   "date_mise_circulation", "poids_total", "nombre_places", "couleur",
@@ -49,7 +50,7 @@ const pick = (vehicle) => ({
 export default function CarteGriseTab({ vehicle, onSaved, docs, refetchDocs }) {
   const c = vehicle.carte_grise || {};
   const { user } = useAuth();
-  const readOnly = user?.role === "read_only";
+  const readOnly = !can(user, "vehicles.edit");
   const [edit, setEdit] = useState(false);
   const [form, setForm] = useState(() => pick(vehicle));
   const [saving, setSaving] = useState(false);

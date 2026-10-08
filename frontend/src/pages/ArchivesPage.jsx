@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import QueryErrorState from "@/components/QueryErrorState";
 import TransferArchiveDialog from "@/components/TransferArchiveDialog";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 
 function fmtSize(bytes) {
   if (!bytes) return "—";
@@ -58,7 +59,7 @@ export default function ArchivesPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const isSuperadmin = user?.role === "superadmin";
-  const canWrite = user?.role !== "read_only";
+  const canWrite = can(user, "archives.write");
   const [expanded, setExpanded] = useState(null);
   const [transferRow, setTransferRow] = useState(null);
   const [restoring, setRestoring] = useState(null);

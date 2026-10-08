@@ -5,6 +5,7 @@ import { RefreshCw, Loader2 } from "lucide-react";
 import { getNavixyStatus, navixySync } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 
 const fmtSync = (iso) => {
   if (!iso) return null;
@@ -15,7 +16,7 @@ const fmtSync = (iso) => {
 export default function SyncButton() {
   const qc = useQueryClient();
   const { user } = useAuth();
-  const readOnly = user?.role === "read_only";
+  const readOnly = !can(user, "integrations");
   const [syncing, setSyncing] = useState(false);
   const { data: st, isLoading: stLoading } = useQuery({
     queryKey: ["sync-status"], queryFn: getNavixyStatus, enabled: !readOnly, refetchInterval: 120000,

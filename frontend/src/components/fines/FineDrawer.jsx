@@ -7,6 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { getFine } from "@/lib/api";
 import { chfExact, dateFr } from "@/lib/format";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
 import FineStatusBadge from "@/components/fines/FineStatusBadge";
 import FineStatusControl from "@/components/fines/FineStatusControl";
@@ -61,7 +62,7 @@ function PaymentCard({ doc, canEdit }) {
 export default function FineDrawer({ fineId, onOpenChange }) {
   const { user } = useAuth();
   const { openVehicle } = useVehicleDrawer();
-  const isAdmin = ["admin", "superadmin"].includes(user?.role);
+  const isAdmin = can(user, "fines.write");
   const { data: doc } = useQuery({ queryKey: ["fines", "one", fineId], queryFn: () => getFine(fineId), enabled: !!fineId });
   const canEdit = isAdmin && !!doc && doc.fine_status !== "annulee";
   return (
@@ -104,7 +105,7 @@ export default function FineDrawer({ fineId, onOpenChange }) {
             <Separator />
             <FineInfoForm doc={doc} canEdit={canEdit} isAdmin={isAdmin} />
             <Separator />
-            <FineAttachments docId={doc.id} canEdit={isAdmin} />
+            <FineAttachments docId={doc.id} canEdit={isAdmin} canDelete={can(user, "fines.attachments.delete")} />
             <Separator />
             <FineHistory docId={doc.id} />
           </div>

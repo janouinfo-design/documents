@@ -65,7 +65,7 @@ function AddPieceDialog({ docId, open, onOpenChange }) {
   );
 }
 
-function PieceRow({ a, docId, canEdit }) {
+function PieceRow({ a, docId, canEdit, canDelete }) {
   const qc = useQueryClient();
   const inputRef = useRef(null);
   const [busy, setBusy] = useState(false);
@@ -103,7 +103,7 @@ function PieceRow({ a, docId, canEdit }) {
           </button>
         </>
       )}
-      {canEdit && (
+      {canDelete && (
         <button type="button" onClick={remove} aria-label="Retirer la pièce" data-testid={`fine-attachment-remove-${a.id}`}
           className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
       )}
@@ -112,7 +112,7 @@ function PieceRow({ a, docId, canEdit }) {
   );
 }
 
-export default function FineAttachments({ docId, canEdit }) {
+export default function FineAttachments({ docId, canEdit, canDelete = canEdit }) {
   const [addOpen, setAddOpen] = useState(false);
   const { data: rows = [], isLoading } = useQuery({ queryKey: ["fine-attachments", docId], queryFn: () => getFineAttachments(docId), enabled: !!docId });
   return (
@@ -122,7 +122,7 @@ export default function FineAttachments({ docId, canEdit }) {
         {canEdit && <Button size="sm" variant="outline" onClick={() => setAddOpen(true)} className="h-8 gap-1 text-xs" data-testid="fine-attachment-add-btn"><Plus className="h-3.5 w-3.5" /> Ajouter une pièce</Button>}
       </div>
       {!isLoading && rows.length === 0 && <p className="text-xs text-slate-400" data-testid="fine-attachments-empty">Aucune pièce liée.</p>}
-      <ul className="space-y-1.5">{rows.map((a) => <PieceRow key={a.id} a={a} docId={docId} canEdit={canEdit} />)}</ul>
+      <ul className="space-y-1.5">{rows.map((a) => <PieceRow key={a.id} a={a} docId={docId} canEdit={canEdit} canDelete={canDelete} />)}</ul>
       <AddPieceDialog docId={docId} open={addOpen} onOpenChange={setAddOpen} />
     </section>
   );

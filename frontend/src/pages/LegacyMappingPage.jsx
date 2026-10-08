@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, GitMerge } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import { getLegacyVehicleMap, getVehicles } from "@/lib/api";
 import QueryErrorState from "@/components/QueryErrorState";
 import LegacyInputBox from "@/components/legacy/LegacyInputBox";
@@ -19,7 +20,7 @@ const FILTERS = [
 export default function LegacyMappingPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
-  const canWrite = !!user && user.role !== "read_only";
+  const canWrite = can(user, "legacy.write");
   const [filter, setFilter] = useState("pending");
   const [conflict, setConflict] = useState(null);
   const params = filter === "all" ? {} : { status: filter };

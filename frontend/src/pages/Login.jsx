@@ -32,7 +32,7 @@ export default function Login() {
     setLoading(true);
     try {
       const u = await login(email, password);
-      navigate(safeFrom || (u?.role === "superadmin" ? "/admin" : "/"), { replace: true });
+      navigate(safeFrom || (u?.role === "superadmin" ? "/admin" : u?.role === "driver" ? "/mes-pleins" : "/"), { replace: true });
     } catch (err) {
       setError(formatApiErrorDetail(err?.response?.data?.detail) || "Connexion impossible");
     } finally {

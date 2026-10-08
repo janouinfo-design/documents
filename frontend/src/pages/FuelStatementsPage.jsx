@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { FileCheck2, Lock, AlertTriangle, GitBranchPlus, Plus } from "lucide-react";
 import { getFuelStatements } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import KpiCard from "@/components/KpiCard";
 import QueryErrorState from "@/components/QueryErrorState";
 import EnergyTabs from "@/components/energy/EnergyTabs";
@@ -22,7 +23,7 @@ const ALL = "__all__";
 // Énergie › Relevés / Décomptes : snapshots Documents par période / périmètre, relevé déclaré, écarts, blockers, clôture / exception, correctifs, exports
 export default function FuelStatementsPage() {
   const { user } = useAuth();
-  const isAdmin = ["admin", "superadmin"].includes(user?.role);
+  const isAdmin = can(user, "statements.write");
   const [params, setParams] = useSearchParams();
   const [period, setPeriod] = useState(ALL);
   const [provider, setProvider] = useState(ALL);

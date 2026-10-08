@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { Scale, ShieldAlert, Info, CheckCircle2, Settings2 } from "lucide-react";
 import { getFuelReconciliations, getReconciliationSettings, getVehicles } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import KpiCard from "@/components/KpiCard";
 import QueryErrorState from "@/components/QueryErrorState";
 import EnergyTabs from "@/components/energy/EnergyTabs";
@@ -21,7 +22,7 @@ const ALL = "__all__";
 // Énergie › Rapprochements : par véhicule / mois — achats (Documents) vs consommation réelle CAN, référence ASTRA, écart, statut (INDICATIF sans seuil), justification
 export default function FuelReconciliationsPage() {
   const { user } = useAuth();
-  const isAdmin = ["admin", "superadmin"].includes(user?.role);
+  const isAdmin = can(user, "settings");
   const [params, setParams] = useSearchParams();
   const period = params.get("period") || currentPeriod();
   const [vehicle, setVehicle] = useState(ALL);
@@ -33,7 +34,7 @@ export default function FuelReconciliationsPage() {
   const setParam = (k, v) => setParams((p) => { const n = new URLSearchParams(p); if (v) n.set(k, v); else n.delete(k); return n; }, { replace: true });
   const query = useMemo(() => ({ period_month: period, ...(vehicle !== ALL ? { vehicle_id: vehicle } : {}), ...(status !== ALL ? { status } : {}), ...(justified !== ALL ? { justified } : {}) }), [period, vehicle, status, justified]);
   const { data, isLoading, isError, error } = useQuery({ queryKey: ["fuel-reconciliations", query], queryFn: () => getFuelReconciliations(query), keepPreviousData: true });
-  const { data: settings } = useQuery({ queryKey: ["fuel-reconciliation-settings"], queryFn: getReconciliationSettings });
+  const { data: settings } = useQuery({ queryKey: ["fuel-reconciliation-settings"], queryFn: getReconciliationSettings, enabled: can(user, "settings.read") });
   const { data: vehicles = [] } = useQuery({ queryKey: ["vehicles"], queryFn: getVehicles });
   const all = useMemo(() => data?.items || [], [data]);
   const providers = useMemo(() => [...new Set(all.flatMap((r) => Object.keys(r.achats?.by_fournisseur || {})))].filter((p) => p !== "—").sort(), [all]);

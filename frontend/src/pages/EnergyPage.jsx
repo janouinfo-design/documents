@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 
 export const isDeclarative = (tx) => ["manual", "legacy_import", "import"].includes(tx?.created_from);
 
@@ -43,7 +44,7 @@ const cardCode = (tx) => (tx.card_manual ? "manual" : tx.carte_last4 ? tx.card_r
 export default function EnergyPage() {
   const { openVehicle } = useVehicleDrawer();
   const { user } = useAuth();
-  const isAdmin = ["admin", "superadmin"].includes(user?.role);
+  const isAdmin = can(user, "fuel.manual");
   const [params, setParams] = useSearchParams();
   const [f, setF] = useState(EMPTY_FILTERS);
   const [fuelOpen, setFuelOpen] = useState(false);
@@ -53,7 +54,7 @@ export default function EnergyPage() {
   const { data, isLoading, isError, error } = useQuery({ queryKey: ["energy"], queryFn: () => getEnergy() });
   const { data: vehicles = [] } = useQuery({ queryKey: ["vehicles"], queryFn: getVehicles });
   const { data: drivers = [] } = useQuery({ queryKey: ["drivers", "picker"], queryFn: () => getDrivers({ include_archived: "1" }) });
-  const { data: imports } = useQuery({ queryKey: ["fuel-imports"], queryFn: getFuelImports });
+  const { data: imports } = useQuery({ queryKey: ["fuel-imports"], queryFn: getFuelImports, enabled: can(user, "pages.imports") });
 
   const totals = data?.totals || {};
   const allTx = useMemo(() => data?.transactions || [], [data]);

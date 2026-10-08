@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { CreditCard, Plus, Search, ShieldCheck, CalendarX2, CalendarClock, Link2Off, AlertTriangle } from "lucide-react";
 import { getFuelCards, getVehicles } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
 import KpiCard from "@/components/KpiCard";
 import QueryErrorState from "@/components/QueryErrorState";
@@ -24,7 +25,7 @@ const VIEWS = { utilisables: { utilisable: "true" }, expirees: { expiration_stat
 export default function FuelCardsPage() {
   const { user } = useAuth();
   const { openVehicle } = useVehicleDrawer();
-  const isAdmin = ["admin", "superadmin"].includes(user?.role);
+  const isAdmin = can(user, "cards.manage");
   const [params, setParams] = useSearchParams();
   const [q, setQ] = useState("");
   const [fournisseur, setFournisseur] = useState(ALL);

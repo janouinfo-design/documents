@@ -4,6 +4,8 @@ import { Loader2, Database, RefreshCw, CheckCircle2, XCircle, Clock } from "luci
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { getAstraStatus, astraImport } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 
 const fmtDate = (iso) => {
   if (!iso) return "—";
@@ -38,6 +40,8 @@ const RunBadge = ({ run }) => {
 
 export default function AstraStatusDialog({ open, onOpenChange }) {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const canImport = can(user, "settings");
   const { data, isLoading } = useQuery({
     queryKey: ["astra-status"],
     queryFn: getAstraStatus,
@@ -104,6 +108,7 @@ export default function AstraStatusDialog({ open, onOpenChange }) {
               <p className="text-xs text-slate-400">
                 Source : opendata.astra.admin.ch · la mise à jour re-télécharge les fichiers récents puis ré-importe.
               </p>
+              {canImport && (
               <Button
                 data-testid="astra-update-btn"
                 onClick={startUpdate}
@@ -113,6 +118,7 @@ export default function AstraStatusDialog({ open, onOpenChange }) {
                 {data.import_running ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                 Mettre à jour les données
               </Button>
+              )}
             </div>
           </div>
         )}

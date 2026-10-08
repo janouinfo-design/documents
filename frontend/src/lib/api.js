@@ -404,4 +404,16 @@ export const downloadFuelExport = async (path, params) => {
   return { filename: name, size: r.data.size, sha256: r.headers["x-content-sha256"] };
 };
 
+// Phase 4C — Lot H : vues chauffeur « mes données » (self-scope serveur) + console superadmin (liaison conducteur / scope manager)
+export const getMyProfile = () => http.get("/me/profile").then((r) => r.data);
+export const getMyVehicles = () => http.get("/me/vehicles").then((r) => r.data);
+export const getMyFuelTransactions = (params = {}) => http.get("/me/fuel-transactions", { params }).then((r) => r.data);
+export const getMyFines = () => http.get("/me/fines").then((r) => r.data);
+export const attachMyFuelReceipt = (txId, file) => {
+  const form = new FormData();
+  form.append("file", file);
+  return http.post(`/me/fuel-transactions/${txId}/attachment`, form, { headers: { "Content-Type": "multipart/form-data" } }).then((r) => r.data);
+};
+export const adminListTenantDrivers = (tid) => http.get(`/admin/tenants/${tid}/drivers`).then((r) => r.data);
+
 export default http;

@@ -12,10 +12,15 @@ import {
 } from "@/lib/api";
 import { notifyNavixyPhoto } from "@/lib/navixyFeedback";
 import { fileSize } from "@/components/Field";
+import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 export default function VehiclePhotoMenu({ vehicle, docs = [], onChanged }) {
+  const { user } = useAuth();
+  const canNavixy = can(user, "integrations");
+  const canDeletePhoto = can(user, "photo.delete");
   const inputRef = useRef(null);
   const [preview, setPreview] = useState(null); // { file, url }
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -123,12 +128,12 @@ export default function VehiclePhotoMenu({ vehicle, docs = [], onChanged }) {
           <DropdownMenuItem data-testid="photo-from-documents" onClick={() => setPickerOpen(true)}>
             <FolderOpen className="mr-2 h-4 w-4" /> Choisir depuis Documents
           </DropdownMenuItem>
-          {vehicle.navixy_vehicle_id && (
+          {canNavixy && vehicle.navixy_vehicle_id && (
             <DropdownMenuItem data-testid="photo-import-navixy" onClick={importNavixy}>
               <DownloadCloud className="mr-2 h-4 w-4" /> Importer la photo Navixy
             </DropdownMenuItem>
           )}
-          {hasPhoto && (
+          {canDeletePhoto && hasPhoto && (
             <>
               <DropdownMenuSeparator />
               <DropdownMenuItem data-testid="photo-delete" className="text-red-600 focus:text-red-700"
@@ -145,7 +150,7 @@ export default function VehiclePhotoMenu({ vehicle, docs = [], onChanged }) {
           Photo synchronisée Navixy
         </span>
       )}
-      {hasPhoto && sync?.status === "failed" && (
+      {canNavixy && hasPhoto && sync?.status === "failed" && (
         <button onClick={retrySync} data-testid="photo-sync-retry"
                 className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-600 hover:bg-red-100">
           <RefreshCw className="h-2.5 w-2.5" /> Sync Navixy échouée — réessayer

@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Search, UserPlus, Pencil, Archive, ArchiveRestore, History, Users } from "lucide-react";
 import { getDrivers, getDriver, archiveDriver, restoreDriver } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -35,7 +36,8 @@ export default function DriversPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const { openVehicle } = useVehicleDrawer();
-  const isAdmin = ["admin", "superadmin"].includes(user?.role);
+  const isAdmin = can(user, "drivers.manage");
+  const canAssign = can(user, "assignments.write");
   const [q, setQ] = useState("");
   const [state, setState] = useState("active");
   const [edit, setEdit] = useState(null);
@@ -145,7 +147,7 @@ export default function DriversPage() {
 
       <DriverDialog open={createOpen} onOpenChange={setCreateOpen} />
       <DriverDialog open={!!edit} onOpenChange={(o) => !o && setEdit(null)} driver={edit} />
-      <HistoryDialog driverId={historyId} onOpenChange={(o) => !o && setHistoryId(null)} readOnly={!isAdmin} />
+      <HistoryDialog driverId={historyId} onOpenChange={(o) => !o && setHistoryId(null)} readOnly={!canAssign} />
     </div>
   );
 }

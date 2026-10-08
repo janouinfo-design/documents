@@ -4,6 +4,7 @@ import { Loader2 } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { VehicleDrawerProvider } from "@/context/VehicleDrawerContext";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { can, isDriver, DRIVER_HOME } from "@/lib/rbac";
 import Layout from "@/components/Layout";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import Dashboard from "@/pages/Dashboard";
@@ -26,6 +27,9 @@ import FuelImportsPage from "@/pages/FuelImportsPage";
 import FuelAnomaliesPage from "@/pages/FuelAnomaliesPage";
 import FuelReconciliationsPage from "@/pages/FuelReconciliationsPage";
 import FuelStatementsPage from "@/pages/FuelStatementsPage";
+import MyFuelPage from "@/pages/MyFuelPage";
+import MyFinesPage from "@/pages/MyFinesPage";
+import MyVehiclesPage from "@/pages/MyVehiclesPage";
 import SsoNotConfigured from "@/pages/SsoNotConfigured";
 import { useLocation } from "react-router-dom";
 
@@ -44,6 +48,45 @@ function Protected({ children }) {
   return children;
 }
 
+// Lot H — routage par rôle (l'UI redirige, le serveur reste la seule protection : 403 / 404 indépendants de la navigation).
+function RoleRoutes() {
+  const { user } = useAuth();
+  if (isDriver(user)) {
+    return (
+      <Routes>
+        <Route path="/mes-pleins" element={<MyFuelPage />} />
+        <Route path="/mes-amendes" element={<MyFinesPage />} />
+        <Route path="/mes-vehicules" element={<MyVehiclesPage />} />
+        <Route path="*" element={<Navigate to={DRIVER_HOME} replace />} />
+      </Routes>
+    );
+  }
+  return (
+    <Routes>
+      <Route path="/" element={<Dashboard />} />
+      <Route path="/vehicules" element={<Vehicles />} />
+      {can(user, "pages.archives") && <Route path="/archives" element={<ArchivesPage />} />}
+      <Route path="/scan/:vehicleId" element={<ScanPage />} />
+      <Route path="/documents" element={<DocumentsPage />} />
+      <Route path="/timeline" element={<TimelinePage />} />
+      <Route path="/couts" element={<CostsPage />} />
+      <Route path="/energie" element={<EnergyPage />} />
+      <Route path="/energie/cartes" element={<FuelCardsPage />} />
+      {can(user, "pages.imports") && <Route path="/energie/imports" element={<FuelImportsPage />} />}
+      <Route path="/energie/anomalies" element={<FuelAnomaliesPage />} />
+      <Route path="/energie/rapprochements" element={<FuelReconciliationsPage />} />
+      {can(user, "pages.statements") && <Route path="/energie/releves" element={<FuelStatementsPage />} />}
+      <Route path="/conducteurs" element={<DriversPage />} />
+      <Route path="/amendes" element={<FinesPage />} />
+      <Route path="/alertes" element={<AlertsPage />} />
+      {can(user, "pages.integrity") && <Route path="/integrite" element={<IntegrityPage />} />}
+      {can(user, "console") && <Route path="/admin" element={<AdminPage />} />}
+      {can(user, "pages.legacy") && <Route path="/admin/correspondances" element={<LegacyMappingPage />} />}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
+
 function App() {
   return (
     <div className="App">
@@ -58,27 +101,7 @@ function App() {
                   <VehicleDrawerProvider>
                     <Layout>
                       <ErrorBoundary>
-                        <Routes>
-                          <Route path="/" element={<Dashboard />} />
-                          <Route path="/vehicules" element={<Vehicles />} />
-                          <Route path="/archives" element={<ArchivesPage />} />
-                          <Route path="/scan/:vehicleId" element={<ScanPage />} />
-                          <Route path="/documents" element={<DocumentsPage />} />
-                          <Route path="/timeline" element={<TimelinePage />} />
-                          <Route path="/couts" element={<CostsPage />} />
-                          <Route path="/energie" element={<EnergyPage />} />
-                          <Route path="/energie/cartes" element={<FuelCardsPage />} />
-                          <Route path="/energie/imports" element={<FuelImportsPage />} />
-                          <Route path="/energie/anomalies" element={<FuelAnomaliesPage />} />
-                          <Route path="/energie/rapprochements" element={<FuelReconciliationsPage />} />
-                          <Route path="/energie/releves" element={<FuelStatementsPage />} />
-                          <Route path="/conducteurs" element={<DriversPage />} />
-                          <Route path="/amendes" element={<FinesPage />} />
-                          <Route path="/alertes" element={<AlertsPage />} />
-                          <Route path="/integrite" element={<IntegrityPage />} />
-                          <Route path="/admin" element={<AdminPage />} />
-                          <Route path="/admin/correspondances" element={<LegacyMappingPage />} />
-                        </Routes>
+                        <RoleRoutes />
                       </ErrorBoundary>
                     </Layout>
                   </VehicleDrawerProvider>

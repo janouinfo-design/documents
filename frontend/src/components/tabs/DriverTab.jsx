@@ -5,13 +5,14 @@ import { getVehicleAssignments, getDriverAt } from "@/lib/api";
 import { SectionCard } from "@/components/Field";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import AssignmentDialog from "@/components/drivers/AssignmentDialog";
 import AssignmentHistory from "@/components/drivers/AssignmentHistory";
 
 // Onglet « Conducteur » du drawer véhicule : conducteur du jour (lecture, par affectation datée) + historique.
 export default function DriverTab({ vehicle }) {
   const { user } = useAuth();
-  const readOnly = user?.role === "read_only";
+  const readOnly = !can(user, "assignments.write");
   const [open, setOpen] = useState(false);
   const { data: rows = [] } = useQuery({ queryKey: ["assignments", vehicle.id], queryFn: () => getVehicleAssignments(vehicle.id) });
   const { data: at } = useQuery({ queryKey: ["driver-at", vehicle.id], queryFn: () => getDriverAt(vehicle.id) });

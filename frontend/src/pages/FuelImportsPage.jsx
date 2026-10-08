@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { Plus, Upload, FileCheck2, AlertTriangle, Layers } from "lucide-react";
 import { getFuelImports } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import KpiCard from "@/components/KpiCard";
 import QueryErrorState from "@/components/QueryErrorState";
 import EnergyTabs from "@/components/energy/EnergyTabs";
@@ -13,7 +14,7 @@ import { Button } from "@/components/ui/button";
 // Énergie › Importations : wizard CSV/XLSX (upload → mapping → preview → confirmation) + historique des imports
 export default function FuelImportsPage() {
   const { user } = useAuth();
-  const isAdmin = ["admin", "superadmin"].includes(user?.role);
+  const isAdmin = can(user, "imports.write");
   const [params, setParams] = useSearchParams();
   const jobId = params.get("job");
   const mode = params.get("new") === "1";

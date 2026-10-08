@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import { Label } from "@/components/ui/label";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import AlertChips from "@/components/AlertChips";
@@ -21,7 +22,7 @@ const COVERAGES = ["RC", "Casco partielle", "Casco complète", "RC + Casco compl
 
 export default function AssuranceTab({ vehicle, metrics, onSaved, docs, refetchDocs }) {
   const { user } = useAuth();
-  const readOnly = user?.role === "read_only";
+  const readOnly = !can(user, "vehicles.edit");
   const a = vehicle.assurance || {};
   const am = metrics.assurance || {};
   const [edit, setEdit] = useState(false);

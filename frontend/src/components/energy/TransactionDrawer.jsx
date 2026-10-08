@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { getFuelTransaction } from "@/lib/api";
 import { chfExact, dateFr } from "@/lib/format";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
 import Pill from "@/components/energy/Pill";
 import MatchBreakdown from "@/components/energy/MatchBreakdown";
@@ -32,7 +33,7 @@ const FX = { not_needed: "CHF (sans conversion)", converted: "Contre-valeur CHF 
 export default function TransactionDrawer({ txId, onOpenChange }) {
   const { user } = useAuth();
   const { openVehicle } = useVehicleDrawer();
-  const isAdmin = ["admin", "superadmin"].includes(user?.role);
+  const isAdmin = can(user, "fuel.match");
   const { data: tx, isError, error } = useQuery({ queryKey: ["fuel-tx", txId], queryFn: () => getFuelTransaction(txId), enabled: !!txId });
   const [vehicleDlg, setVehicleDlg] = useState(false);
   const [cardDlg, setCardDlg] = useState(false);

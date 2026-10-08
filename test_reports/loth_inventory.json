@@ -1,0 +1,293 @@
+{
+ "tenant": {
+  "id": "loth-ui-test",
+  "exists": 1
+ },
+ "counts": {
+  "audit_logs": 98,
+  "documents": 11,
+  "driver_assignments": 6,
+  "drivers": 4,
+  "fuel_anomalies": 2,
+  "fuel_card_assignments": 4,
+  "fuel_cards": 3,
+  "fuel_transaction_matches": 6,
+  "fuel_transactions": 6,
+  "inspections": 2,
+  "users": 8,
+  "vehicle_field_meta": 1,
+  "vehicles": 4
+ },
+ "users": [
+  {
+   "email": "loth-admin@loth-ui-test.ch",
+   "role": "admin",
+   "driver_id": null,
+   "vehicle_scope": null,
+   "disabled": false
+  },
+  {
+   "email": "loth-driver-inactif@loth-ui-test.ch",
+   "role": "driver",
+   "driver_id": "666d40dc-f755-4b7c-820f-f7e515fbf9a5",
+   "vehicle_scope": null,
+   "disabled": false
+  },
+  {
+   "email": "loth-driver-nonlie@loth-ui-test.ch",
+   "role": "driver",
+   "driver_id": null,
+   "vehicle_scope": null,
+   "disabled": false
+  },
+  {
+   "email": "loth-driver-sans@loth-ui-test.ch",
+   "role": "driver",
+   "driver_id": "f50411e2-f197-4ae8-b363-e9bb255f4f6b",
+   "vehicle_scope": null,
+   "disabled": false
+  },
+  {
+   "email": "loth-driver@loth-ui-test.ch",
+   "role": "driver",
+   "driver_id": "8f89ab43-c4f8-4757-b4d7-a53f3c122fef",
+   "vehicle_scope": null,
+   "disabled": false
+  },
+  {
+   "email": "loth-manager-vide@loth-ui-test.ch",
+   "role": "manager",
+   "driver_id": null,
+   "vehicle_scope": [],
+   "disabled": false
+  },
+  {
+   "email": "loth-manager@loth-ui-test.ch",
+   "role": "manager",
+   "driver_id": null,
+   "vehicle_scope": [
+    "d74fe9d3-29f2-484e-bc3b-75d50d0c866e",
+    "d968fa84-2b1d-469b-9418-86a462489844"
+   ],
+   "disabled": false
+  },
+  {
+   "email": "loth-ro@loth-ui-test.ch",
+   "role": "read_only",
+   "driver_id": null,
+   "vehicle_scope": null,
+   "disabled": false
+  }
+ ],
+ "vehicles": [
+  {
+   "id": "7fb8db1e-fea1-46c7-937b-d1d20e78b832",
+   "plaque": "GE 800 004",
+   "marque": "Renault",
+   "modele": "Kangoo"
+  },
+  {
+   "id": "d74fe9d3-29f2-484e-bc3b-75d50d0c866e",
+   "plaque": "VD 800 001",
+   "marque": "Skoda",
+   "modele": "Octavia Combi (manager)"
+  },
+  {
+   "id": "d968fa84-2b1d-469b-9418-86a462489844",
+   "plaque": "VD 800 002",
+   "marque": "VW",
+   "modele": "Caddy"
+  },
+  {
+   "id": "dbf86ce0-05d9-46f8-b5c4-54523efefd52",
+   "plaque": "VD 800 003",
+   "marque": "Ford",
+   "modele": "Transit"
+  }
+ ],
+ "drivers": [
+  {
+   "id": "5b446bd3-3bc2-484d-b72c-0927c4c4070c",
+   "nom": "Martin",
+   "prenom": "Julie",
+   "matricule_interne": "LOTH-M002",
+   "actif": true,
+   "is_deleted": false
+  },
+  {
+   "id": "666d40dc-f755-4b7c-820f-f7e515fbf9a5",
+   "nom": "Inactif",
+   "prenom": "Léa",
+   "matricule_interne": "LOTH-M004",
+   "actif": false,
+   "is_deleted": false
+  },
+  {
+   "id": "8f89ab43-c4f8-4757-b4d7-a53f3c122fef",
+   "nom": "Dupont",
+   "prenom": "Marc",
+   "matricule_interne": "LOTH-M001",
+   "actif": true,
+   "is_deleted": false
+  },
+  {
+   "id": "f50411e2-f197-4ae8-b363-e9bb255f4f6b",
+   "nom": "Sansaffectation",
+   "prenom": "Paul",
+   "matricule_interne": "LOTH-M003",
+   "actif": true,
+   "is_deleted": false
+  }
+ ],
+ "driver_assignments": [
+  {
+   "id": "27070a5b-eaa8-41d0-9304-c63cfda60829",
+   "vehicle_id": "d968fa84-2b1d-469b-9418-86a462489844",
+   "driver_id": "8f89ab43-c4f8-4757-b4d7-a53f3c122fef",
+   "valid_from": "2026-10-13",
+   "valid_to": null,
+   "principal": true
+  },
+  {
+   "id": "a5af33e5-ebef-45fd-b282-cbb92c73c26b",
+   "vehicle_id": "dbf86ce0-05d9-46f8-b5c4-54523efefd52",
+   "driver_id": "8f89ab43-c4f8-4757-b4d7-a53f3c122fef",
+   "valid_from": "2026-06-10",
+   "valid_to": "2026-09-07",
+   "principal": true
+  },
+  {
+   "id": "bb607242-377a-44a0-8865-4a5bd66c8963",
+   "vehicle_id": "dbf86ce0-05d9-46f8-b5c4-54523efefd52",
+   "driver_id": "5b446bd3-3bc2-484d-b72c-0927c4c4070c",
+   "valid_from": "2026-09-18",
+   "valid_to": null,
+   "principal": true
+  },
+  {
+   "id": "c71912df-1f66-429f-87ba-d7bed23677e3",
+   "vehicle_id": "d74fe9d3-29f2-484e-bc3b-75d50d0c866e",
+   "driver_id": "8f89ab43-c4f8-4757-b4d7-a53f3c122fef",
+   "valid_from": "2026-09-08",
+   "valid_to": null,
+   "principal": true
+  },
+  {
+   "id": "cca14225-7ed8-4e26-9c75-612247ab01d8",
+   "vehicle_id": "d968fa84-2b1d-469b-9418-86a462489844",
+   "driver_id": "f50411e2-f197-4ae8-b363-e9bb255f4f6b",
+   "valid_from": "2026-10-05",
+   "valid_to": "2026-10-07",
+   "principal": false
+  },
+  {
+   "id": "ce8c491c-7abf-4280-ac4a-a166541089ae",
+   "vehicle_id": "d968fa84-2b1d-469b-9418-86a462489844",
+   "driver_id": "f50411e2-f197-4ae8-b363-e9bb255f4f6b",
+   "valid_from": "2026-10-05",
+   "valid_to": "2026-10-07",
+   "principal": false
+  }
+ ],
+ "fuel_transactions": [
+  {
+   "id": "e3a7a57e-ab3e-4055-9764-e917a4b44026",
+   "vehicle_id": "dbf86ce0-05d9-46f8-b5c4-54523efefd52",
+   "driver_id": "8f89ab43-c4f8-4757-b4d7-a53f3c122fef",
+   "date": "2026-08-24",
+   "montant": 78.0,
+   "station": "Coop Pronto Sion"
+  },
+  {
+   "id": "d2ea58a5-3d0b-4893-adfd-10b2f3adab77",
+   "vehicle_id": "d74fe9d3-29f2-484e-bc3b-75d50d0c866e",
+   "driver_id": "8f89ab43-c4f8-4757-b4d7-a53f3c122fef",
+   "date": "2026-09-23",
+   "montant": 92.0,
+   "station": "Migrol Renens"
+  },
+  {
+   "id": "a3a0b1f0-e742-4123-bf49-dda422adaf5c",
+   "vehicle_id": "dbf86ce0-05d9-46f8-b5c4-54523efefd52",
+   "driver_id": "5b446bd3-3bc2-484d-b72c-0927c4c4070c",
+   "date": "2026-10-04",
+   "montant": 90.0,
+   "station": "Coop Pronto Sion"
+  },
+  {
+   "id": "0ae60155-4e60-44e8-82f4-aa662af22894",
+   "vehicle_id": "d74fe9d3-29f2-484e-bc3b-75d50d0c866e",
+   "driver_id": "8f89ab43-c4f8-4757-b4d7-a53f3c122fef",
+   "date": "2026-10-05",
+   "montant": 85.0,
+   "station": "Migrol Lausanne-Malley"
+  },
+  {
+   "id": "4c099b5c-a733-4fab-aa3f-83a71380c899",
+   "vehicle_id": "d968fa84-2b1d-469b-9418-86a462489844",
+   "driver_id": "5b446bd3-3bc2-484d-b72c-0927c4c4070c",
+   "date": "2026-10-06",
+   "montant": 66.0,
+   "station": "Agrola Aigle"
+  },
+  {
+   "id": "398e8d84-de6d-4926-8d4a-3d47feb7dec5",
+   "vehicle_id": "7fb8db1e-fea1-46c7-937b-d1d20e78b832",
+   "driver_id": null,
+   "date": "2026-10-07",
+   "montant": 50.0,
+   "station": "Tamoil Genève"
+  }
+ ],
+ "fines": [
+  {
+   "id": "ea5de1c9-5d94-4ee4-939d-e2c5e6604451",
+   "vehicle_id": "dbf86ce0-05d9-46f8-b5c4-54523efefd52",
+   "driver_id": "5b446bd3-3bc2-484d-b72c-0927c4c4070c",
+   "numero": "LOTH-F2",
+   "fine_status": "a_payer"
+  },
+  {
+   "id": "ac5e1af6-e614-4eba-b09a-e85cebc275df",
+   "vehicle_id": "d968fa84-2b1d-469b-9418-86a462489844",
+   "driver_id": "8f89ab43-c4f8-4757-b4d7-a53f3c122fef",
+   "numero": "LOTH-F3",
+   "fine_status": "a_payer"
+  },
+  {
+   "id": "0734272e-cb81-40a1-90f5-1c6891b6faaa",
+   "vehicle_id": "d74fe9d3-29f2-484e-bc3b-75d50d0c866e",
+   "driver_id": "8f89ab43-c4f8-4757-b4d7-a53f3c122fef",
+   "numero": "LOTH-F1",
+   "fine_status": "contestee"
+  }
+ ],
+ "fuel_cards": [
+  {
+   "id": "23807847-0f6a-489b-a725-b730f8dd80fa",
+   "last4": "1111",
+   "statut": "active"
+  },
+  {
+   "id": "597a82d1-c281-4dc7-b447-f669f5af4ee8",
+   "last4": "2222",
+   "statut": "active"
+  },
+  {
+   "id": "d21a22ce-c054-4a19-928f-b06282aeffd4",
+   "last4": "3333",
+   "statut": "active"
+  }
+ ],
+ "audit": {
+  "total": 98,
+  "by_role": {
+   "manager": 20,
+   "admin": 45,
+   "driver": 4,
+   "superadmin": 29
+  }
+ },
+ "files": 0,
+ "documents_with_storage": 4
+}

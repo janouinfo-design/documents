@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import { Label } from "@/components/ui/label";
 import AlertChips from "@/components/AlertChips";
 import StatusBadge from "@/components/StatusBadge";
@@ -20,7 +21,7 @@ const pick = (l = {}) => Object.fromEntries(F.map((k) => [k, l[k] ?? (k === "opt
 
 export default function LeasingTab({ vehicle, metrics, onSaved, docs, refetchDocs }) {
   const { user } = useAuth();
-  const readOnly = user?.role === "read_only";
+  const readOnly = !can(user, "vehicles.edit");
   const l = vehicle.leasing || {};
   const lm = metrics.leasing || {};
   const [edit, setEdit] = useState(false);

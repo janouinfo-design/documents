@@ -7,6 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { getFuelCard } from "@/lib/api";
 import { dateFr } from "@/lib/format";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
 import FuelCardStatusBadge, { ExpirationCell, CardWarnings } from "@/components/fuelcards/FuelCardStatusBadge";
 import FuelCardDialog from "@/components/fuelcards/FuelCardDialog";
@@ -22,7 +23,7 @@ const Row = ({ k, v, testId }) => (
 export default function FuelCardDrawer({ cardId, onOpenChange }) {
   const { user } = useAuth();
   const { openVehicle } = useVehicleDrawer();
-  const isAdmin = ["admin", "superadmin"].includes(user?.role);
+  const isAdmin = can(user, "cards.manage");
   const { data: card } = useQuery({ queryKey: ["fuel-cards", "one", cardId], queryFn: () => getFuelCard(cardId), enabled: !!cardId });
   const [edit, setEdit] = useState(false);
   const [status, setStatus] = useState(false);
@@ -109,7 +110,7 @@ export default function FuelCardDrawer({ cardId, onOpenChange }) {
             <Separator />
             <FuelCardAssignments card={card} canEdit={canEdit} />
             <Separator />
-            <FuelCardHistory cardId={card.id} />
+            {can(user, "cards.history") && <FuelCardHistory cardId={card.id} />}
           </div>
         )}
         {card && <FuelCardDialog open={edit} onOpenChange={setEdit} card={card} />}

@@ -7,6 +7,7 @@ import { Stat, SectionCard, FormRow } from "@/components/Field";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import AlertChips from "@/components/AlertChips";
 import StatusBadge from "@/components/StatusBadge";
@@ -19,7 +20,7 @@ const RESULTS = ["Conforme", "Conforme avec remarques", "Non conforme"];
 
 export default function ControleTab({ vehicle, metrics, onSaved, docs, refetchDocs }) {
   const { user } = useAuth();
-  const readOnly = user?.role === "read_only";
+  const readOnly = !can(user, "vehicles.edit");
   const c = vehicle.controle_technique || {};
   const cm = metrics.controle || {};
   const [edit, setEdit] = useState(false);

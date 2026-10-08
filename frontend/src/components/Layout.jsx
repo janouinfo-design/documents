@@ -10,6 +10,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/context/AuthContext";
 import ChangePasswordDialog from "@/components/ChangePasswordDialog";
+import { can, isDriver, ROLE_LABELS } from "@/lib/rbac";
+import { driverErrorCode, useMyProfile } from "@/components/me/DriverShell";
 
 const NAV = [
   { to: "/", label: "Tableau de bord", icon: LayoutDashboard, testId: "nav-dashboard" },
@@ -21,9 +23,24 @@ const NAV = [
   { to: "/conducteurs", label: "Conducteurs", icon: Users, testId: "nav-drivers" },
   { to: "/amendes", label: "Amendes", icon: Gavel, testId: "nav-fines" },
   { to: "/alertes", label: "Alertes", icon: Bell, testId: "nav-alerts" },
-  { to: "/integrite", label: "Intégrité", icon: ShieldCheck, testId: "nav-integrity" },
-  { to: "/admin/correspondances", label: "Correspondances", icon: GitMerge, testId: "nav-legacy" },
+  { to: "/integrite", label: "Intégrité", icon: ShieldCheck, testId: "nav-integrity", cap: "pages.integrity" },
+  { to: "/admin/correspondances", label: "Correspondances", icon: GitMerge, testId: "nav-legacy", cap: "pages.legacy" },
 ];
+
+// Lot H — navigation chauffeur : exactement 3 entrées (+ déconnexion dans le menu compte), même Layout, même charte.
+const DRIVER_NAV = [
+  { to: "/mes-pleins", label: "Mes pleins", icon: Fuel, testId: "nav-me-fuel" },
+  { to: "/mes-amendes", label: "Mes amendes", icon: Gavel, testId: "nav-me-fines" },
+  { to: "/mes-vehicules", label: "Mes véhicules", icon: Truck, testId: "nav-me-vehicles" },
+];
+
+function useNavItems(user) {
+  const driver = isDriver(user);
+  const profile = useMyProfile({ enabled: driver });
+  if (driver) return profile.isError && driverErrorCode(profile.error) ? [] : DRIVER_NAV;
+  const items = NAV.filter((i) => !i.cap || can(user, i.cap));
+  return can(user, "console") ? [...items, { to: "/admin", label: "Administration", icon: Building2, testId: "nav-admin" }] : items;
+}
 
 function Brand() {
   return (
@@ -43,7 +60,7 @@ function TopTabs() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const canValidate = !!user && user.role !== "read_only";
+  const canValidate = can(user, "documents.write");
   const { data: pending } = useQuery({
     queryKey: ["documents", "pending-review-count"],
     queryFn: getPendingReviewCount,
@@ -51,11 +68,9 @@ function TopTabs() {
     refetchInterval: 60000,
   });
   const pendingCount = canValidate ? pending?.count || 0 : 0;
-  const items = user?.role === "superadmin"
-    ? [...NAV, { to: "/admin", label: "Administration", icon: Building2, testId: "nav-admin" }]
-    : NAV;
+  const items = useNavItems(user);
   return (
-    <nav className="no-scrollbar -mb-px flex items-center gap-1 overflow-x-auto" data-testid="top-nav">
+    <nav className="no-scrollbar -mb-px flex items-center gap-1 overflow-x-auto" data-testid="top-nav" data-role={user?.role || ""}>
       {items.map(({ to, label, icon: Icon, testId }) => {
         const active = pathname === to || (to !== "/" && pathname.startsWith(`${to}/`));
         return (
@@ -112,7 +127,9 @@ function UserMenu() {
         <DropdownMenuContent align="end" className="w-60">
           <DropdownMenuLabel data-testid="user-menu-email" className="truncate text-xs font-normal text-slate-500">
             {user?.email}
-            {user?.role === "read_only" && <span className="ml-1 font-semibold text-amber-600">· lecture seule</span>}
+            {user?.role && !["admin", "superadmin"].includes(user.role) && (
+              <span className="ml-1 font-semibold text-amber-600" data-testid="user-menu-role">· {ROLE_LABELS[user.role] || user.role}</span>
+            )}
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem data-testid="user-menu-change-password" onSelect={() => setPwdOpen(true)}>
@@ -148,6 +165,7 @@ function ActingTenantBanner() {
 }
 
 export default function Layout({ children }) {
+  const { user } = useAuth();
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/85 backdrop-blur-md">
@@ -157,8 +175,8 @@ export default function Layout({ children }) {
           <div className="flex items-center gap-4">
             <div className="hidden flex-col text-right sm:flex">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Module</p>
-              <p className="font-display text-sm font-bold leading-none tracking-tight text-slate-900">
-                Gestion administrative de flotte
+              <p className="font-display text-sm font-bold leading-none tracking-tight text-slate-900" data-testid="layout-module-label">
+                {isDriver(user) ? "Espace chauffeur" : "Gestion administrative de flotte"}
               </p>
             </div>
             <UserMenu />

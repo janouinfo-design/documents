@@ -4,6 +4,7 @@ import { Pencil, Loader2, Car, Calendar, Hash, Gauge, Users, MapPin, User, Radio
 import { updateVehicle } from "@/lib/api";
 import { notifyNavixyPush } from "@/lib/navixyFeedback";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import { fmtKm, dateFr } from "@/lib/format";
 import { Stat, SectionCard, FormRow } from "@/components/Field";
 import { Input } from "@/components/ui/input";
@@ -15,7 +16,7 @@ const pick = (v) => Object.fromEntries(GEN_FIELDS.map((k) => [k, v[k] ?? ""]));
 
 export default function GeneralTab({ vehicle, onSaved }) {
   const { user } = useAuth();
-  const readOnly = user?.role === "read_only";
+  const readOnly = !can(user, "vehicles.edit");
   const [edit, setEdit] = useState(false);
   const [form, setForm] = useState(() => pick(vehicle));
   const [saving, setSaving] = useState(false);

@@ -53,7 +53,8 @@ def infraction_type_error(value) -> Optional[str]:
         return f"type_infraction inconnu « {v} » — valeurs : {', '.join(KNOWN_INFRACTION_TYPES)}"
     return None
 LIEU_KEYS = ("pays", "canton", "ville", "lieu")
-INTERNAL_FIELDS = ("notes_internes",)  # D6.3 : masqué côté serveur pour read_only
+INTERNAL_FIELDS = ("notes_internes",)  # D6.3 : masqué côté serveur pour read_only et driver (Lot H)
+NO_INTERNAL_ROLES = ("read_only", "driver")
 MOTIF_MIN_LEN = 3
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -187,8 +188,8 @@ def lieu_label(lieu) -> Optional[str]:
 
 
 def strip_internal(doc: dict, role: str) -> dict:
-    """D6.3 — filtrage SERVEUR avant sérialisation : read_only ne reçoit jamais `notes_internes`."""
-    if role == "read_only":
+    """D6.3 — filtrage SERVEUR avant sérialisation : read_only et driver ne reçoivent jamais `notes_internes`."""
+    if role in NO_INTERNAL_ROLES:
         for k in INTERNAL_FIELDS:
             doc.pop(k, None)
     return doc

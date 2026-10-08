@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { AlertTriangle, ShieldAlert, CheckCircle2, RefreshCw, Flame } from "lucide-react";
 import { getFuelAnomalies, getVehicles, scanFuelAnomalies } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import { chfExact, dateFr } from "@/lib/format";
 import { errDetail } from "@/lib/fuelCards";
 import KpiCard from "@/components/KpiCard";
@@ -25,7 +26,7 @@ const ALL = "__all__";
 export default function FuelAnomaliesPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
-  const isAdmin = ["admin", "superadmin"].includes(user?.role);
+  const isAdmin = can(user, "anomalies.decide");
   const [params, setParams] = useSearchParams();
   const [type, setType] = useState(ALL);
   const [status, setStatus] = useState(ALL);

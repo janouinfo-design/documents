@@ -18,6 +18,7 @@ import DocRequirementsDialog from "@/components/documents/DocRequirementsDialog"
 import ManualFineDialog from "@/components/documents/ManualFineDialog";
 import { NoFileBadge, AttachFileButton, hasNoFile } from "@/components/documents/NoFileBadge";
 import { useAuth } from "@/context/AuthContext";
+import { can } from "@/lib/rbac";
 import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
 
 const ALL = "__all__";
@@ -25,7 +26,9 @@ const ALL = "__all__";
 export default function DocumentsPage() {
   const { user } = useAuth();
   const { openVehicle } = useVehicleDrawer();
-  const isAdmin = ["admin", "superadmin"].includes(user?.role);
+  const canFines = can(user, "fines.write");
+  const canWrite = can(user, "documents.write");
+  const canSettings = can(user, "documents.settings");
   const [searchParams] = useSearchParams();
   const [q, setQ] = useState("");
   const [qDebounced, setQDebounced] = useState("");
@@ -83,17 +86,23 @@ export default function DocumentsPage() {
             Bibliothèque documentaire de la flotte — {docs.length} document(s) affiché(s)
           </p>
         </div>
-        {isAdmin && (
+        {(canFines || canSettings) && (
           <div className="flex flex-wrap gap-2">
-            <Button data-testid="manual-fine-open-btn" size="sm" onClick={() => setFineOpen(true)} className="gap-1.5 bg-slate-900 hover:bg-slate-800">
-              <FileX2 className="h-4 w-4" /> Amende sans fichier
-            </Button>
-            <Button data-testid="manage-categories-btn" variant="outline" size="sm" onClick={() => setCatsOpen(true)} className="gap-1.5">
-              <FolderCog className="h-4 w-4" /> Catégories
-            </Button>
-            <Button data-testid="manage-requirements-btn" variant="outline" size="sm" onClick={() => setReqsOpen(true)} className="gap-1.5">
-              <ListChecks className="h-4 w-4" /> Documents requis
-            </Button>
+            {canFines && (
+              <Button data-testid="manual-fine-open-btn" size="sm" onClick={() => setFineOpen(true)} className="gap-1.5 bg-slate-900 hover:bg-slate-800">
+                <FileX2 className="h-4 w-4" /> Amende sans fichier
+              </Button>
+            )}
+            {canSettings && (
+              <>
+                <Button data-testid="manage-categories-btn" variant="outline" size="sm" onClick={() => setCatsOpen(true)} className="gap-1.5">
+                  <FolderCog className="h-4 w-4" /> Catégories
+                </Button>
+                <Button data-testid="manage-requirements-btn" variant="outline" size="sm" onClick={() => setReqsOpen(true)} className="gap-1.5">
+                  <ListChecks className="h-4 w-4" /> Documents requis
+                </Button>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -215,9 +224,9 @@ export default function DocumentsPage() {
                 <TableCell><DocStatutBadge statut={d.statut} /></TableCell>
                 <TableCell>
                   <div className="flex justify-end gap-1">
-                    <FinePaidButton doc={d} disabled={!isAdmin} />
+                    <FinePaidButton doc={d} disabled={!canFines} />
                     {hasNoFile(d) ? (
-                      isAdmin && <AttachFileButton doc={d} compact />
+                      canWrite && <AttachFileButton doc={d} compact />
                     ) : (
                       <button
                         onClick={() => window.open(fileUrl(d.storage_path, { download: true, filename: d.original_filename }), "_blank", "noopener")}
@@ -226,7 +235,7 @@ export default function DocumentsPage() {
                         <Download className="h-4 w-4" />
                       </button>
                     )}
-                    {isAdmin && (
+                    {canWrite && (
                       <button onClick={() => setEditDoc(d)} data-testid={`doc-page-edit-${d.id}`}
                         className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Modifier la fiche">
                         <Pencil className="h-4 w-4" />
