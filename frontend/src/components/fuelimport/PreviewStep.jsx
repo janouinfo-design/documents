@@ -65,7 +65,7 @@ export default function PreviewStep({ job, rows, isAdmin, onRows, onJob, onBack 
           )}
         </div>
       </div>
-      {(result || job.status === "confirmed") && <ImportResult result={result} job={job} />}
+      {(result || job.status === "confirmed") && <ImportResult result={result} job={job} rows={rows} />}
       <PreviewCounters counts={job.counts} rows={rows} active={filter === ALL ? null : filter} onSelect={(k) => setFilter((f) => (f === k ? ALL : k))} />
       <div className="flex items-center justify-between gap-2">
         <Select value={filter} onValueChange={setFilter}>

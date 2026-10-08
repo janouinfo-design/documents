@@ -34,17 +34,27 @@ def login(email, pwd):
 
 
 def fingerprint():
-    """Counts par (collection, tenant ≠ cible) + hash du contenu complet du tenant default."""
+    """Counts par (collection, tenant ≠ cible) + hash du contenu complet du tenant default (global + par collection).
+    `default_sha256_stable` exclut les champs volatils de `vehicles` écrits par le job horaire Navixy (updated_at, navixy_*, kilometrage)."""
     fp = {}
     colls = sorted(c for c in db.list_collection_names() if not c.startswith("system."))
     for c in colls:
         for row in db[c].aggregate([{"$match": {"tenant_id": {"$ne": TENANT}}}, {"$group": {"_id": "$tenant_id", "n": {"$sum": 1}}}]):
             fp[f"{c}|{row['_id']}"] = row["n"]
-    h = hashlib.sha256()
+    h, hs = hashlib.sha256(), hashlib.sha256()
     for c in colls:
+        hc = hashlib.sha256()
         for d in db[c].find({"tenant_id": "default"}, {"_id": 0}).sort("id", 1):
-            h.update(json.dumps(d, sort_keys=True, default=str).encode())
+            raw = json.dumps(d, sort_keys=True, default=str).encode()
+            h.update(raw)
+            hc.update(raw)
+            if c == "vehicles":
+                d = {k: v for k, v in d.items() if k != "updated_at" and k != "kilometrage" and not k.startswith("navixy_")}
+            hs.update(json.dumps(d, sort_keys=True, default=str).encode())
+        if db[c].count_documents({"tenant_id": "default"}):
+            fp[f"default_sha256|{c}"] = hc.hexdigest()[:16]
     fp["default_sha256"] = h.hexdigest()
+    fp["default_sha256_stable"] = hs.hexdigest()
     fp["tenants_ids"] = sorted(t["id"] for t in db.tenants.find({"id": {"$ne": TENANT}}, {"_id": 0, "id": 1}))
     return fp
 
@@ -203,10 +213,19 @@ def inventory():
 def verify():
     before = json.loads(BASELINE.read_text())
     after = fingerprint()
-    diff = {k: (before.get(k), after.get(k)) for k in set(before) | set(after) if before.get(k) != after.get(k)}
+    diff = {k: (before.get(k), after.get(k)) for k in set(before) | set(after) if before.get(k) != after.get(k) and k != "tenants|None"}
     print("default / autres tenants inchangés depuis la baseline :", "OUI" if not diff else f"NON {json.dumps(diff, indent=1)}")
     print("Hash default avant/après :", before["default_sha256"][:16], after["default_sha256"][:16])
-    print("Tenants (hors cible) avant/après :", before["tenants_ids"] == after["tenants_ids"])
+    if "default_sha256_stable" in before:
+        print("Hash default STABLE (hors champs volatils Navixy de vehicles) avant/après :", before["default_sha256_stable"][:16], after["default_sha256_stable"][:16],
+              "→", "IDENTIQUE" if before["default_sha256_stable"] == after["default_sha256_stable"] else "DIFFÉRENT")
+    print("Tenants (hors cible) avant/après :", before["tenants_ids"] == after["tenants_ids"], "| `tenants|None` = nombre de documents tenants (dont la cible) : ignoré")
+    print("Lot F dans default : card_id", db.fuel_transactions.count_documents({"tenant_id": "default", "card_id": {"$exists": True}}),
+          "· matches", db.fuel_transaction_matches.count_documents({"tenant_id": "default"}), "· anomalies", db.fuel_anomalies.count_documents({"tenant_id": "default"}),
+          "· jobs", db.fuel_import_jobs.count_documents({"tenant_id": "default"}), "· rows", db.fuel_import_rows.count_documents({"tenant_id": "default"}))
+    print("Baselines default : Migrol 74.17 =", db.fuel_transactions.count_documents({"tenant_id": "default", "montant": 74.17}),
+          "· facture 510.77 =", db.documents.count_documents({"tenant_id": "default", "montant": 510.77, "is_deleted": False}),
+          "· amende 120 =", db.documents.count_documents({"tenant_id": "default", "montant": 120, "is_deleted": False}))
     return not diff
 
 

@@ -24,7 +24,7 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - Backend: FastAPI + Motor (MongoDB). Tous les endpoints préfixés /api. Multi-tenant strict (`tenant_id` résolu depuis l'utilisateur authentifié, jamais du client).
 - Stockage: Emergent object storage (EMERGENT_LLM_KEY) ou local (`STORAGE_BACKEND`), références en base (collections files/documents).
 - Drawer véhicule partagé via VehicleDrawerContext (ouvrable depuis toutes les pages).
-- Modules backend : `server.py` (routes), `auth.py`, `storage.py`, `extraction.py` (OCR), `astra_data.py`, `legacy_identity.py` (Lot A), `nofile.py` (Lot B), `drivers.py` (Lot C), `fines.py` (Lot D), `fuel_cards.py` (Lot E), `reports.py`.
+- Modules backend : `server.py` (routes), `auth.py`, `storage.py`, `extraction.py` (OCR), `astra_data.py`, `legacy_identity.py` (Lot A), `nofile.py` (Lot B), `drivers.py` (Lot C), `fines.py` (Lot D), `fuel_cards.py` (Lot E), `fuel_import.py` / `fuel_matching.py` / `fuel_anomalies.py` (Lot F), `reports.py`.
 - Production : VPS Docker Compose + Nginx (`deploy/`) — déploiement UNIQUEMENT sur GO explicite utilisateur.
 
 ## User Personas
@@ -63,11 +63,18 @@ Spécification : `docs/PHASE4C_SPECIFICATION.md` (décisions figées). Livraison
 | C | Conducteurs / affectations datées / DriverPicker | **PASS FINAL / CLOS** (tenant test supprimé) |
 | D | Amendes : 10 statuts, paiement métier, pièces liées, `/amendes`, exports, enum `type_infraction` 8 valeurs | **PASS FINAL / CLOS** (tenant test supprimé) |
 | E | Cartes carburant : `fuel_cards` + `fuel_card_assignments`, `/energie/cartes`, `GET /api/fuel-cards/resolve` lecture seule | **PASS FINAL / CLOS** — checkpoint `8147c66`, tenant `lote-ui-test` **supprimé** (58 enregistrements, 0 résidu, `default` identique) |
-| F | Imports CSV/XLSX, `fuel_transactions.card_id`, matching transaction ↔ carte/véhicule, anomalies, scoring, warnings transactionnels | **NON AUTORISÉ** |
+| F | Imports CSV/XLSX (job → mapping → preview workspace → confirm idempotent), `fuel_transactions.card_id` (si `found` uniquement), matching transaction ↔ carte/véhicule scoré/explicable, anomalies D8 + décision motivée, warnings `CARD_INACTIVE` / `CARD_VEHICLE_MISMATCH`, corrections humaines (individuelle + groupée = N audits), UI Énergie `Imports` / `Transactions` / `Anomalies` | **PASS FINAL / CLOS** — 235 tests PASS, build PASS, testing agent it.45 ; tenant `lotf-ui-test` **CONSERVÉ** (inventaire dans CHANGELOG, cleanup sur GO) ; réserve : Docker non vérifiable dans la preview |
 | G | Rapprochement achats/consommation, CAN, statements, close/lock mensuel, exports énergie | **NON AUTORISÉ** |
 | H | Rôles `manager` / `driver`, vues chauffeur | **NON AUTORISÉ** |
 
 MIGRATION = NONE · DRY-RUN = NONE · DEPLOYMENT (Phase 4C) = NONE · 0 donnée Journal réelle lue ou migrée.
+
+## Décisions Lot F figées (réconciliation spec §6a.5 / §6a.15)
+- Scoring véhicule : `vehicle_id` explicite valide → **100 / `direct_vehicle_id` / auto** · carte unique `found` + exactement 1 affectation `vehicule` à la date + carte utilisable → **90 normatif / `card_assignment` / auto** (règle déterministe, pas une addition du barème ; breakdown `card_unique/assignment_at_date/assigned_vehicle_id/card_usable`) · carte inactive → jamais auto (−50, `matched_review`, `CARD_INACTIVE`) · ambiguïté → jamais auto · **plaque = 0 point, jamais auto-match** (revue humaine) · conducteur +20 (jamais suffisant seul) · carburant +10 / −40 · seuils tenant `score_auto=90` / `score_review=70`.
+- PREVIEW = 0 écriture métier finale (seuls `fuel_import_jobs` / `fuel_import_rows` [/ `fuel_import_mappings`] varient) ; CONFIRM = seule écriture métier, idempotente ; jobs/rows conservés (audit).
+- `CARD_INACTIVE` = (statut courant ≠ `active`) OU (`expire_le` renseignée ET `expire_le` < date transaction) — modèle `current_status_tx_date_expiration`, jamais via `audit_logs`. `CARD_VEHICLE_MISMATCH` = warning/anomalie, aucune substitution de `vehicle_id` / `card_id`.
+- Action groupée « Accepter les N propositions à candidat unique » = N décisions humaines, motif global obligatoire, N audits unitaires (`row_id`, `batch_id`, plaque source, avant/après), fail-closed si la ligne a changé.
+- D7 inchangé (document = coût, `pending_fx` exclu) · D8 inchangé (anomalies recalculées par Documents ; legacy `justified` repris uniquement si redétecté même transaction/type ; `issues[]` jamais anomalies) · aucun HMAC Journal (dédup `dedup_key` propre à Documents).
 
 ## Dette acceptée (hors lots)
 - Overlay dev CRA « ResizeObserver loop » (dev only, build PASS, 0 bug fonctionnel).

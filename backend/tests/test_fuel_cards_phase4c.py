@@ -493,7 +493,8 @@ class TestResolveRbacIsolation:
         after = {"cards": _mongo().fuel_cards.count_documents({}), "asg": _mongo().fuel_card_assignments.count_documents({}),
                  "audit": _mongo().audit_logs.count_documents({}), "ftx": _mongo().fuel_transactions.count_documents({})}
         assert before == after  # aucune écriture provoquée par resolve
-        assert _mongo().fuel_transactions.count_documents({"card_id": {"$exists": True}}) == 0
+        # resolve (lecture seule) n'écrit jamais card_id ; portée tenant du test (le Lot F, autorisé depuis, écrit card_id via import/validation)
+        assert _mongo().fuel_transactions.count_documents({"tenant_id": {"$in": [TENANT_A, TENANT_B]}, "card_id": {"$exists": True}}) == 0
 
     def test_20_read_only_lecture_200_mutations_403(self):
         cid = _S["c1"]

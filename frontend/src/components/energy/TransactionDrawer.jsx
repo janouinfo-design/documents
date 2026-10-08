@@ -90,7 +90,7 @@ export default function TransactionDrawer({ txId, onOpenChange }) {
             <Section icon={CreditCard} title="Carte" testId="fuel-transaction-section-card">
               <Row k="Carte lue (fichier)" v={tx.carte_last4 ? `••••${tx.carte_last4}` : null} />
               <Row k="Résolution" v={`${tx.card_resolution?.status || "—"}${tx.card_resolution?.level ? ` (${tx.card_resolution.level})` : ""}${tx.card_manual ? " · décision manuelle" : ""}`} testId="fuel-transaction-card-resolution" />
-              <Row k="card_id" v={tx.card_id} testId="fuel-transaction-card" />
+              <Row k="card_id" v={tx.card_id ? <>{tx.card?.label ? <b>{tx.card.label}</b> : null}<span className="ml-1 font-mono text-[11px] text-slate-500">{tx.card_id}</span></> : null} testId="fuel-transaction-card" />
               {tx.card && (<>
                 <Row k="Carte" v={tx.card.label} testId="fuel-transaction-card-label" />
                 <Row k="Statut courant" v={`${cardStatusLabel(tx.card.statut)}${tx.card.expire_le ? ` · expire le ${dateFr(tx.card.expire_le)}` : ""}`} />

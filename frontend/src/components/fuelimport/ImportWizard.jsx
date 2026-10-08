@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { getFuelImport, getFuelImportRows } from "@/lib/api";
+import { errDetail } from "@/lib/fuelCards";
 import UploadStep from "./UploadStep";
 import MappingStep from "./MappingStep";
 import PreviewStep from "./PreviewStep";
@@ -13,18 +15,30 @@ export default function ImportWizard({ jobId, isAdmin, onJobChange }) {
   const [job, setJob] = useState(null);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const [forceMapping, setForceMapping] = useState(false);
   const loadRows = async (id) => { const r = await getFuelImportRows(id || job.id); setRows(r.items); return r.items; };
   useEffect(() => {
     let alive = true;
     setForceMapping(false);
+    setLoadError(null);
     if (!jobId) { setJob(null); setRows([]); return undefined; }
     setLoading(true);
-    Promise.all([getFuelImport(jobId), getFuelImportRows(jobId)]).then(([j, r]) => { if (alive) { setJob(j); setRows(r.items); } }).finally(() => alive && setLoading(false));
+    Promise.all([getFuelImport(jobId), getFuelImportRows(jobId)]).then(([j, r]) => { if (alive) { setJob(j); setRows(r.items); } })
+      .catch((e) => { if (alive) { setJob(null); setRows([]); setLoadError(e?.response?.status === 404 ? "Import introuvable dans ce tenant (404)." : errDetail(e, "Impossible de charger cet import.")); } })
+      .finally(() => alive && setLoading(false));
     return () => { alive = false; };
   }, [jobId]);
   const step = !job ? "upload" : forceMapping || job.status === "mapping" ? "mapping" : job.status === "confirmed" ? "confirm" : "preview";
   const stepIdx = STEPS.findIndex(([k]) => k === step);
+  if (loadError) {
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700" data-testid="fuel-import-load-error">
+        <p>{loadError}</p>
+        <Button variant="outline" size="sm" onClick={() => onJobChange(null)} data-testid="fuel-import-load-error-back">Retour à la liste</Button>
+      </div>
+    );
+  }
   return (
     <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm" data-testid="fuel-import-wizard">
       <ol className="flex flex-wrap gap-2" data-testid="fuel-import-steps">

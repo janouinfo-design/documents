@@ -4,7 +4,9 @@ Backlog priorisé. Rien ici n'est autorisé sans GO explicite de l'utilisateur (
 
 ## P0 — Phase 4C, lots restants (ordre spec)
 1. ~~Nettoyage `lote-ui-test`~~ — FAIT (clôture technique Lot E, 0 résidu).
-2. **Lot F — Transactions carburant ↔ cartes** : imports CSV/XLSX, écriture `fuel_transactions.card_id` (décision humaine en cas d'`ambiguous` via `GET /api/fuel-cards/resolve`), matching transaction ↔ carte/véhicule, anomalies, scoring, warnings transactionnels `CARD_VEHICLE_MISMATCH` / `CARD_INACTIVE`.
+2. ~~**Lot F — Transactions carburant ↔ cartes**~~ — **LIVRÉ, PASS FINAL / CLOS** (voir CHANGELOG « LOT F LIVRÉ ») : imports CSV/XLSX (job → mapping → preview workspace → confirm idempotent), `fuel_transactions.card_id` uniquement si `found`, scoring explicable (100 direct / 90 card_assignment / plaque 0 jamais auto), `CARD_INACTIVE` (statut courant OU `expire_le` < date tx), `CARD_VEHICLE_MISMATCH` sans correction, anomalies D8 + décision motivée, corrections humaines individuelles/groupées (N audits), UI Énergie `Imports` / `Transactions` / `Anomalies`.
+   - **Reste à faire (hors preview)** : nettoyage du tenant `lotf-ui-test` sur GO explicite (`test_reports/lotf_seed.py` inventory/verify ; script de cleanup à écrire sur le modèle `lote_cleanup.py`) ; **validation Docker** du `backend/Dockerfile` (COPY des 4 modules Lot F) dans un environnement Docker-capable : build, start, healthcheck, import `fuel_cards/fuel_import/fuel_matching/fuel_anomalies`.
+   - **Limites documentées** : `CARD_INACTIVE` utilise le statut déclaré **courant** (pas d'historique effectif-daté du statut → modèle dédié si besoin) ; `depassement_reservoir` muet pour l'électrique (pas de capacité batterie dans le modèle) ; pas de rapprochement achats/consommation ni statements (Lot G).
 3. **Lot G — Rapprochement énergie** : achats vs consommation, CAN, statements fournisseurs, close/lock mensuel, exports énergie complets.
 4. **Lot H — Rôles `manager` / `driver`** : matrice RBAC étendue (`require_roles`), vues chauffeur.
 5. **Dry-run migration Journal → Documents** (après F/G/H) : extraction lecture seule, mapping via `legacy_vehicle_map` confirmée, import `legacy_import` idempotent — nécessite un mécanisme d'import d'états terminaux d'amendes (faits de paiement/motif d'origine) séparé des actions interactives.
@@ -20,5 +22,5 @@ Backlog priorisé. Rien ici n'est autorisé sans GO explicite de l'utilisateur (
 - Sous-onglets contextuels / fil d'Ariane / recherche globale (Phase 2 nav, à valider).
 
 ## P3
-- Refactor `server.py` (7 300 lignes) en routers par module ; upload async.
+- Refactor `server.py` (8 100 lignes) en routers par module ; upload async.
 - Overlay dev CRA « ResizeObserver loop » (cosmétique, dev only).

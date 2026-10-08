@@ -124,7 +124,7 @@ def teardown_module():
     for tenant in (TENANT_A, TENANT_B):
         for coll in ("users", "vehicles", "documents", "files", "audit_logs", "alerts", "vehicle_field_meta",
                      "tenant_integrations", "doc_categories", "doc_requirements", "tenant_settings",
-                     "fuel_transactions"):
+                     "fuel_transactions", "fuel_transaction_matches", "fuel_anomalies"):  # Lot F : hook validation
             db[coll].delete_many({"tenant_id": tenant})
         db.tenants.delete_many({"id": tenant})
 
