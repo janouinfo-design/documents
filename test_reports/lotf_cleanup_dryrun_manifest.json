@@ -1,0 +1,443 @@
+{
+ "tenant": [
+  {
+   "id": "lotf-ui-test",
+   "name": "Lot F UI test"
+  }
+ ],
+ "users": [
+  {
+   "id": "5f8526e7-23a0-4365-b2b7-572cc1af7db8",
+   "email": "lotf-admin@lotf-ui-test.ch",
+   "role": "admin"
+  },
+  {
+   "id": "100f194c-6d28-4c6a-8c98-44984bf54678",
+   "email": "lotf-ro@lotf-ui-test.ch",
+   "role": "read_only"
+  }
+ ],
+ "vehicles": [
+  {
+   "id": "0843136c-18e2-4820-a911-615646cbf630",
+   "plaque": "TI 600 009"
+  },
+  {
+   "id": "0b232221-9bba-40f6-8fc4-fd90f01acc15",
+   "plaque": "FR 600 004"
+  },
+  {
+   "id": "27381164-c776-4b75-9d22-beb842209b45",
+   "plaque": "TI600009"
+  },
+  {
+   "id": "2d08c925-2686-4266-8892-9277127c4fe2",
+   "plaque": "GE 600 002"
+  },
+  {
+   "id": "5bb09b00-79cf-4f37-a243-b6af51fd2ada",
+   "plaque": "VD 600 001"
+  },
+  {
+   "id": "9cd7564f-2f34-4542-b34f-85262299edfe",
+   "plaque": "VS 600 003"
+  },
+  {
+   "id": "ff8012af-e20d-4925-983f-a7c8631b960f",
+   "plaque": "NE 600 005"
+  }
+ ],
+ "drivers": [
+  {
+   "id": "f3ae42f9-bd43-453c-b973-8463fa7fe803",
+   "nom": "Julien Favre"
+  }
+ ],
+ "driver_assignments": [
+  "fb2c3ba0-50ad-4652-8335-5ca3d0e3b9fc"
+ ],
+ "fuel_cards": [
+  {
+   "id": "2c1283b6-ee38-440f-aae3-c6162ff73d53",
+   "carte": "Shell ••••2222",
+   "statut": "active"
+  },
+  {
+   "id": "6efb2ea4-8ff8-4b28-9b36-d8dbc6aa1f49",
+   "carte": "Shell ••••2222",
+   "statut": "active"
+  },
+  {
+   "id": "7b04e635-dc75-4469-b42c-230aaa478be9",
+   "carte": "Ionity ••••7777",
+   "statut": "active"
+  },
+  {
+   "id": "9dd5492b-4382-4d1c-b43f-79a1e20bac8a",
+   "carte": "Migrol ••••9999",
+   "statut": "active"
+  },
+  {
+   "id": "addd17d0-fc68-4b65-a256-130cc8de03a0",
+   "carte": "Migrol ••••4444",
+   "statut": "active"
+  },
+  {
+   "id": "c5c532f1-8f8d-4145-a308-d4d819fbffa1",
+   "carte": "Migrol ••••3333",
+   "statut": "suspendue"
+  },
+  {
+   "id": "e0ac781d-d9d6-4a55-95af-d42d1b0ddaa1",
+   "carte": "Migrol ••••1111",
+   "statut": "active"
+  }
+ ],
+ "fuel_card_assignments": [
+  "03308250-3dd2-4fc8-92ef-60fef906d985",
+  "0efb309c-f41f-4d38-b189-0acd061b4321",
+  "5114b250-6970-49ec-a1cf-4e3bb19de674",
+  "83d4b3fa-a55d-44e7-b94a-9f889e85ae22",
+  "c14a2f25-55c8-4a82-b3ed-0abbbda90c56",
+  "d80d0d9e-3b3b-4292-83fb-e9fe04dbcd0e",
+  "fb8eb15a-c158-4975-9800-88011375fcc1"
+ ],
+ "fuel_import_jobs": [
+  {
+   "id": "5c414b3c-9b66-44f2-9329-4a01f2704744",
+   "filename": "lotf_releve_juillet.xlsx",
+   "status": "preview",
+   "rows": 7
+  },
+  {
+   "id": "6d975c64-c4f7-402c-ad42-22a31468d593",
+   "filename": "lotf_releve_mai.csv",
+   "status": "confirmed",
+   "rows": 9
+  },
+  {
+   "id": "8e5e237c-cae0-4c9e-ba19-efc1fac09c3f",
+   "filename": "lotf_releve_juin.csv",
+   "status": "mapping",
+   "rows": 18
+  },
+  {
+   "id": "a5027c21-adc0-4b6e-a525-85bf869edbd6",
+   "filename": "lotf_releve_juin.csv",
+   "status": "preview",
+   "rows": 18
+  },
+  {
+   "id": "a6356d92-1ea0-4046-826c-717381185798",
+   "filename": "lotf_releve_juin.csv",
+   "status": "confirmed",
+   "rows": 18
+  }
+ ],
+ "fuel_import_rows": [
+  "02955559-1420-41d1-941d-160afae2c08a",
+  "02f45f93-8ff6-4b20-9c3c-9e625d14e0c9",
+  "0409e9f6-3794-475b-9379-72956f67b4bc",
+  "07042a0a-8a9b-440b-80be-332571405790",
+  "1571a939-d25d-4c63-9485-b9a3a363210a",
+  "172b63f9-e2d8-441b-8723-dbe3685bf04b",
+  "217ab219-865d-4a00-8c7e-f2389ec0d238",
+  "22784f77-4647-4573-9cb2-6a809ae0bb96",
+  "23523640-ad6f-4880-b7b1-ad9d16b97f8c",
+  "24a4136c-4ed8-4dcf-afcb-5d94c441c813",
+  "28571b89-f49c-475c-89ab-efd04c8a7fef",
+  "29f51e1d-0998-4204-9e41-7b2d65ca96af",
+  "2c27dbe8-194f-4370-9bfc-ed706cf549dd",
+  "3069c4e8-9850-4396-a1d5-f9ce109e5570",
+  "323e4b8f-ce21-4139-850a-ab7d177d163b",
+  "350383dc-7aa9-4dd1-b0b4-ef6aa36c2688",
+  "3647230b-b339-4f60-9abf-b7123b8b85b7",
+  "36bdb06e-3084-43c2-a53d-7d6491a98f49",
+  "3764f463-b65a-4271-934d-7e7325d73745",
+  "37c3a288-fffe-4afb-ab9a-3fa390bff72a",
+  "38bf33d0-293e-45ab-9433-653ef3626045",
+  "3ed50288-3094-4ff3-bbfe-412336f9e264",
+  "44102ae7-747c-492b-bbcf-31617175b937",
+  "4e56d93f-64b4-4741-8c1f-c6500fa4e15b",
+  "51dff24f-1604-4d37-b984-440a21159076",
+  "527d2d9f-65c4-4959-86b4-1d0d8f06944a",
+  "539ffb0d-a3f1-4867-b3c5-758f69c00f83",
+  "568fc8c4-7a38-423d-b357-f019081b80e8",
+  "57df0975-2d74-4d6e-8c81-f0e2d4cb7e9d",
+  "58d7a17e-31fc-4169-8d0d-dbc92bb74411",
+  "5911ee7f-f23d-481c-94c0-e9a2caaa143f",
+  "6382ff52-8cda-4f9a-b441-0d79e467dd55",
+  "6d821b2e-a86c-47d3-a8d0-313e0ad62c09",
+  "6fda9124-ce87-49e4-a272-d53446e9fd38",
+  "710b635b-b554-4a91-aa88-45590dae9de1",
+  "711d6573-cde4-4cfe-af5b-f89d12d81b8e",
+  "729599b8-3cf5-4446-b939-4bebf6753fef",
+  "72afb191-712c-4d84-8188-a858591db28e",
+  "76622148-77ff-4585-9589-567b6fadfbfc",
+  "7a66cc9c-e05a-401f-9a2e-e4e469aadf4c",
+  "7b91428c-2a3d-4ade-8f3f-3bc1062c8ae0",
+  "7d0820d6-d07e-406e-9c63-c2ae94f37e4f",
+  "84ab8824-c74d-4b51-9073-e4d695347a5b",
+  "85c3aac1-18cd-48d0-94a5-68b1764d4557",
+  "8b0b3af3-289b-438a-b67d-b9d5a73a7548",
+  "8e4286da-1ebd-43f9-ba32-63c37bebee93",
+  "9471e280-1818-44f3-9f09-4cd9a0237332",
+  "9aef3be4-92e9-4d60-b19d-049dd3ef8931",
+  "a53320b5-0e86-4a14-9c2a-8888f445096c",
+  "a688225c-0393-4dce-83f6-fa5b4b82fa8c",
+  "aca5af98-b456-4800-bda8-2eae3091835e",
+  "b293a723-30f1-4a53-a0ab-8a5c29089000",
+  "b6a6d2c7-20e9-456e-94e8-e0f51ed26e41",
+  "bc148d50-1998-4b6f-a684-5dd4c9f37e48",
+  "bf2608d3-b414-4233-a4bb-0f63abead1c9",
+  "c11b357e-d10d-48db-94e5-cef6b60baa82",
+  "c71ea25f-839c-4e24-a937-258bcdd98424",
+  "d372d36f-dde6-42ee-a933-1019fee698ac",
+  "d6be69c7-18e5-4675-bf15-63d31f17ffcf",
+  "e129c70b-9981-4cef-89d3-a4074c2b5bd0",
+  "e15a4723-bfb7-4408-b8a3-08a87bda44fb",
+  "e2361554-692e-44dc-b5b8-9cf89c3264fd",
+  "e431c1de-0b2c-4c1c-90df-ec6c410f4833",
+  "e4fcd601-d1dc-473d-b9f3-69782f84f869",
+  "e5d6552f-30d0-4996-a69f-9959aa53b4bb",
+  "e61fa224-76e1-4493-98f1-78752582cb79",
+  "e928e5ab-672e-49d7-9758-03a40c71f3e0",
+  "eb759bec-7209-4539-b6e2-722978c2a085",
+  "ef85be79-46b2-47ff-a738-ac55f3cb812c",
+  "fea7dc4c-c6fb-44dd-8e08-7ab5421197b3"
+ ],
+ "fuel_import_mappings": [
+  "40d480c0-3ae8-48a3-bd54-8361324e30ce"
+ ],
+ "documents": [
+  "020478c1-0946-4039-9cf0-1d107b7063f6",
+  "479a71a0-993f-4a9d-999a-09705e55331f",
+  "0469ca8e-682f-48a1-9f61-8af440cba522",
+  "65be5692-7fbd-417d-a403-4925800d21f6",
+  "d0448ef5-ce17-4e35-bf5f-e02cd4e5c6b0",
+  "5a0b78de-f2f9-40b7-9fea-666eabaf106d",
+  "ec32589f-c4f0-4680-9e2e-a01fb9dd9d46",
+  "106ee58e-a12e-43af-b1f5-6746660a1732",
+  "249cd6ec-a183-49c8-b8d0-798f20fd9f08",
+  "e171e0d4-ec9e-45ea-bf8f-d8138c95bd90",
+  "0d1640b5-0c34-49f7-90e6-bd646ddf24f3",
+  "81e33100-5133-4bd7-8f11-c289000aed09",
+  "d16e62f4-c7c7-4ea5-b8dc-8e52b1010476",
+  "4f6613b5-8273-4a0d-a6d8-3c953ca94b2d",
+  "46f9825b-1dd4-4105-825d-59a8a9b4a12f",
+  "51abbad8-8f36-4eae-aee0-8130735e6acf",
+  "c4551d07-ec67-4dfc-bbe9-d1d13f2ca016",
+  "dacf33c2-89c5-4688-8592-6b8f5257350b",
+  "af41f192-b685-4f11-aea8-854cf67bb99b",
+  "1458cf64-62e8-4d6a-bc0f-fefde17ffd14",
+  "ee20ecd5-fcc2-4e3c-8eea-c31c1385fd9d",
+  "b25bd3df-84d2-4e3b-b8bd-55a1089d5fe4"
+ ],
+ "fuel_transactions": [
+  "9c3c6c8b-c8a9-4962-8ab7-d926712d5d26",
+  "3bcc8d3e-3f2b-4e65-a633-273b19d4fcc9",
+  "f2dc5318-a7f8-490d-ba41-811715749c49",
+  "021ef011-9fc0-42f8-a955-62371282253b",
+  "a75f040e-0e36-4ab1-8556-2e89b095ba14",
+  "009e12a3-5658-4ce9-8e50-c5ef6fcedbc5",
+  "a870723b-87ce-4970-92b5-2387bf597db6",
+  "14eae072-3859-4697-b9ef-8aaaf03af383",
+  "cac5d680-c203-4d78-8ebb-f9c362d554c5",
+  "34683b41-eb38-487c-94f3-5211f96497cf",
+  "0ce09401-f358-4451-8fdc-19f2fbc1e52f",
+  "68d735d8-268c-4e36-81e8-ff3a550ef431",
+  "a7b39213-276b-4146-90a9-d8aa19d8fe30",
+  "08b28d31-3ba6-4989-abef-1f39cbd84025",
+  "91cc81f4-c069-4ebc-847c-634fb95cead6",
+  "5171ada1-0243-4ad4-99d6-d692727b436f",
+  "4bcb9c08-6fce-49c0-9815-f51ac769ae90",
+  "695cc2f1-19f6-4967-841d-5269663de699",
+  "e00ea1b5-cef4-4dd2-b51b-f5e202b62679",
+  "c8de6641-e5a9-4f1b-9db7-e606f4129e60",
+  "199b47c8-a62c-4be8-b433-b294912384e5",
+  "9ab1f2a3-62ab-4ba4-929c-6461bd612c66"
+ ],
+ "fuel_transaction_matches": [
+  "488ab395-3ed0-4965-b760-003936153739",
+  "fe91114c-f82f-4265-b9da-2324e37b36f1",
+  "c997d6f1-c0bd-4090-81cb-5187a0536ea1",
+  "7e1a76da-ed5b-4a4b-9f54-9edf193452cd",
+  "a199d7d8-9a0b-49eb-99e8-561a7ab799c4",
+  "ead34877-107f-42dc-80ae-3dab3703bfbb",
+  "a8dfad2b-a441-4c74-8ab3-18c719ff6882",
+  "7030ea03-f849-49e0-8f9c-4f807278d8fd",
+  "5743815f-93fe-4c58-89ce-529bcfae9291",
+  "6768d238-bb46-4d4d-b74e-a8ca1b952eb4",
+  "a5d33dae-00e1-4f7f-8734-18d8fbfadc5e",
+  "13f979f0-120a-4851-adf1-fe0e5047ae27",
+  "16a8333b-0deb-4da9-b41b-90be28fc98c2",
+  "2dee5be5-89a6-4875-b53c-7ddb146988e4",
+  "26120441-5d08-4644-9417-24620eb16d0d",
+  "dcac688a-fa96-42c6-9f90-61f6f778df89",
+  "a7225305-8214-433c-94be-d3d421380556",
+  "457a228d-1b7b-494f-9dec-0b3ae2f1cb25",
+  "d491fa54-54f7-4f08-84ef-73a2b55eca7f",
+  "63f01d3e-8839-44d7-af1c-98881e0bd6d5",
+  "315436f5-64b6-49aa-9f38-d2b3b86a18c9",
+  "a8322264-8c9d-4ce3-9930-f683a2f686ef"
+ ],
+ "fuel_anomalies": [
+  {
+   "id": "a05ee29f-3187-4dc9-8554-9f379bfa918f",
+   "type": "carte_inactive",
+   "status": "ouverte"
+  },
+  {
+   "id": "38fae67c-a9e4-4502-9cf1-480f028d1b6b",
+   "type": "carte_vehicule_different",
+   "status": "ouverte"
+  },
+  {
+   "id": "57a17cb1-5d5a-4f1e-ac80-52339e1295bd",
+   "type": "double_plein",
+   "status": "ouverte"
+  },
+  {
+   "id": "9b8a4449-59fc-4727-a089-1defd316a8d0",
+   "type": "incoherence_montant",
+   "status": "justifiee"
+  },
+  {
+   "id": "6f55a2cb-69ea-4af9-9eda-9704721591ad",
+   "type": "incoherence_montant",
+   "status": "justifiee"
+  },
+  {
+   "id": "9b7247b3-e99a-48b6-9579-c9441868b264",
+   "type": "carte_vehicule_different",
+   "status": "ouverte"
+  },
+  {
+   "id": "90db31c0-14e6-4f06-bd01-72abff889322",
+   "type": "double_plein",
+   "status": "ouverte"
+  },
+  {
+   "id": "08b67d28-92a4-41c7-a20f-8cc87a7c4a7e",
+   "type": "carte_inactive",
+   "status": "ouverte"
+  },
+  {
+   "id": "1147720a-17a9-4510-b023-78bdc2242d63",
+   "type": "carte_inactive",
+   "status": "ouverte"
+  },
+  {
+   "id": "0bc111a6-44af-44a9-b5a6-ee75d996d9d6",
+   "type": "double_plein",
+   "status": "ouverte"
+  },
+  {
+   "id": "7784b384-4947-423f-b886-a025d567d727",
+   "type": "double_plein",
+   "status": "ouverte"
+  },
+  {
+   "id": "1f501512-8e41-4fde-9a55-54b46f1c6d49",
+   "type": "carte_inactive",
+   "status": "ouverte"
+  }
+ ],
+ "audit_logs": [
+  "98e49788-7f48-4117-b86d-0e1d905ad170",
+  "2a8becca-1d3a-4966-ac67-3ca075bb8c91",
+  "4b898b3f-0335-4ccf-ac0d-5cee2dce67e8",
+  "1fb85d22-6b62-485f-8ea3-f519c96b1eda",
+  "f99e2e2c-5705-4e18-9a2a-12d1f26bf14c",
+  "97e58368-55b4-47b4-be6b-c3129e6ce291",
+  "91fc481a-1cd7-4ace-b686-ce9ddf45e9ea",
+  "b1c4c73b-d862-42fc-807b-629cf4d34d04",
+  "0cec88b1-3a89-4f09-ac94-85ee536e3f1c",
+  "8094912c-f2bd-4405-8a3f-b8973dcf3913",
+  "83271ada-584b-4e4f-b2cb-35d31e6a804f",
+  "e2feb0c2-b30f-43e6-a5da-4cc42c5e9257",
+  "53af7765-af5c-410d-b907-9e359ddb60b6",
+  "ca217966-8754-4719-8037-11adf0af9db9",
+  "80519468-4bfb-4cf1-b79f-c385339cc835",
+  "c8db2d01-45be-40a8-906a-81ceec28f895",
+  "7461bdc9-3f44-4190-835d-aeeadacd23b1",
+  "60b9a38d-688a-4ea6-985f-88a9ac8d8b01",
+  "cb1f9cd2-fe94-4014-81f9-ac02abd17030",
+  "724a3734-25ef-4763-8b02-f62cdfd9d3f7",
+  "15e6b550-6974-47ad-aad2-dbfd874cc571",
+  "fd679b15-c668-4fb1-b90b-ad38179888ab",
+  "fd082e78-31f9-4a69-b9bb-2a128724d859",
+  "fcec0e2b-4e74-4c39-b05e-a5735ced476d",
+  "70e37951-6db2-4571-b103-f9f980ac38b0",
+  "5256940b-7531-4a1d-ba43-3f81669ff1d8",
+  "a281fb4c-04cd-4ae8-995c-92a3fa5168fa",
+  "77b3d989-4c4e-4863-85dc-55105cfa5dd1",
+  "e2757f46-e305-442d-82ca-6199798137d1",
+  "1213cdc4-683f-4c2c-92bc-1793fbdf23e1",
+  "5b6ba8dc-7fd2-497b-9229-68b33cb1ea22",
+  "63711970-a7af-431e-8031-0c633b97f7f8",
+  "b0677eef-8cec-4ae3-aa74-ee8e6612a2fe",
+  "119f069b-81a1-4d6b-bbf1-49145ac8b187",
+  "6980023c-4aee-45e7-94ce-61b5af5957d1",
+  "f53c3b6d-700d-4794-91c2-e86d9aa8d186",
+  "a45e9c6b-0184-4bc1-b139-2be02b07f49a",
+  "81b2f7ad-b821-4f7f-99f5-83eda80d69e2",
+  "cb0ddee0-86aa-4829-8533-b15e764435b3",
+  "55ed8256-f999-4c4f-b906-cc31cacc1307",
+  "46d3aa68-768f-4bc3-a5c0-e6f3be9ff4ba",
+  "698ef1b5-4a98-49fa-a460-4ff8d6467262",
+  "0d1a431f-ed48-48ce-a906-1519bde584a4",
+  "06b4896e-d408-4133-8453-1d6241acea73",
+  "d7423605-9cd8-4506-8348-8c3eac6cbc80",
+  "61a0bfa4-e2ff-4381-8de9-dfe149467508",
+  "a32b2e99-5aa0-4620-9808-bbfdb0ed84db",
+  "e32ed8df-7cc2-4a2b-b9a3-bc0df953f20e",
+  "51c118e4-942c-4d97-a9e0-845feef79941",
+  "d9f30d62-4b28-4c2a-b384-3cf13ca3d4eb",
+  "02ed7cdb-578c-4255-b77a-2756c4b643a4",
+  "4ac75385-c762-4606-91db-4107860685c2",
+  "cfcf7399-b8e2-4b06-bb07-02d6d370a0fc",
+  "f5dfa1f5-fd08-415d-a4cb-14a0b5b97d8c",
+  "3466399d-230a-4103-87b3-2f837c23e181",
+  "fd0f8eb8-7308-4bb8-8c36-a3c474528efd",
+  "46561bbe-e4c5-44d4-a194-be21203c758d",
+  "6b9ef9f7-63ad-4b3d-8ab6-605aa9e906bf",
+  "e489ae30-4533-442f-874b-2d378548a752",
+  "bda44210-56e1-4d7b-8b09-53ea6cef96ca",
+  "d1ccc514-240c-4bcc-8a58-936087576684",
+  "3a09ea58-f772-45ce-b5f3-25041fbcf6c4",
+  "6ec2f8ab-c18b-4b36-bd42-93477aad24fd",
+  "71effd33-9a27-43f8-92d6-5bc069e4b967",
+  "562d77f2-5c2a-4548-b22f-792f53323a8d",
+  "4b973f8c-416f-4fc3-914a-adf51ded7710",
+  "9182622e-43c2-483f-b116-f508774cb611",
+  "32fdd8b3-4288-44b7-9c3a-a417e614b729",
+  "a952eb2d-64d5-473c-9e64-97881b00cae2",
+  "18ab693b-98fe-45b2-ba19-be898a2b1830",
+  "51bc2b57-2f32-454d-a216-01a885e2cf13",
+  "3385f7d3-ae14-4dc9-b385-5092fea6f56b",
+  "0242a878-fe7c-4264-ba52-61a9986642e1",
+  "f93ae6a5-8703-45d4-b79d-e99a71d1981a",
+  "6564f6e7-f638-4f77-ad67-35a2018524c5",
+  "bfa2b628-5897-44c8-87ea-78b17df6385c",
+  "3af6dece-bb54-4b92-8962-f787aa56afe1",
+  "9901583c-defb-40d7-93df-cd9c60ab4def",
+  "1d6ace4d-5a01-4c79-9392-292b0a7ab365",
+  "d1250c15-c9a9-4990-af3c-3799efaa4749",
+  "0ac5b70b-4d7a-4542-8525-7575dd484b11",
+  "3d4eb252-39b0-44f7-801e-3ce6c867c328",
+  "92877ae8-1c01-48b5-b4e8-10de4dbb8575",
+  "bc6576e1-63f6-48dd-a991-e04ad0b460db",
+  "45fcd645-57a9-471c-bbb1-8a3eb057ff38",
+  "07e359dd-c336-4e8a-b442-23d4ad07d174",
+  "84f6a964-5b0c-48a2-8b86-9bf4981897a7",
+  "bc09e24d-f2d2-4e66-9353-3c6b03834004",
+  "34e301f0-1d4f-479d-b69a-1cacd4997103",
+  "1c05fe41-15bd-4824-87e4-406262ae6282",
+  "61fbc8ca-c519-4b6f-b473-d18a123dd563",
+  "b7c6cff5-b07d-4391-a538-3e9d0300bcd1",
+  "87bb5766-11cb-4813-87d5-ce6bf3d23ab3"
+ ],
+ "vehicle_field_meta": 1,
+ "autres_collections_avec_tenant_id": {}
+}

@@ -102,6 +102,21 @@ docker run --rm -v logitrak-fleet_storage_data:/data -v $PWD:/out alpine \
   tar czf /out/storage_$(date +%F).tgz -C /data .
 ```
 
+### Validation du conteneur backend avant mise à jour (clôture Phase 4C — Lot F)
+Le `backend/Dockerfile` copie désormais les modules `fuel_cards.py`, `fuel_import.py`, `fuel_matching.py`, `fuel_anomalies.py`.
+Avant tout `docker compose up -d --build`, validez l'image **sans toucher au stack de production** (image `:validate`, Mongo
+éphémère, réseau/conteneurs `logitrak-validate_*`, base jetable, compte superadmin jetable — rien n'est écrit dans `logitrak-fleet_*`) :
+```bash
+bash deploy/validate-backend-docker.sh          # KEEP=1 pour conserver les conteneurs et lire `docker logs logitrak-validate_backend`
+```
+Contrôles effectués : build de l'image · présence des 15 fichiers Python · imports de tous les modules Lot A-F + `server`
+(0 `ModuleNotFoundError`) · démarrage uvicorn (« Application startup complete », aucun `Traceback`) · smoke sur des GET existants
+non destructifs : `/api/vehicles` sans jeton → 401, login superadmin → 200, `/api/fuel-cards`, `/api/fuel/import-fields`,
+`/api/fuel/imports`, `/api/fuel/anomalies`, `/api/tenant-settings/fuel` (`score_auto=90`, `score_review=70`), `/api/energy` → 200,
+job d'import inconnu → 404. Verdict final : `DOCKER BACKEND VALIDATION = PASS|FAIL` (code retour 0/1 ; 3 = Docker absent).
+Note : il n'existe pas encore d'endpoint `GET /api/health` dédié — le smoke s'appuie sur le contrat existant (401 sur route protégée + login).
+
+
 ## 8. OCR / analyse de documents (Claude)
 1. Renseignez `ANTHROPIC_API_KEY` (console.anthropic.com) dans `.env`
    (ou `EMERGENT_LLM_KEY` en secours).
