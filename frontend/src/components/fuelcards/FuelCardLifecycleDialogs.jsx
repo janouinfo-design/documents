@@ -65,6 +65,7 @@ export function FuelCardArchiveDialog({ card, open, onOpenChange, onDone }) {
   const [motif, setMotif] = useState("");
   const [busy, setBusy] = useState(false);
   const restoring = !!card?.is_deleted;
+  const tid = restoring ? "fuel-card-restore" : "fuel-card-archive"; // testids distincts archivage / restauration
   useEffect(() => { if (open) setMotif(""); }, [open]);
   const submit = async () => {
     setBusy(true);
@@ -79,7 +80,7 @@ export function FuelCardArchiveDialog({ card, open, onOpenChange, onDone }) {
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md" data-testid="fuel-card-archive-dialog">
+      <DialogContent className="max-w-md" data-testid={`${tid}-dialog`}>
         <DialogHeader>
           <DialogTitle className="font-display text-lg">{restoring ? "Restaurer" : "Archiver"} — {card?.label}</DialogTitle>
           <DialogDescription>
@@ -89,11 +90,11 @@ export function FuelCardArchiveDialog({ card, open, onOpenChange, onDone }) {
         </DialogHeader>
         <div className="space-y-1">
           <Label className="text-xs text-slate-500">Motif{restoring ? "" : " *"}</Label>
-          <Textarea rows={2} value={motif} onChange={(e) => setMotif(e.target.value)} data-testid="fuel-card-archive-motif" />
+          <Textarea rows={2} value={motif} onChange={(e) => setMotif(e.target.value)} data-testid={`${tid}-motif`} />
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="fuel-card-archive-cancel">Annuler</Button>
-          <Button onClick={submit} disabled={busy || (!restoring && motif.trim().length < 3)} className={restoring ? "bg-emerald-600 hover:bg-emerald-700" : "bg-slate-900 hover:bg-slate-800"} data-testid="fuel-card-archive-confirm">
+          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid={`${tid}-cancel`}>Annuler</Button>
+          <Button onClick={submit} disabled={busy || (!restoring && motif.trim().length < 3)} className={restoring ? "bg-emerald-600 hover:bg-emerald-700" : "bg-slate-900 hover:bg-slate-800"} data-testid={`${tid}-confirm`}>
             {busy ? "Enregistrement…" : restoring ? "Restaurer" : "Archiver"}
           </Button>
         </DialogFooter>

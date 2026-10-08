@@ -57,9 +57,9 @@ export default function FuelCardDrawer({ cardId, onOpenChange }) {
               <div className="flex flex-wrap gap-2">
                 {canEdit && <Button size="sm" variant="outline" onClick={() => setEdit(true)} className="gap-1.5" data-testid="fuel-card-edit-btn"><Pencil className="h-4 w-4" /> Modifier</Button>}
                 {canEdit && <Button size="sm" variant="outline" onClick={() => setStatus(true)} className="gap-1.5" data-testid="fuel-card-status-btn"><RefreshCw className="h-4 w-4" /> Changer le statut</Button>}
-                <Button size="sm" variant="outline" onClick={() => setArchive(true)} className="gap-1.5" data-testid="fuel-card-archive-btn">
-                  {card.is_deleted ? <><ArchiveRestore className="h-4 w-4" /> Restaurer</> : <><Archive className="h-4 w-4" /> Archiver</>}
-                </Button>
+                {card.is_deleted
+                  ? <Button size="sm" variant="outline" onClick={() => setArchive(true)} className="gap-1.5" data-testid="fuel-card-restore-btn"><ArchiveRestore className="h-4 w-4" /> Restaurer</Button>
+                  : <Button size="sm" variant="outline" onClick={() => setArchive(true)} className="gap-1.5" data-testid="fuel-card-archive-btn"><Archive className="h-4 w-4" /> Archiver</Button>}
               </div>
             )}
 

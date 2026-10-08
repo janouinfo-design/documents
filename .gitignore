@@ -110,3 +110,4 @@ frontend/node_modules/.cache/default-development/11.pack
 
 # Lot D : journaux de tests/builds (artefacts générés, preuves conservées dans PRD.md + iteration_*.json)
 test_reports/*.log
+frontend/node_modules/.cache/default-development/13.pack
