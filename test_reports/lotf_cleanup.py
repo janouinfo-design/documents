@@ -16,6 +16,7 @@ BASE = dotenv_values("/app/frontend/.env")["REACT_APP_BACKEND_URL"].rstrip("/")
 ENV = dotenv_values("/app/backend/.env")
 TARGET = "lotf-ui-test"
 MANIFEST = Path("/app/test_reports/lotf_cleanup_dryrun_manifest.json")
+MANIFEST_PRIOR = MANIFEST
 EXPECTED = {"tenants(id)": 1, "users": 2, "vehicles": 7, "drivers": 1, "driver_assignments": 1, "fuel_cards": 7, "fuel_card_assignments": 7,
             "fuel_import_jobs": 5, "fuel_import_rows": 70, "fuel_import_mappings": 1, "documents": 22, "fuel_transactions": 22,
             "fuel_transaction_matches": 22, "fuel_anomalies": 12, "audit_logs": 93, "vehicle_field_meta": 1}
@@ -158,7 +159,10 @@ def main():
         "vehicles.photo_url": [v["photo_url"] for v in db.vehicles.find({"tenant_id": TARGET, "photo_url": {"$nin": [None, ""]}}, {"_id": 0, "photo_url": 1})]}
     print("STORAGE — objets référencés par la cible:", json.dumps(storage_refs), "→ total", sum(len(v) for v in storage_refs.values()), "(les fichiers importés ne sont pas conservés : seul le sha256 est stocké dans le job)")
     m = manifest()
-    MANIFEST.write_text(json.dumps(m, indent=1, ensure_ascii=False, default=str))
+    if DRY:
+        MANIFEST.write_text(json.dumps(m, indent=1, ensure_ascii=False, default=str))
+    else:
+        Path(str(MANIFEST).replace("dryrun", "apply")).write_text(json.dumps(m, indent=1, ensure_ascii=False, default=str))
     all_ids = [x["id"] if isinstance(x, dict) else x for k, v in m.items() if isinstance(v, list) for x in v if (x.get("id") if isinstance(x, dict) else x)]
     print(f"MANIFESTE exact des éléments qui seraient supprimés → {MANIFEST} ({len(all_ids)} identifiants + 1 tenant)")
     print("  users:", [u["email"] + " (" + u["role"] + ")" for u in m["users"]])
@@ -179,6 +183,18 @@ def main():
         print("DRY-RUN (sans --apply) : 0 suppression, 0 modification. Fichiers écrits : manifeste uniquement.")
         print("LOTF TEST CLEANUP DRY-RUN =", "PASS" if not refs and not any(len(v) for v in storage_refs.values()) else "FAIL")
         return
+    # Garde-fou --apply : les identifiants actuels doivent être EXACTEMENT ceux du manifeste validé au DRY-RUN (sinon STOP avant tout DELETE)
+    prior = json.loads(MANIFEST_PRIOR.read_text()) if MANIFEST_PRIOR.exists() else None
+    if prior is None:
+        print("STOP — aucun manifeste DRY-RUN validé (lotf_cleanup_dryrun_manifest.json absent) ; aucune suppression.")
+        sys.exit(2)
+    norm = lambda v: sorted(x["id"] if isinstance(x, dict) else x for x in v) if isinstance(v, list) else v  # noqa: E731
+    delta = {k: (len(prior.get(k) or []) if isinstance(prior.get(k), list) else prior.get(k), len(m.get(k) or []) if isinstance(m.get(k), list) else m.get(k))
+             for k in set(prior) | set(m) if norm(prior.get(k)) != norm(m.get(k))}
+    if delta or refs or any(len(v) for v in storage_refs.values()):
+        print("STOP — l'état actuel diffère du manifeste DRY-RUN validé (clé: avant, maintenant) :", json.dumps(delta, default=str), "| refs croisées:", refs, "| storage:", storage_refs)
+        sys.exit(2)
+    print(f"Garde-fou manifeste : OK — {len(all_ids)} identifiants identiques au DRY-RUN validé ({MANIFEST_PRIOR.name}) + tenant {TARGET}")
     deleted = {}
     for c in ORDER:
         if c in ALL:
