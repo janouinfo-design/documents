@@ -62,7 +62,7 @@ Spécification : `docs/PHASE4C_SPECIFICATION.md` (décisions figées). Livraison
 | B | Document sans fichier (D1) + D7 générique + D5 | **PASS FINAL / CLOS** (tenant test supprimé) |
 | C | Conducteurs / affectations datées / DriverPicker | **PASS FINAL / CLOS** (tenant test supprimé) |
 | D | Amendes : 10 statuts, paiement métier, pièces liées, `/amendes`, exports, enum `type_infraction` 8 valeurs | **PASS FINAL / CLOS** (tenant test supprimé) |
-| E | Cartes carburant : `fuel_cards` + `fuel_card_assignments`, `/energie/cartes`, `GET /api/fuel-cards/resolve` lecture seule | **PASS FINAL / CLOS** — tenant `lote-ui-test` **conservé** (inventaire dans CHANGELOG ; nettoyage sur GO) |
+| E | Cartes carburant : `fuel_cards` + `fuel_card_assignments`, `/energie/cartes`, `GET /api/fuel-cards/resolve` lecture seule | **PASS FINAL / CLOS** — checkpoint `8147c66`, tenant `lote-ui-test` **supprimé** (58 enregistrements, 0 résidu, `default` identique) |
 | F | Imports CSV/XLSX, `fuel_transactions.card_id`, matching transaction ↔ carte/véhicule, anomalies, scoring, warnings transactionnels | **NON AUTORISÉ** |
 | G | Rapprochement achats/consommation, CAN, statements, close/lock mensuel, exports énergie | **NON AUTORISÉ** |
 | H | Rôles `manager` / `driver`, vues chauffeur | **NON AUTORISÉ** |

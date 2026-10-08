@@ -3,7 +3,7 @@
 Backlog priorisé. Rien ici n'est autorisé sans GO explicite de l'utilisateur (règle Phase 4C : un lot à la fois, tenant de test isolé, rapport + verdict avant clôture).
 
 ## P0 — Phase 4C, lots restants (ordre spec)
-1. **Nettoyage `lote-ui-test`** (sur GO) : suppression par `tenant_id` exact + preuve 0 résidu + `default` inchangé (même procédure que `lotd_cleanup.py`).
+1. ~~Nettoyage `lote-ui-test`~~ — FAIT (clôture technique Lot E, 0 résidu).
 2. **Lot F — Transactions carburant ↔ cartes** : imports CSV/XLSX, écriture `fuel_transactions.card_id` (décision humaine en cas d'`ambiguous` via `GET /api/fuel-cards/resolve`), matching transaction ↔ carte/véhicule, anomalies, scoring, warnings transactionnels `CARD_VEHICLE_MISMATCH` / `CARD_INACTIVE`.
 3. **Lot G — Rapprochement énergie** : achats vs consommation, CAN, statements fournisseurs, close/lock mensuel, exports énergie complets.
 4. **Lot H — Rôles `manager` / `driver`** : matrice RBAC étendue (`require_roles`), vues chauffeur.
