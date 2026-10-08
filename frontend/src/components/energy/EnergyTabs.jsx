@@ -1,10 +1,12 @@
 import { NavLink } from "react-router-dom";
-import { Fuel, CreditCard } from "lucide-react";
+import { Fuel, CreditCard, Upload, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const TABS = [
   { to: "/energie", label: "Transactions", icon: Fuel, testId: "energy-tab-transactions", end: true },
   { to: "/energie/cartes", label: "Cartes", icon: CreditCard, testId: "energy-tab-cards" },
+  { to: "/energie/imports", label: "Imports", icon: Upload, testId: "energy-tab-imports" },
+  { to: "/energie/anomalies", label: "Anomalies", icon: AlertTriangle, testId: "energy-tab-anomalies" },
 ];
 
 // Sous-navigation du module Énergie (spec §2.10 : la page Cartes est un onglet d'Énergie, pas une entrée principale)

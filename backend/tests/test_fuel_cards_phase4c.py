@@ -526,8 +526,10 @@ class TestResolveRbacIsolation:
         assert _mongo().fuel_transactions.count_documents({"tenant_id": TENANT_A}) == 0
         assert _mongo().documents.count_documents({"tenant_id": TENANT_A}) == 0
         src = open("/app/backend/server.py", encoding="utf-8").read()
-        block = src[src.index("# Phase 4C — Lot E"):src.index("# Inspections (état des lieux)")]
-        assert "fuel_transactions" not in block and "CARD_VEHICLE_MISMATCH" not in src and "CARD_INACTIVE" not in src
+        # Le bloc Lot E s'arrête au bloc Lot F (GO explicite Lot F) : Lot E reste pur, les warnings CARD_* appartiennent au Lot F
+        end = src.index("# Phase 4C — Lot F") if "# Phase 4C — Lot F" in src else src.index("# Inspections (état des lieux)")
+        block = src[src.index("# Phase 4C — Lot E"):end]
+        assert "fuel_transactions" not in block and "CARD_VEHICLE_MISMATCH" not in block and "CARD_INACTIVE" not in block
         import sys
         sys.path.insert(0, "/app/backend")
         import fuel_cards as fcm

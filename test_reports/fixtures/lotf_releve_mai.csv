@@ -1,0 +1,10 @@
+﻿Ref;Date transaction;Numero de carte;Immatriculation;vehicle_id;Montant TTC;Devise;Montant CHF;Quantite;Prix unitaire;Station;Kilometrage;Produit
+M01;04.05.2026 07:45;1111;;;92.25;CHF;;45;2.05;Migrol Lausanne-Malley;42350;Diesel
+M02;06.05.2026 12:10;1111;;;61.50;CHF;;30;2.05;Migrol Renens;42810;Diesel
+M03;11.05.2026 08:30;4444;;5bb09b00-79cf-4f37-a243-b6af51fd2ada;41.00;CHF;;20;2.05;Migrol Nyon;;Diesel
+M04;12.05.2026 09:00;3333;;2d08c925-2686-4266-8892-9277127c4fe2;44.00;CHF;;20;2.20;Migrol Morges;;Essence
+M05;13.05.2026 10:15;9999;;5bb09b00-79cf-4f37-a243-b6af51fd2ada;82.00;CHF;;40;2.05;Migrol Gland;;Diesel
+M06;18.05.2026 17:40;1111;;;70.00;EUR;67.90;35;2.00;Total Annemasse;;Diesel
+M07;19.05.2026 18:00;1111;;;20.00;EUR;;10;2.00;Total Annemasse;;Diesel
+M08;25.05.2026 08:00;1111;;;200.00;CHF;;40;2.05;Migrol Lausanne-Malley;;Diesel
+M09;26.05.2026 08:10;7777;;2d08c925-2686-4266-8892-9277127c4fe2;25.00;CHF;;50;0.50;Ionity Bursins;;Électricité

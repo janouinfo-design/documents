@@ -37,6 +37,9 @@ import nofile
 from nofile import ManualFuelCreate, ManualFineCreate
 import drivers as drv
 import fuel_cards as fc
+import fuel_import as fimp
+import fuel_matching as fm
+import fuel_anomalies as fan
 from drivers import DriverCreate, DriverUpdate, AssignmentCreate, AssignmentClose
 import fines as fin
 from fines import FineStatusChange, FinePaid
@@ -2643,10 +2646,15 @@ async def energy_overview(request: Request, vehicle_id: Optional[str] = None,
     all_tx = [x for x in all_tx if x["vehicle_id"] in vmap]
     txs = [x for x in all_tx if _in_range(x.get("date"), date_from, date_to)]
     dnames = await _driver_names(t, [x.get("driver_id") for x in txs])
+    open_an = {}
+    for g in await db.fuel_anomalies.aggregate([{"$match": {"tenant_id": t, "status": "ouverte"}}, {"$group": {"_id": "$transaction_id", "n": {"$sum": 1}}}]).to_list(None):
+        open_an[g["_id"]] = g["n"]
     for x in txs:
         v = vmap.get(x["vehicle_id"]) or {}
         x["plaque"], x["marque"], x["modele"] = v.get("plaque"), v.get("marque"), v.get("modele")
         x["driver_nom"] = dnames.get(x.get("driver_id"))
+        x["anomalies_open"] = open_an.get(x["id"], 0)
+        x["match_label"] = fm.MATCH_LABELS.get(x.get("match_status"), x.get("match_status"))
     txs.sort(key=lambda x: (x.get("date_heure") or x.get("date") or "", x.get("created_at") or ""), reverse=True)
     by_vehicle, fleet_l, fleet_km = [], 0.0, 0
     for vid in {x["vehicle_id"] for x in all_tx}:
@@ -2666,6 +2674,8 @@ async def energy_overview(request: Request, vehicle_id: Optional[str] = None,
     totals = _energy_totals(txs)
     totals["conso_reelle_l_100km"] = round(fleet_l / fleet_km * 100, 1) if fleet_km >= 100 else None
     totals["vehicules_avec_conso"] = sum(1 for b in by_vehicle if b["conso_tickets"])
+    totals["anomalies_ouvertes"] = sum(x.get("anomalies_open", 0) for x in txs)
+    totals["a_verifier"] = sum(1 for x in txs if x.get("match_status") == "matched_review" or (x.get("card_resolution") or {}).get("status") == "ambiguous")
     return {"transactions": txs, "totals": totals, "by_vehicle": by_vehicle}
 
 
@@ -3161,6 +3171,7 @@ async def create_fuel_transaction_nofile(vehicle_id: str, payload: ManualFuelCre
         extra.update({"legacy_source": legacy_key["legacy_source"], "legacy_id": legacy_key["legacy_id"],
                       "migration_version": legacy_identity.MIGRATION_VERSION})
     fuel_tx = await _upsert_fuel_transaction(doc_id, doc_data, vehicle, t, user, extra)
+    warnings.extend(await _fuel_post_upsert(t, request, fuel_tx, vehicle, await th_for(request), "document"))  # Lot F : carte / anomalies
     await audit("create" if created else "legacy_replay", "document", request, doc_id, vehicle["id"],
                 f"{'Document' if created else 'Rejeu idempotent'} sans justificatif ({payload.source}"
                 + (f", motif : {rec['motif_saisie']}" if rec["motif_saisie"] else "")
@@ -4523,6 +4534,824 @@ async def close_fuel_card_assignment(assignment_id: str, payload: fc.CardAssignm
 
 
 
+# ---------------------------------------------------------------------------
+# Phase 4C — Lot F (6a) : imports CSV/XLSX (job → mapping → preview → confirm/force), résolution carte (Lot E réutilisé),
+# rattachement véhicule scoré/explicable, anomalies persistées + décision motivée, `fuel_transactions.card_id`.
+# Invariants : preview = 0 écriture métier finale (seuls fuel_import_jobs/rows varient) ; confirm idempotent ; plaque jamais
+# source d'auto-rattachement ; warning ≠ correction (vehicle_id/card_id jamais substitués) ; le document reste le coût (D7).
+# ---------------------------------------------------------------------------
+FUEL_IMPORT_LABEL = "Import carburant"
+
+
+async def ensure_fuel_import_indexes():
+    await db.fuel_import_jobs.create_index([("tenant_id", 1), ("id", 1)], unique=True, name="uniq_fuel_job")
+    await db.fuel_import_jobs.create_index([("tenant_id", 1), ("sha256", 1)], name="fuel_job_sha256")
+    await db.fuel_import_rows.create_index([("tenant_id", 1), ("job_id", 1), ("row_index", 1)], unique=True, name="uniq_fuel_row")
+    await db.fuel_import_rows.create_index([("tenant_id", 1), ("id", 1)], unique=True, name="uniq_fuel_row_id")
+    await db.fuel_import_mappings.create_index([("tenant_id", 1), ("fournisseur", 1)], unique=True, name="uniq_fuel_mapping")
+    await db.fuel_transactions.create_index([("tenant_id", 1), ("fournisseur", 1), ("external_transaction_id", 1)], unique=True,
+                                            name="uniq_fuel_tx_external", partialFilterExpression={"external_transaction_id": {"$type": "string"}})
+    await db.fuel_transactions.create_index([("tenant_id", 1), ("dedup_key", 1)], name="fuel_tx_dedup_key")
+    await db.fuel_transactions.create_index([("tenant_id", 1), ("card_id", 1)], name="fuel_tx_card")
+    await db.fuel_transaction_matches.create_index([("tenant_id", 1), ("transaction_id", 1)], unique=True, name="uniq_fuel_match")
+    await db.fuel_anomalies.create_index([("tenant_id", 1), ("transaction_id", 1), ("type", 1)], unique=True, name="uniq_fuel_anomaly")
+    await db.fuel_anomalies.create_index([("tenant_id", 1), ("status", 1), ("severity", 1)], name="fuel_anomaly_status")
+
+
+async def _fuel_settings(tenant_id: str) -> dict:
+    return fm.settings_from(await db.tenant_settings.find_one({"tenant_id": tenant_id}, {"_id": 0, "fuel": 1}))
+
+
+async def _resolve_card(tenant_id: str, fournisseur, last4, day: str, th: dict) -> dict:
+    """Résolution carte = resolve Lot E réutilisé en interne (lecture seule du référentiel). (fournisseur, last4) puis repli
+    last4 seul si unique dans le tenant. found | ambiguous | not_found | none (pas de last4). Jamais de choix automatique si > 1."""
+    last4 = fc.clean_str(last4)
+    if not last4 or not fc.LAST4_RE.match(last4):
+        return {"status": "none", "card_id": None, "candidates": [], "level": None}
+    base = {"tenant_id": tenant_id, "last4": last4, "is_deleted": False}
+    level = "fournisseur_last4"
+    cards = []
+    if fc.clean_str(fournisseur):
+        cards = await db.fuel_cards.find({**base, "fournisseur": fc.clean_str(fournisseur)}, {"_id": 0}).to_list(None)
+        if not cards:
+            cards = await db.fuel_cards.find(base, {"_id": 0}).to_list(None)
+            if cards:
+                cards = [c for c in cards if fimp.norm_key(c.get("fournisseur")) == fimp.norm_key(fournisseur)] or cards
+                level = "last4_only"
+    else:
+        cards = await db.fuel_cards.find(base, {"_id": 0}).to_list(None)
+        level = "last4_only"
+    rows = await _cards_out(tenant_id, cards, th, day)
+    cands = []
+    for c in rows:
+        ci = fm.card_inactive_eval(c, day)
+        cur_v = (c.get("affectations_courantes") or {}).get("vehicule") or {}
+        cur_d = (c.get("affectations_courantes") or {}).get("conducteur") or {}
+        cands.append({"id": c["id"], "label": c["label"], "fournisseur": c.get("fournisseur"), "last4": c.get("last4"), "statut": c.get("statut"),
+                      "statut_label": c.get("statut_label"), "expire_le": c.get("expire_le"), "usable_at_date": not ci["inactive"],
+                      "inactive": ci, "assigned_vehicle_id": cur_v.get("vehicle_id"), "assigned_plaque": cur_v.get("plaque"),
+                      "assigned_driver_id": cur_d.get("driver_id"), "external_card_id": c.get("external_card_id")})
+    status = "found" if len(cands) == 1 else "ambiguous" if len(cands) > 1 else "not_found"
+    return {"status": status, "card_id": cands[0]["id"] if status == "found" else None, "candidates": cands, "level": level if cands else None,
+            "last4": last4, "fournisseur": fc.clean_str(fournisseur)}
+
+
+async def _driver_vehicle_at(tenant_id: str, driver_id: Optional[str], day: str) -> Optional[str]:
+    """Véhicule du conducteur à la date (affectations Lot C, principal unique) ; None si aucun ou ambigu."""
+    if not driver_id:
+        return None
+    rows = await db.driver_assignments.find({"tenant_id": tenant_id, "driver_id": driver_id}, {"_id": 0}).to_list(None)
+    cur = [r for r in rows if drv.covers(r.get("valid_from"), r.get("valid_to"), day) and r.get("principal", True)]
+    if len(cur) > 1:
+        cur = [c for c in cur if not (c.get("replaced") and c.get("valid_to") == day)] or cur
+    return cur[0]["vehicle_id"] if len(cur) == 1 else None
+
+
+async def _vehicle_index(tenant_id: str):
+    vehicles = await db.vehicles.find({"tenant_id": tenant_id}, {"_id": 0, "id": 1, "plaque": 1, "marque": 1, "modele": 1, "type_carburant": 1,
+                                                                 "capacite_reservoir_l": 1, "kilometrage": 1}).to_list(None)
+    vmap, plates = {v["id"]: v for v in vehicles}, {}
+    for v in vehicles:
+        if v.get("plaque"):
+            plates.setdefault(_norm_plate(v["plaque"]), []).append(v["id"])
+    return vmap, plates
+
+
+def _vehicle_label(v: Optional[dict]) -> Optional[str]:
+    if not v:
+        return None
+    return " ".join(x for x in (v.get("plaque"), v.get("marque"), v.get("modele")) if x) or v.get("id")
+
+
+async def _score_for(tenant_id: str, norm: dict, card_res: dict, vmap: dict, plates: dict, day: str, settings: dict) -> dict:
+    """Contexte de rattachement d'une ligne/transaction → fm.score_vehicle (pur). Plaque = candidats de revue uniquement."""
+    direct = norm.get("vehicle_id_hint") if norm.get("vehicle_id_hint") in vmap else None
+    plate_hint = norm.get("plaque_hint")
+    plate_cands = plates.get(_norm_plate(plate_hint), []) if plate_hint else []
+    cands = card_res.get("candidates") or []
+    found = cands[0] if card_res.get("status") == "found" else None
+    card_ctx = {"status": card_res.get("status"), "card_id": card_res.get("card_id"),
+                "usable": bool(found and found["usable_at_date"]), "inactive_reasons": [k for k in ("inactive_by_status", "inactive_by_expiration") if found and found["inactive"].get(k)],
+                "assigned_vehicle_ids": [found["assigned_vehicle_id"]] if found and found.get("assigned_vehicle_id") in vmap else [],
+                "candidate_vehicle_ids": sorted({c["assigned_vehicle_id"] for c in cands if c.get("assigned_vehicle_id") in vmap}) if card_res.get("status") == "ambiguous" else []}
+    driver_vid = await _driver_vehicle_at(tenant_id, found.get("assigned_driver_id") if found else None, day)
+    all_ids = set(card_ctx["assigned_vehicle_ids"]) | set(card_ctx["candidate_vehicle_ids"]) | set(plate_cands) | ({driver_vid} if driver_vid else set()) | ({direct} if direct else set())
+    ctx = {"direct_vehicle_id": direct, "card": card_ctx, "driver_vehicle_id": driver_vid if driver_vid in vmap else None,
+           "plate_candidate_ids": plate_cands, "plate_hint": plate_hint,
+           "fuel_compat": {vid: fm.fuel_compatible(norm.get("energie"), norm.get("type_carburant"), (vmap.get(vid) or {}).get("type_carburant")) for vid in all_ids}}
+    res = fm.score_vehicle(ctx, settings)
+    for c in res["candidates"]:
+        c["label"] = _vehicle_label(vmap.get(c["vehicle_id"]))
+        c["plaque"] = (vmap.get(c["vehicle_id"]) or {}).get("plaque")
+    res["vehicle_id_hint_rejected"] = bool(norm.get("vehicle_id_hint")) and not direct
+    return res
+
+
+def _manual_match_result(vehicle_id: str, reason: str, user: str, provenance: str, candidates: list, batch_id: Optional[str] = None) -> dict:
+    bd = [{"rule": "manual", "label": fm.RULE_LABELS["manual"], "points": 100, "vehicle_id": vehicle_id, "reason": reason, "by": user, "provenance": provenance}]
+    if batch_id:
+        bd[0]["batch_id"] = batch_id
+    return {"vehicle_id": vehicle_id, "score": 100, "status": "manual", "method": "manual", "deterministic": True, "breakdown": bd,
+            "candidates": candidates, "review_reasons": [], "provenance": provenance}
+
+
+async def _evaluate_rows(tenant_id: str, job: dict, rows: list, th: dict, settings: dict) -> list:
+    """Normalisation + statuts (invalid > duplicate > unknown_vehicle > unknown_card > amount_mismatch > ok) — ESPACE DE TRAVAIL
+    uniquement (fuel_import_rows) : aucune écriture métier finale. Lignes déjà importées : inchangées."""
+    vmap, plates = await _vehicle_index(tenant_id)
+    seen_keys, seen_ext, card_cache, out = {}, {}, {}, []
+    now = datetime.now(timezone.utc).isoformat()
+    for r in sorted(rows, key=lambda x: x["row_index"]):
+        if r.get("imported"):
+            out.append(r)
+            continue
+        norm, errors = fimp.normalize_row(r["raw"], job.get("mapping") or {}, job.get("fournisseur"))
+        flags, dup, card_res, match, notes = {}, None, {"status": "none", "card_id": None, "candidates": []}, None, []
+        key = None
+        if not errors:
+            key = fimp.dedup_key(tenant_id, norm)
+            ext = norm.get("external_transaction_id")
+            proj = {"_id": 0, "id": 1, "source_document_id": 1, "date": 1, "montant": 1, "import_job_id": 1}
+            if ext:
+                ex = await db.fuel_transactions.find_one({"tenant_id": tenant_id, "fournisseur": norm.get("fournisseur"), "external_transaction_id": ext,
+                                                          "is_deleted": False}, proj)
+                if ex:
+                    dup = {"kind": "external_id", **ex}
+            if not dup:
+                ex = await db.fuel_transactions.find_one({"tenant_id": tenant_id, "dedup_key": key, "is_deleted": False}, proj)
+                if ex:
+                    dup = {"kind": "dedup_key", **ex}
+            if not dup and key in seen_keys:
+                dup = {"kind": "intra_file", "row_index": seen_keys[key]}
+            if not dup and ext and ext in seen_ext:
+                dup = {"kind": "intra_file_external_id", "row_index": seen_ext[ext]}
+            seen_keys.setdefault(key, r["row_index"])
+            if ext:
+                seen_ext.setdefault(ext, r["row_index"])
+            if dup:
+                flags["duplicate"] = True
+            ck = (norm.get("fournisseur"), norm.get("card_last4"), norm["date"])
+            if ck not in card_cache:
+                card_cache[ck] = await _resolve_card(tenant_id, norm.get("fournisseur"), norm.get("card_last4"), norm["date"], th)
+            card_res = card_cache[ck]
+            if r.get("manual_card") and r["manual_card"].get("card_id"):
+                mc = await db.fuel_cards.find_one({"tenant_id": tenant_id, "id": r["manual_card"]["card_id"], "is_deleted": False}, {"_id": 0})
+                if mc:
+                    card_res = {**(await _resolve_card(tenant_id, mc["fournisseur"], mc["last4"], norm["date"], th))}
+                    card_res["candidates"] = [c for c in card_res["candidates"] if c["id"] == mc["id"]]
+                    card_res.update({"status": "found", "card_id": mc["id"], "level": "manual", "manual": r["manual_card"]})
+            match = await _score_for(tenant_id, norm, card_res, vmap, plates, norm["date"], settings)
+            if match.get("vehicle_id_hint_rejected"):
+                notes.append(f"vehicle_id « {norm.get('vehicle_id_hint')} » inconnu dans ce tenant — ignoré (fail-closed)")
+            mv = r.get("manual_vehicle")
+            if mv and mv.get("vehicle_id") in vmap:
+                match = _manual_match_result(mv["vehicle_id"], mv.get("reason"), mv.get("by"), mv.get("provenance", "manual"), match["candidates"], mv.get("batch_id"))
+            elif mv:
+                notes.append("véhicule choisi manuellement introuvable dans le tenant — décision annulée (fail-closed)")
+            if not match.get("vehicle_id"):
+                flags["unknown_vehicle"] = True
+            if norm.get("card_last4") and card_res["status"] in ("ambiguous", "not_found"):
+                flags["unknown_card"] = True
+            mm = fimp.amount_mismatch(norm)
+            if mm:
+                flags["amount_mismatch"] = True
+                notes.append(mm)
+        status = "invalid" if errors else fimp.status_priority(flags)
+        upd = {"normalized": norm, "errors": errors, "status": status, "dedup_key": key, "duplicate_of": dup, "notes": notes,
+               "resolution": {"card": {k: card_res.get(k) for k in ("status", "card_id", "candidates", "level", "manual")},
+                              "vehicle": match}, "evaluated_at": now}
+        await db.fuel_import_rows.update_one({"tenant_id": tenant_id, "id": r["id"]}, {"$set": upd})
+        out.append({**r, **upd})
+    return out
+
+
+async def _job_or_404(tenant_id: str, job_id: str) -> dict:
+    job = await db.fuel_import_jobs.find_one({"tenant_id": tenant_id, "id": job_id}, {"_id": 0})
+    if not job:
+        raise HTTPException(status_code=404, detail="Import introuvable")
+    return job
+
+
+async def _row_or_404(tenant_id: str, job_id: str, row_id: str) -> dict:
+    row = await db.fuel_import_rows.find_one({"tenant_id": tenant_id, "job_id": job_id, "id": row_id}, {"_id": 0})
+    if not row:
+        raise HTTPException(status_code=404, detail="Ligne introuvable")
+    return row
+
+
+async def _job_rows(tenant_id: str, job_id: str, status: Optional[str] = None) -> list:
+    q = {"tenant_id": tenant_id, "job_id": job_id}
+    if status:
+        q["status"] = {"$in": [s for s in status.split(",") if s]}
+    return await db.fuel_import_rows.find(q, {"_id": 0}).sort("row_index", 1).to_list(None)
+
+
+async def _job_out(tenant_id: str, job: dict) -> dict:
+    rows = await _job_rows(tenant_id, job["id"])
+    saved = await db.fuel_import_mappings.find_one({"tenant_id": tenant_id, "fournisseur": job.get("fournisseur")}, {"_id": 0}) if job.get("fournisseur") else None
+    return {**job, "counts": fimp.counts_for(rows), "examples": fimp.example_values([r["raw"] for r in rows[:200]], job.get("colonnes") or []),
+            "saved_mapping": (saved or {}).get("mapping"), "fields": [{k: v for k, v in f.items() if k != "guess"} for f in fimp.IMPORT_FIELDS],
+            "row_statuses": [{"code": s, "label": fimp.ROW_LABELS[s]} for s in fimp.ROW_STATUSES], "importable": list(fimp.IMPORTABLE)}
+
+
+async def _save_match(tenant_id: str, tx: dict, result: dict, user: str, reason: Optional[str] = None) -> dict:
+    now = datetime.now(timezone.utc).isoformat()
+    rec = {"tenant_id": tenant_id, "transaction_id": tx["id"], "vehicle_id": tx.get("vehicle_id"), "score": result.get("score"),
+           "status": result.get("status"), "method": result.get("method"), "breakdown": result.get("breakdown") or [],
+           "candidates": result.get("candidates") or [], "review_reasons": result.get("review_reasons") or [], "computed_at": now,
+           "decided_by": user if result.get("status") == "manual" else None, "decided_at": now if result.get("status") == "manual" else None,
+           "reason": reason if result.get("status") == "manual" else None}
+    existing = await db.fuel_transaction_matches.find_one({"tenant_id": tenant_id, "transaction_id": tx["id"]}, {"_id": 0})
+    entry = {"at": now, "by": user if result.get("status") == "manual" else "auto", "status": rec["status"], "vehicle_id": rec["vehicle_id"],
+             "method": rec["method"], "score": rec["score"], "reason": reason}
+    if existing:
+        await db.fuel_transaction_matches.update_one({"id": existing["id"]}, {"$set": rec, "$push": {"history": entry}})
+        rec.update({"id": existing["id"], "history": (existing.get("history") or []) + [entry]})
+    else:
+        rec.update({"id": str(uuid.uuid4()), "history": [entry]})
+        await db.fuel_transaction_matches.insert_one(dict(rec))
+        rec.pop("_id", None)
+    await db.fuel_transactions.update_one({"tenant_id": tenant_id, "id": tx["id"]},
+                                          {"$set": {"match_status": rec["status"], "match_score": rec["score"], "match_method": rec["method"]}})
+    return rec
+
+
+async def _scan_tx_anomalies(tenant_id: str, tx: dict, request: Request, settings: dict) -> dict:
+    """Détection (pure, fuel_anomalies.detect) + persistance unique (tenant, tx, type) — jamais recréée après décision.
+    → {"created": [...], "codes": [CARD_INACTIVE|CARD_VEHICLE_MISMATCH…], "open": [...]} ; aucune correction automatique."""
+    vehicle = await db.vehicles.find_one({"tenant_id": tenant_id, "id": tx.get("vehicle_id")},
+                                         {"_id": 0, "id": 1, "plaque": 1, "capacite_reservoir_l": 1, "kilometrage": 1, "type_carburant": 1}) or {}
+    card, assigned = None, []
+    if tx.get("card_id"):
+        card = await db.fuel_cards.find_one({"tenant_id": tenant_id, "id": tx["card_id"]}, {"_id": 0})
+        if card:
+            arows = await db.fuel_card_assignments.find({"tenant_id": tenant_id, "card_id": card["id"], "type": "vehicule"}, {"_id": 0}).to_list(None)
+            cur = fc.current_by_type(arows, tx.get("date") or drv.today_zurich()).get("vehicule")
+            if cur and cur.get("vehicle_id"):
+                assigned = [cur["vehicle_id"]]
+    nq = {"tenant_id": tenant_id, "is_deleted": False, "id": {"$ne": tx["id"]}, "date": tx.get("date"),
+          "$or": [{"vehicle_id": tx.get("vehicle_id")}] + ([{"card_id": tx["card_id"]}] if tx.get("card_id") else [])}
+    neighbors = await db.fuel_transactions.find(nq, {"_id": 0, "id": 1, "date_heure": 1, "heure": 1, "card_id": 1, "vehicle_id": 1}).to_list(None)
+    prev = await db.fuel_transactions.find({"tenant_id": tenant_id, "vehicle_id": tx.get("vehicle_id"), "is_deleted": False, "id": {"$ne": tx["id"]},
+                                            "date_heure": {"$lt": tx.get("date_heure") or tx.get("date") or ""}},
+                                           {"_id": 0, "montant": 1, "montant_chf": 1, "devise": 1, "kilometrage": 1, "date_heure": 1}).sort("date_heure", -1).to_list(500)
+    hist = [(p.get("montant_chf") if p.get("montant_chf") is not None else (p.get("montant") if (p.get("devise") or "CHF") == "CHF" else None)) for p in prev]
+    prev_km = next((p["kilometrage"] for p in prev if p.get("kilometrage")), None)
+    ctx = {"vehicle": vehicle, "card": card, "card_inactive": fm.card_inactive_eval(card, tx.get("date")), "card_assigned_vehicle_ids": assigned,
+           "neighbors": neighbors, "history_amounts": hist, "prev_km": prev_km,
+           "plate_hint_norm": _norm_plate(tx.get("vehicle_hint") or tx.get("plaque_mentionnee")) or None, "vehicle_plate_norm": _norm_plate(vehicle.get("plaque")) or None}
+    found = fan.detect(tx, ctx, settings)
+    now = datetime.now(timezone.utc).isoformat()
+    created, open_ = [], []
+    for a in found:
+        exists = await db.fuel_anomalies.find_one({"tenant_id": tenant_id, "transaction_id": tx["id"], "type": a["type"]}, {"_id": 0})
+        if exists:
+            if exists.get("status") == "ouverte":
+                open_.append(exists)
+            continue
+        rec = {"id": str(uuid.uuid4()), "tenant_id": tenant_id, "transaction_id": tx["id"], **a, "label": fan.LABELS[a["type"]], "status": "ouverte",
+               "detected_at": now, "decided_by": None, "decided_at": None, "decision_reason": None, "history": [{"at": now, "status": "ouverte", "by": "système"}]}
+        await db.fuel_anomalies.insert_one(dict(rec))
+        rec.pop("_id", None)
+        await audit("create", "fuel_anomaly", request, rec["id"], tx.get("vehicle_id"),
+                    f"Anomalie {fan.LABELS[a['type']]} ({a['severity']}) détectée sur la transaction {tx['id']} — {a['explanation']}", tenant_id=tenant_id)
+        created.append(rec)
+        open_.append(rec)
+    codes = [{"code": fan.WARNING_CODES[a["type"]], "detail": a["explanation"], "anomaly_id": a["id"]} for a in open_ if a["type"] in fan.WARNING_CODES]
+    return {"created": created, "open": open_, "codes": codes}
+
+
+async def _fuel_post_upsert(tenant_id: str, request: Request, tx: dict, vehicle: dict, th: dict, method: str = "document") -> list:
+    """Hook Lot F après `_upsert_fuel_transaction` (ticket validé / saisie manuelle) : résolution carte (found → card_id, jamais si
+    ambigu), match `manual` (véhicule choisi par l'humain via le document), scan anomalies → avertissements CARD_*."""
+    settings = await _fuel_settings(tenant_id)
+    user = _nofile_user(request)
+    upd = {}
+    if not tx.get("card_manual"):
+        res = await _resolve_card(tenant_id, tx.get("fournisseur"), tx.get("carte_last4"), tx.get("date") or drv.today_zurich(), th)
+        upd["card_id"] = res["card_id"] if res["status"] == "found" else None
+        upd["card_resolution"] = {"status": res["status"], "level": res.get("level"), "candidates": [{k: c.get(k) for k in ("id", "label", "statut", "expire_le", "assigned_plaque")} for c in res["candidates"]]}
+        tx.update(upd)
+        await db.fuel_transactions.update_one({"tenant_id": tenant_id, "id": tx["id"]}, {"$set": upd})
+    result = {"vehicle_id": vehicle["id"], "score": 100, "status": "manual", "method": method, "deterministic": True,
+              "breakdown": [{"rule": "document", "label": fm.RULE_LABELS["document"], "points": 100, "vehicle_id": vehicle["id"]}], "candidates": [], "review_reasons": []}
+    await _save_match(tenant_id, tx, result, user)
+    scan = await _scan_tx_anomalies(tenant_id, tx, request, settings)
+    return scan["codes"]
+
+
+async def _import_row(tenant_id: str, request: Request, job: dict, row: dict, th: dict, settings: dict, force_reason: Optional[str] = None) -> dict:
+    """Ligne confirmée = 1 document sans fichier (source=import, D1/D7 = le coût) + 1 fuel_transaction + match + anomalies. Atomique par ligne
+    (revendication `claimed`) → idempotent sur double clic/retry."""
+    claim = await db.fuel_import_rows.update_one({"tenant_id": tenant_id, "id": row["id"], "imported": {"$ne": True}, "claimed": {"$ne": True}},
+                                                 {"$set": {"claimed": True}})
+    if claim.modified_count == 0:
+        return {"skipped": True, "row_id": row["id"]}
+    try:
+        norm, match = row["normalized"], row["resolution"]["vehicle"]
+        vehicle = await db.vehicles.find_one({"tenant_id": tenant_id, "id": match.get("vehicle_id")}, {"_id": 0})
+        if not vehicle:
+            raise HTTPException(status_code=409, detail={"code": "UNKNOWN_VEHICLE", "row_id": row["id"]})
+        user, now = _nofile_user(request), datetime.now(timezone.utc).isoformat()
+        ext = norm.get("external_transaction_id")
+        forced_of = None
+        if force_reason and row.get("duplicate_of"):
+            forced_of = row["duplicate_of"].get("id")
+            if ext and row["duplicate_of"].get("kind") in ("external_id", "intra_file_external_id"):
+                n = await db.fuel_transactions.count_documents({"tenant_id": tenant_id, "fournisseur": norm.get("fournisseur"),
+                                                                "external_transaction_id": {"$regex": f"^{re.escape(ext)}(#dup-\\d+)?$"}})
+                ext = f"{ext}#dup-{n}"
+        electric = norm.get("energie") == "electrique"
+        doc_data = {k: v for k, v in {"station": norm.get("station"), "date": norm["date"], "heure": norm.get("heure"), "montant": norm["montant"],
+                                      "devise": norm["devise"], "litres": norm.get("litres"), "prix_litre": norm.get("prix_litre"),
+                                      "type_carburant": norm.get("type_carburant"), "energie_kwh": norm.get("energie_kwh"), "prix_kwh": norm.get("prix_kwh"),
+                                      "kilometrage": norm.get("kilometrage"), "carte_last4": norm.get("card_last4"), "plaque": norm.get("plaque_hint")}.items() if v is not None}
+        doc = {"id": str(uuid.uuid4()), "vehicle_id": vehicle["id"], "tenant_id": tenant_id, "folder": DOC_TYPES["ticket_carburant"]["folder"],
+               "label": f"{'Recharge' if electric else 'Plein'} {norm.get('station') or (norm.get('fournisseur') or 'import')} — {norm['date']} (import, sans justificatif)",
+               "original_filename": None, "storage_path": None, "content_type": None, "size": 0, "sha256": None, "pages": [], "source": "import",
+               "justificatif_absent": True, "motif_saisie": None, "document_type": "ticket_carburant", "extraction_status": "validated", "a_verifier": False,
+               "validated_at": now, "validated_by": user, "montant_chf": nofile.montant_chf_for(norm["devise"], norm.get("montant_chf")),
+               "business_category": "ENERGIE_ELECTRIQUE" if electric else "CARBURANT", "document_data": doc_data, "driver_id": None,
+               "import_job_id": job["id"], "import_row_id": row["id"], "is_deleted": False, "created_at": now, "updated_at": now, **_ticket_to_v2(doc_data)}
+        await db.documents.insert_one(dict(doc))
+        card_res = row["resolution"]["card"]
+        extra = {"created_from": "import", "fournisseur": norm.get("fournisseur"), "external_transaction_id": ext,
+                 "card_id": card_res.get("card_id") if card_res.get("status") == "found" else None,
+                 "card_resolution": {"status": card_res.get("status"), "level": card_res.get("level"),
+                                     "candidates": [{k: c.get(k) for k in ("id", "label", "statut", "expire_le", "assigned_plaque")} for c in (card_res.get("candidates") or [])]},
+                 "card_manual": bool(card_res.get("manual")), "dedup_key": row.get("dedup_key"), "import_job_id": job["id"], "import_row_id": row["id"],
+                 "vehicle_hint": norm.get("plaque_hint"), "driver_hint": norm.get("driver_hint"), "commentaire": norm.get("commentaire"),
+                 "invoice_ref": norm.get("invoice_ref"), "pays": norm.get("pays"), "montant_chf": doc["montant_chf"],
+                 "fx_status": "not_needed" if norm["devise"] == "CHF" else ("converted" if doc["montant_chf"] is not None else "pending"),
+                 "forced_duplicate_of": forced_of, "forced_reason": force_reason, "motif_saisie": None,
+                 **nofile.date_heure_fields(norm["date"], norm.get("heure"), "import", None)}
+        tx = await _upsert_fuel_transaction(doc["id"], doc_data, vehicle, tenant_id, user, extra)
+        await _save_match(tenant_id, tx, match, user, (match.get("breakdown") or [{}])[0].get("reason") if match.get("status") == "manual" else None)
+        scan = await _scan_tx_anomalies(tenant_id, tx, request, settings)
+        await audit("create", "document", request, doc["id"], vehicle["id"],
+                    f"Document sans justificatif (import carburant, job {job['id']}, ligne {row['row_index']}) — {doc['label']} · {norm['montant']} {norm['devise']}"
+                    + (f" · contre-valeur {doc['montant_chf']} CHF" if doc.get("montant_chf") is not None else ""))
+        await audit("create", "fuel_transaction", request, tx["id"], vehicle["id"],
+                    f"Transaction importée ({job.get('filename')}, ligne {row['row_index']}) — {norm.get('station') or '—'} · {norm['montant']} {norm['devise']} · "
+                    f"carte {card_res.get('status')}" + (f" → {tx.get('card_id')}" if tx.get("card_id") else "") + f" · rattachement {match.get('status')} ({match.get('method')})"
+                    + (f" · FORCÉ (doublon de {forced_of}) motif : {force_reason}" if force_reason else ""))
+        await db.fuel_import_rows.update_one({"tenant_id": tenant_id, "id": row["id"]},
+                                             {"$set": {"imported": True, "imported_at": now, "transaction_id": tx["id"], "document_id": doc["id"],
+                                                       "forced_reason": force_reason, "anomalies": [a["type"] for a in scan["open"]]}, "$unset": {"claimed": ""}})
+        await _apply_transaction_conso(vehicle["id"], tenant_id)
+        return {"skipped": False, "row_id": row["id"], "transaction_id": tx["id"], "document_id": doc["id"], "anomalies": [a["type"] for a in scan["open"]],
+                "warnings": scan["codes"], "card_id": tx.get("card_id"), "match_status": match.get("status")}
+    except Exception:
+        await db.fuel_import_rows.update_one({"tenant_id": tenant_id, "id": row["id"]}, {"$unset": {"claimed": ""}})
+        raise
+
+
+@api_router.get("/fuel/import-fields")
+async def fuel_import_fields(request: Request):
+    tid(request)
+    return {"fields": [{k: v for k, v in f.items() if k != "guess"} for f in fimp.IMPORT_FIELDS], "required": ["tx_datetime", "amount_total"],
+            "row_statuses": [{"code": s, "label": fimp.ROW_LABELS[s]} for s in fimp.ROW_STATUSES], "importable": list(fimp.IMPORTABLE),
+            "job_statuses": list(fimp.JOB_STATUSES), "limits": {"max_mb": fimp.MAX_BYTES // (1024 * 1024), "max_rows": fimp.MAX_ROWS}}
+
+
+@api_router.post("/fuel/imports", dependencies=[Depends(require_roles("admin"))])
+async def fuel_import_upload(request: Request, file: UploadFile = File(...), fournisseur: Optional[str] = Form(None)):
+    """Upload CSV/XLSX → job `mapping` + lignes `pending` (espace de travail). N'importe RIEN : aucune écriture métier."""
+    t = tid(request)
+    data = await file.read()
+    try:
+        columns, raw_rows, meta = fimp.parse_file(file.filename or "", data)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    if not raw_rows:
+        raise HTTPException(status_code=422, detail="aucune ligne de données")
+    now, user = datetime.now(timezone.utc).isoformat(), _nofile_user(request)
+    sha = fimp.file_sha256(data)
+    same = await db.fuel_import_jobs.find({"tenant_id": t, "sha256": sha}, {"_id": 0, "id": 1, "status": 1, "created_at": 1, "imported_count": 1}).to_list(None)
+    saved = await db.fuel_import_mappings.find_one({"tenant_id": t, "fournisseur": fc.clean_str(fournisseur)}, {"_id": 0}) if fc.clean_str(fournisseur) else None
+    suggested = fimp.suggest_mapping(columns)
+    if saved and all(c in columns for c in saved["mapping"].values()):
+        suggested = {**suggested, **saved["mapping"]}
+    job = {"id": str(uuid.uuid4()), "tenant_id": t, "fournisseur": fc.clean_str(fournisseur), "filename": file.filename, "sha256": sha, "size": len(data),
+           "meta": meta, "colonnes": columns, "mapping": {}, "suggested_mapping": suggested, "status": "mapping", "row_count": len(raw_rows),
+           "same_file_jobs": [s["id"] for s in same], "counts": {}, "imported_count": 0, "created_at": now, "created_by": user, "confirmed_at": None}
+    await db.fuel_import_jobs.insert_one(dict(job))
+    job.pop("_id", None)
+    await db.fuel_import_rows.insert_many([{"id": str(uuid.uuid4()), "tenant_id": t, "job_id": job["id"], "row_index": i + 1, "raw": {k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in r.items()},
+                                           "normalized": {}, "status": "pending", "errors": [], "imported": False, "transaction_id": None, "document_id": None}
+                                          for i, r in enumerate(raw_rows)])
+    await audit("upload", "fuel_import", request, job["id"], None, f"{FUEL_IMPORT_LABEL} — fichier {file.filename} ({meta.get('format')}, {len(raw_rows)} lignes, "
+                f"{len(columns)} colonnes" + (f", fournisseur {job['fournisseur']}" if job["fournisseur"] else "") + (f") — MÊME FICHIER déjà importé ({len(same)} job(s))" if same else ")"))
+    out = await _job_out(t, job)
+    out["same_file_warning"] = ([{"job_id": s["id"], "status": s["status"], "created_at": s["created_at"], "imported_count": s.get("imported_count", 0)} for s in same]) or None
+    return out
+
+
+@api_router.get("/fuel/imports")
+async def fuel_import_list(request: Request):
+    t = tid(request)
+    jobs = await db.fuel_import_jobs.find({"tenant_id": t}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    for j in jobs:
+        rows = await _job_rows(t, j["id"])
+        j["counts"] = fimp.counts_for(rows)
+    return {"items": jobs, "total": len(jobs)}
+
+
+@api_router.get("/fuel/imports/{job_id}")
+async def fuel_import_get(job_id: str, request: Request):
+    t = tid(request)
+    return await _job_out(t, await _job_or_404(t, job_id))
+
+
+@api_router.get("/fuel/imports/{job_id}/rows")
+async def fuel_import_rows(job_id: str, request: Request, status: Optional[str] = None):
+    t = tid(request)
+    await _job_or_404(t, job_id)
+    rows = await _job_rows(t, job_id, status)
+    return {"items": rows, "total": len(rows), "counts": fimp.counts_for(await _job_rows(t, job_id)) if status else fimp.counts_for(rows)}
+
+
+@api_router.post("/fuel/imports/{job_id}/mapping", dependencies=[Depends(require_roles("admin"))])
+async def fuel_import_mapping(job_id: str, payload: fimp.MappingPayload, request: Request):
+    """Mapping explicite colonne → champ (min tx_datetime + amount_total) → normalisation + statuts → job `preview`.
+    PREVIEW = 0 écriture métier finale (seuls fuel_import_jobs / fuel_import_rows varient)."""
+    t = tid(request)
+    job = await _job_or_404(t, job_id)
+    if job["status"] == "confirmed":
+        raise HTTPException(status_code=409, detail={"code": "JOB_CONFIRMED", "message": "Import déjà confirmé : mapping figé"})
+    mapping = {k: v for k, v in (payload.mapping or {}).items() if v}
+    errors = fimp.mapping_errors(mapping, job.get("colonnes") or [])
+    if errors:
+        raise HTTPException(status_code=422, detail=" ; ".join(errors))
+    fournisseur = fc.clean_str(payload.fournisseur) if payload.fournisseur is not None else job.get("fournisseur")
+    await db.fuel_import_jobs.update_one({"tenant_id": t, "id": job_id}, {"$set": {"mapping": mapping, "fournisseur": fournisseur, "status": "preview",
+                                                                               "mapped_at": datetime.now(timezone.utc).isoformat(), "mapped_by": _nofile_user(request)}})
+    job.update({"mapping": mapping, "fournisseur": fournisseur, "status": "preview"})
+    rows = await _evaluate_rows(t, job, await _job_rows(t, job_id), await th_for(request), await _fuel_settings(t))
+    counts = fimp.counts_for(rows)
+    await db.fuel_import_jobs.update_one({"tenant_id": t, "id": job_id}, {"$set": {"counts": counts}})
+    if payload.save_mapping and fournisseur:
+        await db.fuel_import_mappings.update_one({"tenant_id": t, "fournisseur": fournisseur},
+                                                 {"$set": {"mapping": mapping, "updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": _nofile_user(request)},
+                                                  "$setOnInsert": {"id": str(uuid.uuid4()), "tenant_id": t, "fournisseur": fournisseur, "created_at": datetime.now(timezone.utc).isoformat()}}, upsert=True)
+    await audit("mapping", "fuel_import", request, job_id, None,
+                f"{FUEL_IMPORT_LABEL} — mapping {len(mapping)} champ(s) : " + ", ".join(f"{k}←{v}" for k, v in mapping.items())
+                + f" · preview : {counts['ok']} ok, {counts['invalid']} invalides, {counts['duplicate']} doublons, {counts['unknown_card']} carte ?, "
+                  f"{counts['unknown_vehicle']} véhicule ?, {counts['amount_mismatch']} montant ≠" + (" · mapping sauvegardé" if payload.save_mapping and fournisseur else ""))
+    job["counts"] = counts
+    return {**(await _job_out(t, job)), "rows": rows, "written_business": 0}
+
+
+@api_router.patch("/fuel/imports/{job_id}/rows/{row_id}", dependencies=[Depends(require_roles("admin"))])
+async def fuel_import_row_resolve(job_id: str, row_id: str, payload: fimp.RowResolvePayload, request: Request):
+    """Résolution manuelle motivée d'une ligne (véhicule et/ou carte) AVANT import — décision humaine, jamais automatique."""
+    t = tid(request)
+    job = await _job_or_404(t, job_id)
+    row = await _row_or_404(t, job_id, row_id)
+    if row.get("imported"):
+        raise HTTPException(status_code=409, detail={"code": "ROW_IMPORTED", "message": "Ligne déjà importée"})
+    if len((payload.reason or "").strip()) < fimp.REASON_MIN_LEN:
+        raise HTTPException(status_code=422, detail="motif obligatoire (≥ 3 caractères)")
+    if not payload.vehicle_id and payload.card_id is None:
+        raise HTTPException(status_code=422, detail="vehicle_id ou card_id requis")
+    user, now, upd = _nofile_user(request), datetime.now(timezone.utc).isoformat(), {}
+    before = {"status": row.get("status"), "vehicle_id": (row.get("resolution") or {}).get("vehicle", {}).get("vehicle_id"),
+              "card_id": (row.get("resolution") or {}).get("card", {}).get("card_id")}
+    if payload.vehicle_id:
+        if not await db.vehicles.find_one({"tenant_id": t, "id": payload.vehicle_id}, {"_id": 1}):
+            raise HTTPException(status_code=404, detail="Véhicule introuvable dans ce tenant")
+        cands = ((row.get("resolution") or {}).get("vehicle") or {}).get("candidates") or []
+        prov = "plate_candidate" if any(c["vehicle_id"] == payload.vehicle_id and "plate_candidate" in c.get("sources", []) for c in cands) else "manual"
+        upd["manual_vehicle"] = {"vehicle_id": payload.vehicle_id, "reason": payload.reason.strip(), "by": user, "at": now, "provenance": prov}
+    if payload.card_id:
+        if not await db.fuel_cards.find_one({"tenant_id": t, "id": payload.card_id, "is_deleted": False}, {"_id": 1}):
+            raise HTTPException(status_code=404, detail="Carte introuvable dans ce tenant")
+        upd["manual_card"] = {"card_id": payload.card_id, "reason": payload.reason.strip(), "by": user, "at": now}
+    await db.fuel_import_rows.update_one({"tenant_id": t, "id": row_id}, {"$set": upd})
+    rows = await _evaluate_rows(t, job, [{**row, **upd}], await th_for(request), await _fuel_settings(t))
+    new = rows[0]
+    counts = fimp.counts_for(await _job_rows(t, job_id))
+    await db.fuel_import_jobs.update_one({"tenant_id": t, "id": job_id}, {"$set": {"counts": counts}})
+    await audit("row_resolve", "fuel_import", request, job_id, payload.vehicle_id, f"{FUEL_IMPORT_LABEL} — ligne {row['row_index']} [row_id {row_id}] résolue manuellement : "
+                f"statut {before['status']} → {new['status']} · véhicule {before['vehicle_id'] or '—'} → {new['resolution']['vehicle'].get('vehicle_id') or '—'}"
+                + (f" (provenance {upd['manual_vehicle']['provenance']}, plaque source {new['normalized'].get('plaque_hint') or '—'})" if "manual_vehicle" in upd else "")
+                + f" · carte {before['card_id'] or '—'} → {new['resolution']['card'].get('card_id') or '—'} — motif : {payload.reason.strip()}")
+    return {"row": new, "counts": counts}
+
+
+@api_router.post("/fuel/imports/{job_id}/rows/accept-unique", dependencies=[Depends(require_roles("admin"))])
+async def fuel_import_accept_unique(job_id: str, payload: fimp.BulkAcceptPayload, request: Request):
+    """Action groupée « Accepter les N propositions à candidat unique » = N décisions humaines motivées (jamais un auto-match) :
+    éligible si ligne `unknown_vehicle`, non importée, exactement 1 candidat issu de la plaque normalisée, véhicule du tenant.
+    Audit UNITAIRE par ligne (batch_id) ; ligne modifiée entre preview et confirmation → refusée (fail-closed)."""
+    t = tid(request)
+    job = await _job_or_404(t, job_id)
+    if job["status"] == "confirmed":
+        raise HTTPException(status_code=409, detail={"code": "JOB_CONFIRMED"})
+    if len((payload.reason or "").strip()) < fimp.REASON_MIN_LEN:
+        raise HTTPException(status_code=422, detail="motif obligatoire (≥ 3 caractères)")
+    if not payload.row_ids:
+        raise HTTPException(status_code=422, detail="row_ids vide")
+    user, now, batch_id = _nofile_user(request), datetime.now(timezone.utc).isoformat(), str(uuid.uuid4())
+    vmap, _ = await _vehicle_index(t)
+    th, settings = await th_for(request), await _fuel_settings(t)
+    accepted, refused = [], []
+    for rid in payload.row_ids:
+        row = await db.fuel_import_rows.find_one({"tenant_id": t, "job_id": job_id, "id": rid}, {"_id": 0})
+        if not row:
+            refused.append({"row_id": rid, "reason": "ligne introuvable"})
+            continue
+        cands = ((row.get("resolution") or {}).get("vehicle") or {}).get("candidates") or []
+        plate_c = [c for c in cands if "plate_candidate" in c.get("sources", [])]
+        if row.get("imported") or row.get("status") != "unknown_vehicle":
+            refused.append({"row_id": rid, "row_index": row["row_index"], "reason": f"statut {row.get('status')} (attendu unknown_vehicle non importée)"})
+        elif len(cands) != 1 or len(plate_c) != 1:
+            refused.append({"row_id": rid, "row_index": row["row_index"], "reason": f"{len(cands)} candidat(s) ({len(plate_c)} par plaque) — candidat unique requis"})
+        elif plate_c[0]["vehicle_id"] not in vmap:
+            refused.append({"row_id": rid, "row_index": row["row_index"], "reason": "candidat introuvable dans le tenant (fail-closed)"})
+        else:
+            vid = plate_c[0]["vehicle_id"]
+            mv = {"vehicle_id": vid, "reason": payload.reason.strip(), "by": user, "at": now, "provenance": "plate_candidate", "batch_id": batch_id}
+            await db.fuel_import_rows.update_one({"tenant_id": t, "id": rid}, {"$set": {"manual_vehicle": mv}})
+            new = (await _evaluate_rows(t, job, [{**row, "manual_vehicle": mv}], th, settings))[0]
+            await audit("row_resolve", "fuel_import", request, job_id, vid, f"{FUEL_IMPORT_LABEL} — ligne {row['row_index']} [row_id {rid}] acceptée (action groupée {batch_id}) : "
+                        f"statut unknown_vehicle → {new['status']} · véhicule — → {vid} ({(vmap.get(vid) or {}).get('plaque')}) · plaque source {row['normalized'].get('plaque_hint')} "
+                        f"· candidat unique par plaque normalisée · décision humaine ({user}) — motif : {payload.reason.strip()}")
+            accepted.append({"row_id": rid, "row_index": row["row_index"], "vehicle_id": vid, "plaque": (vmap.get(vid) or {}).get("plaque"),
+                             "plaque_source": row["normalized"].get("plaque_hint"), "status": new["status"]})
+    counts = fimp.counts_for(await _job_rows(t, job_id))
+    await db.fuel_import_jobs.update_one({"tenant_id": t, "id": job_id}, {"$set": {"counts": counts}})
+    return {"batch_id": batch_id, "accepted": accepted, "refused": refused, "counts": counts}
+
+
+@api_router.post("/fuel/imports/{job_id}/confirm", dependencies=[Depends(require_roles("admin"))])
+async def fuel_import_confirm(job_id: str, request: Request):
+    """Seule étape d'écriture métier : importe ok + amount_mismatch + unknown_card ; duplicate / invalid / unknown_vehicle mis de côté.
+    Idempotent (lignes déjà importées ignorées, revendication atomique par ligne)."""
+    t = tid(request)
+    job = await _job_or_404(t, job_id)
+    if job["status"] == "mapping":
+        raise HTTPException(status_code=409, detail={"code": "MAPPING_REQUIRED", "message": "Définissez le mapping avant de confirmer"})
+    th, settings = await th_for(request), await _fuel_settings(t)
+    rows = await _job_rows(t, job_id)
+    results, skipped = [], {}
+    for r in rows:
+        if r.get("imported"):
+            skipped["already_imported"] = skipped.get("already_imported", 0) + 1
+        elif r["status"] in fimp.IMPORTABLE:
+            results.append(await _import_row(t, request, job, r, th, settings))
+        else:
+            skipped[r["status"]] = skipped.get(r["status"], 0) + 1
+    done = [x for x in results if not x.get("skipped")]
+    now = datetime.now(timezone.utc).isoformat()
+    counts = fimp.counts_for(await _job_rows(t, job_id))
+    await db.fuel_import_jobs.update_one({"tenant_id": t, "id": job_id}, {"$set": {"status": "confirmed", "confirmed_at": job.get("confirmed_at") or now,
+                                                                               "confirmed_by": job.get("confirmed_by") or _nofile_user(request), "imported_count": counts["imported"], "counts": counts}})
+    await audit("confirm", "fuel_import", request, job_id, None, f"{FUEL_IMPORT_LABEL} — confirmation : {len(done)} ligne(s) importée(s)"
+                + (f" ({skipped.get('already_imported', 0)} déjà importée(s))" if skipped.get("already_imported") else "")
+                + f" · mises de côté : {skipped.get('duplicate', 0)} doublon(s), {skipped.get('invalid', 0)} invalide(s), {skipped.get('unknown_vehicle', 0)} véhicule(s) non résolu(s)"
+                + f" · anomalies : {sum(len(x.get('anomalies') or []) for x in done)}")
+    return {"job_id": job_id, "status": "confirmed", "imported": len(done), "already_imported": skipped.get("already_imported", 0),
+            "set_aside": {k: v for k, v in skipped.items() if k != "already_imported"}, "results": done, "counts": counts,
+            "anomalies": sum(len(x.get("anomalies") or []) for x in done), "warnings": [w for x in done for w in x.get("warnings", [])]}
+
+
+@api_router.post("/fuel/imports/{job_id}/rows/{row_id}/force", dependencies=[Depends(require_roles("admin"))])
+async def fuel_import_force(job_id: str, row_id: str, payload: fimp.ReasonPayload, request: Request):
+    """Forçage motivé d'une ligne `duplicate` (doublon assumé, `forced_duplicate_of` conservé). Jamais pour invalid / unknown_vehicle."""
+    t = tid(request)
+    job = await _job_or_404(t, job_id)
+    row = await _row_or_404(t, job_id, row_id)
+    if len((payload.reason or "").strip()) < fimp.REASON_MIN_LEN:
+        raise HTTPException(status_code=422, detail="motif obligatoire (≥ 3 caractères)")
+    if row.get("imported"):
+        raise HTTPException(status_code=409, detail={"code": "ROW_IMPORTED"})
+    if row.get("status") != "duplicate":
+        raise HTTPException(status_code=409, detail={"code": "NOT_FORCEABLE", "status": row.get("status"), "message": "Seule une ligne « doublon » peut être forcée"})
+    if not ((row.get("resolution") or {}).get("vehicle") or {}).get("vehicle_id"):
+        raise HTTPException(status_code=409, detail={"code": "UNKNOWN_VEHICLE", "message": "Résolvez d'abord le véhicule de la ligne"})
+    res = await _import_row(t, request, job, row, await th_for(request), await _fuel_settings(t), force_reason=payload.reason.strip())
+    counts = fimp.counts_for(await _job_rows(t, job_id))
+    await db.fuel_import_jobs.update_one({"tenant_id": t, "id": job_id}, {"$set": {"imported_count": counts["imported"], "counts": counts,
+                                                                               **({"status": "confirmed", "confirmed_at": datetime.now(timezone.utc).isoformat()} if job["status"] != "confirmed" else {})}})
+    await audit("force", "fuel_import", request, job_id, None, f"{FUEL_IMPORT_LABEL} — ligne {row['row_index']} FORCÉE malgré doublon "
+                f"({(row.get('duplicate_of') or {}).get('kind')}) — motif : {payload.reason.strip()}")
+    return {**res, "counts": counts}
+
+
+async def _tx_or_404(tenant_id: str, tx_id: str) -> dict:
+    tx = await db.fuel_transactions.find_one({"tenant_id": tenant_id, "id": tx_id, "is_deleted": False}, {"_id": 0})
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction introuvable")
+    return tx
+
+
+async def _anomaly_out(tenant_id: str, rows: list) -> list:
+    tids = list({a["transaction_id"] for a in rows})
+    txs = {x["id"]: x for x in await db.fuel_transactions.find({"tenant_id": tenant_id, "id": {"$in": tids}},
+                                                                {"_id": 0, "id": 1, "date": 1, "heure": 1, "station": 1, "montant": 1, "devise": 1, "vehicle_id": 1, "card_id": 1, "litres": 1, "energie_kwh": 1, "fournisseur": 1, "carte_last4": 1, "import_job_id": 1}).to_list(None)} if tids else {}
+    vmap, _ = await _vehicle_index(tenant_id)
+    cids = list({a.get("card_id") for a in rows if a.get("card_id")})
+    cards = {c["id"]: fc.display_label(c) for c in await db.fuel_cards.find({"tenant_id": tenant_id, "id": {"$in": cids}}, {"_id": 0, "id": 1, "fournisseur": 1, "last4": 1}).to_list(None)} if cids else {}
+    for a in rows:
+        x = txs.get(a["transaction_id"]) or {}
+        a.update({"transaction": x or None, "plaque": (vmap.get(x.get("vehicle_id")) or {}).get("plaque"), "card_label": cards.get(a.get("card_id")),
+                  "status_label": fan.STATUS_LABELS.get(a.get("status"), a.get("status")), "label": fan.LABELS.get(a.get("type"), a.get("type"))})
+    return rows
+
+
+@api_router.get("/fuel-transactions/{tx_id}")
+async def fuel_transaction_detail(tx_id: str, request: Request):
+    t = tid(request)
+    tx = await _tx_or_404(t, tx_id)
+    doc = await db.documents.find_one({"tenant_id": t, "id": tx.get("source_document_id")}, _NOFILE_PROJ)
+    vmap, _ = await _vehicle_index(t)
+    match = await db.fuel_transaction_matches.find_one({"tenant_id": t, "transaction_id": tx_id}, {"_id": 0})
+    if match:
+        for c in match.get("candidates") or []:
+            c["label"] = c.get("label") or _vehicle_label(vmap.get(c["vehicle_id"]))
+    anomalies = await _anomaly_out(t, await db.fuel_anomalies.find({"tenant_id": t, "transaction_id": tx_id}, {"_id": 0}).sort("detected_at", -1).to_list(None))
+    card = await db.fuel_cards.find_one({"tenant_id": t, "id": tx.get("card_id")}, {"_id": 0, "id": 1, "fournisseur": 1, "last4": 1, "statut": 1, "expire_le": 1, "is_deleted": 1}) if tx.get("card_id") else None
+    v = vmap.get(tx.get("vehicle_id")) or {}
+    names = await _driver_names(t, [tx.get("driver_id")])
+    return {**tx, "plaque": v.get("plaque"), "vehicule_label": _vehicle_label(v), "driver_nom": names.get(tx.get("driver_id")),
+            "document": {**doc, "cost": _nofile_cost(doc)} if doc else None, "match": match, "match_label": fm.MATCH_LABELS.get(tx.get("match_status"), tx.get("match_status")),
+            "anomalies": anomalies, "anomalies_open": sum(1 for a in anomalies if a["status"] == "ouverte"),
+            "card": {**card, "label": fc.display_label(card)} if card else None, "card_inactive": fm.card_inactive_eval(card, tx.get("date")) if card else None}
+
+
+@api_router.patch("/fuel-transactions/{tx_id}/match", dependencies=[Depends(require_roles("admin"))])
+async def fuel_transaction_manual_match(tx_id: str, payload: fm.ManualMatchPayload, request: Request):
+    """Réaffectation EXPLICITE motivée (réponse à E4) : transaction + document déplacés vers le véhicule choisi, match `manual`,
+    audit avant/après, consommation recalculée pour les deux véhicules. Les anomalies existantes restent visibles (décision humaine)."""
+    t = tid(request)
+    tx = await _tx_or_404(t, tx_id)
+    if len((payload.reason or "").strip()) < fimp.REASON_MIN_LEN:
+        raise HTTPException(status_code=422, detail="motif obligatoire (≥ 3 caractères)")
+    vehicle = await db.vehicles.find_one({"tenant_id": t, "id": payload.vehicle_id}, {"_id": 0, "id": 1, "plaque": 1})
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Véhicule introuvable dans ce tenant")
+    old_vid, user, now = tx.get("vehicle_id"), _nofile_user(request), datetime.now(timezone.utc).isoformat()
+    await db.fuel_transactions.update_one({"tenant_id": t, "id": tx_id}, {"$set": {"vehicle_id": vehicle["id"], "updated_at": now}})
+    if tx.get("source_document_id"):
+        await db.documents.update_one({"tenant_id": t, "id": tx["source_document_id"]}, {"$set": {"vehicle_id": vehicle["id"], "updated_at": now}})
+    tx["vehicle_id"] = vehicle["id"]
+    prev = await db.fuel_transaction_matches.find_one({"tenant_id": t, "transaction_id": tx_id}, {"_id": 0, "candidates": 1})
+    match = await _save_match(t, tx, _manual_match_result(vehicle["id"], payload.reason.strip(), user, "manual", (prev or {}).get("candidates") or []), user, payload.reason.strip())
+    old_plaque = ((await db.vehicles.find_one({"tenant_id": t, "id": old_vid}, {"_id": 0, "plaque": 1})) or {}).get("plaque") if old_vid else None
+    await audit("match", "fuel_transaction", request, tx_id, vehicle["id"],
+                f"Rattachement manuel : véhicule {old_vid or '—'} ({old_plaque or '—'}) → {vehicle['id']} ({vehicle.get('plaque') or '—'}) · statut {tx.get('match_status') or '—'} → manual — motif : {payload.reason.strip()}")
+    for vid in {old_vid, vehicle["id"]} - {None}:
+        await _apply_transaction_conso(vid, t)
+    scan = await _scan_tx_anomalies(t, tx, request, await _fuel_settings(t))
+    return {"ok": True, "transaction": await _tx_or_404(t, tx_id), "match": match, "warnings": scan["codes"]}
+
+
+@api_router.patch("/fuel-transactions/{tx_id}/card", dependencies=[Depends(require_roles("admin"))])
+async def fuel_transaction_manual_card(tx_id: str, payload: fm.ManualCardPayload, request: Request):
+    """Choix humain motivé de la carte (cas ambigu / introuvable) ou retrait (card_id=null). Jamais automatique."""
+    t = tid(request)
+    tx = await _tx_or_404(t, tx_id)
+    if len((payload.reason or "").strip()) < fimp.REASON_MIN_LEN:
+        raise HTTPException(status_code=422, detail="motif obligatoire (≥ 3 caractères)")
+    card = None
+    if payload.card_id:
+        card = await db.fuel_cards.find_one({"tenant_id": t, "id": payload.card_id, "is_deleted": False}, {"_id": 0, "id": 1, "fournisseur": 1, "last4": 1})
+        if not card:
+            raise HTTPException(status_code=404, detail="Carte introuvable dans ce tenant")
+    now = datetime.now(timezone.utc).isoformat()
+    upd = {"card_id": card["id"] if card else None, "card_manual": True, "updated_at": now,
+           "card_resolution": {"status": "manual", "card_id": card["id"] if card else None, "reason": payload.reason.strip(), "by": _nofile_user(request), "at": now,
+                               "previous": tx.get("card_resolution")}}
+    await db.fuel_transactions.update_one({"tenant_id": t, "id": tx_id}, {"$set": upd})
+    await audit("card", "fuel_transaction", request, tx_id, tx.get("vehicle_id"),
+                f"Carte de la transaction : {tx.get('card_id') or '—'} → {card['id'] + ' (' + fc.display_label(card) + ')' if card else '—'} (décision manuelle) — motif : {payload.reason.strip()}")
+    tx.update(upd)
+    scan = await _scan_tx_anomalies(t, tx, request, await _fuel_settings(t))
+    return {"ok": True, "transaction": await _tx_or_404(t, tx_id), "warnings": scan["codes"]}
+
+
+@api_router.post("/fuel/match/run", dependencies=[Depends(require_roles("admin"))])
+async def fuel_match_run(request: Request):
+    """Recalcul explicable des rattachements non manuels (le véhicule d'une transaction n'est JAMAIS modifié par ce run)."""
+    t = tid(request)
+    th, settings = await th_for(request), await _fuel_settings(t)
+    vmap, plates = await _vehicle_index(t)
+    txs = await db.fuel_transactions.find({"tenant_id": t, "is_deleted": False, "match_status": {"$ne": "manual"}}, {"_id": 0}).to_list(None)
+    stats = {"auto_matched": 0, "matched_review": 0, "unmatched": 0}
+    for tx in txs:
+        card_res = await _resolve_card(t, tx.get("fournisseur"), tx.get("carte_last4"), tx.get("date") or drv.today_zurich(), th)
+        if tx.get("card_manual") and tx.get("card_id"):
+            card_res["candidates"] = [c for c in card_res["candidates"] if c["id"] == tx["card_id"]]
+            card_res.update({"status": "found" if card_res["candidates"] else card_res["status"], "card_id": tx["card_id"] if card_res["candidates"] else None})
+        norm = {"vehicle_id_hint": None, "plaque_hint": tx.get("vehicle_hint") or tx.get("plaque_mentionnee"), "energie": tx.get("energie"), "type_carburant": tx.get("type_carburant")}
+        res = await _score_for(t, norm, card_res, vmap, plates, tx.get("date") or drv.today_zurich(), settings)
+        if res["status"] == "auto_matched" and res["vehicle_id"] != tx.get("vehicle_id"):
+            res.update({"status": "matched_review", "vehicle_id": None, "review_reasons": ["DIFFERENT_FROM_TRANSACTION_VEHICLE"], "method": None})
+        res["vehicle_id"] = tx.get("vehicle_id")
+        await _save_match(t, tx, res, _nofile_user(request))
+        stats[res["status"]] = stats.get(res["status"], 0) + 1
+    await audit("match_run", "fuel_transaction", request, None, None, f"Recalcul des rattachements : {len(txs)} transaction(s) — " + ", ".join(f"{k} {v}" for k, v in stats.items()))
+    return {"recomputed": len(txs), "stats": stats, "written_vehicle_changes": 0}
+
+
+@api_router.get("/fuel/anomalies")
+async def fuel_anomalies_list(request: Request, status: Optional[str] = None, severity: Optional[str] = None, type: Optional[str] = None,
+                              vehicle_id: Optional[str] = None, transaction_id: Optional[str] = None):
+    t = tid(request)
+    q = {"tenant_id": t}
+    if status:
+        if any(s not in fan.STATUSES for s in status.split(",")):
+            raise HTTPException(status_code=422, detail=f"status : {', '.join(fan.STATUSES)}")
+        q["status"] = {"$in": status.split(",")}
+    if severity:
+        q["severity"] = {"$in": severity.split(",")}
+    if type:
+        q["type"] = {"$in": type.split(",")}
+    if vehicle_id:
+        q["vehicle_id"] = vehicle_id
+    if transaction_id:
+        q["transaction_id"] = transaction_id
+    rows = await _anomaly_out(t, await db.fuel_anomalies.find(q, {"_id": 0}).sort("detected_at", -1).to_list(2000))
+    all_ = await db.fuel_anomalies.find({"tenant_id": t}, {"_id": 0, "status": 1, "severity": 1, "type": 1}).to_list(None)
+    return {"items": rows, "total": len(rows),
+            "stats": {"total": len(all_), "ouvertes": sum(1 for a in all_ if a["status"] == "ouverte"),
+                      "critical_ouvertes": sum(1 for a in all_ if a["status"] == "ouverte" and a["severity"] == "critical"),
+                      "warning_ouvertes": sum(1 for a in all_ if a["status"] == "ouverte" and a["severity"] == "warning"),
+                      "by_status": {s: sum(1 for a in all_ if a["status"] == s) for s in fan.STATUSES},
+                      "by_type": {ty: sum(1 for a in all_ if a["type"] == ty and a["status"] == "ouverte") for ty in fan.TYPES}},
+            "types": [{"code": ty, "label": fan.LABELS[ty], "severity": fan.SEVERITY[ty]} for ty in fan.TYPES],
+            "statuses": [{"code": s, "label": fan.STATUS_LABELS[s]} for s in fan.STATUSES], "settings": await _fuel_settings(t)}
+
+
+@api_router.get("/fuel/anomalies/{anomaly_id}")
+async def fuel_anomaly_get(anomaly_id: str, request: Request):
+    t = tid(request)
+    a = await db.fuel_anomalies.find_one({"tenant_id": t, "id": anomaly_id}, {"_id": 0})
+    if not a:
+        raise HTTPException(status_code=404, detail="Anomalie introuvable")
+    return (await _anomaly_out(t, [a]))[0]
+
+
+@api_router.post("/fuel/anomalies/scan", dependencies=[Depends(require_roles("admin"))])
+async def fuel_anomalies_scan(request: Request, vehicle_id: Optional[str] = None):
+    """Recalcul des anomalies sur les transactions du tenant (D8 : Documents recalcule ; une anomalie décidée n'est jamais recréée)."""
+    t = tid(request)
+    settings = await _fuel_settings(t)
+    q = {"tenant_id": t, "is_deleted": False}
+    if vehicle_id:
+        q["vehicle_id"] = vehicle_id
+    txs = await db.fuel_transactions.find(q, {"_id": 0}).sort("date_heure", 1).to_list(None)
+    created = 0
+    for tx in txs:
+        created += len((await _scan_tx_anomalies(t, tx, request, settings))["created"])
+    await audit("scan", "fuel_anomaly", request, None, vehicle_id, f"Scan anomalies : {len(txs)} transaction(s), {created} nouvelle(s) anomalie(s)")
+    return {"scanned": len(txs), "created": created}
+
+
+@api_router.post("/fuel/anomalies/{anomaly_id}/decide", dependencies=[Depends(require_roles("admin"))])
+async def fuel_anomaly_decide(anomaly_id: str, payload: fan.DecisionPayload, request: Request):
+    """Décision humaine motivée : justify → justifiee · correct → corrigee · reject → rejetee. L'anomalie reste visible (historique), jamais supprimée."""
+    t = tid(request)
+    a = await db.fuel_anomalies.find_one({"tenant_id": t, "id": anomaly_id}, {"_id": 0})
+    if not a:
+        raise HTTPException(status_code=404, detail="Anomalie introuvable")
+    errors = fan.decision_errors(payload)
+    if errors:
+        raise HTTPException(status_code=422, detail=" ; ".join(errors))
+    if a.get("status") != "ouverte":
+        raise HTTPException(status_code=409, detail={"code": "ANOMALY_DECIDED", "status": a.get("status"), "message": "Anomalie déjà décidée (historique conservé)"})
+    user, now, new_status = _nofile_user(request), datetime.now(timezone.utc).isoformat(), fan.DECISIONS[payload.decision]
+    entry = {"at": now, "by": user, "status": new_status, "decision": payload.decision, "reason": payload.reason.strip()}
+    await db.fuel_anomalies.update_one({"tenant_id": t, "id": anomaly_id},
+                                       {"$set": {"status": new_status, "decided_by": user, "decided_at": now, "decision": payload.decision, "decision_reason": payload.reason.strip()},
+                                        "$push": {"history": entry}})
+    await audit("decide", "fuel_anomaly", request, anomaly_id, a.get("vehicle_id"),
+                f"Anomalie {fan.LABELS.get(a.get('type'), a.get('type'))} : {a.get('status')} → {new_status} ({payload.decision}) — motif : {payload.reason.strip()}")
+    return (await _anomaly_out(t, [await db.fuel_anomalies.find_one({"tenant_id": t, "id": anomaly_id}, {"_id": 0})]))[0]
+
+
+@api_router.get("/tenant-settings/fuel")
+async def fuel_settings_get(request: Request):
+    return {"fuel": await _fuel_settings(tid(request)), "defaults": fm.DEFAULT_FUEL_SETTINGS}
+
+
+@api_router.patch("/tenant-settings/fuel", dependencies=[Depends(require_roles("admin"))])
+async def fuel_settings_patch(payload: fm.FuelSettingsPayload, request: Request):
+    t = tid(request)
+    errors = fm.settings_errors(payload)
+    if errors:
+        raise HTTPException(status_code=422, detail=" ; ".join(errors))
+    before = await _fuel_settings(t)
+    changes = {k: v for k, v in payload.model_dump().items() if v is not None}
+    after = {**before, **changes}
+    if after["score_review"] > after["score_auto"]:
+        raise HTTPException(status_code=422, detail="score_review ≤ score_auto")
+    await db.tenant_settings.update_one({"tenant_id": t}, {"$set": {"fuel": after, "updated_at": datetime.now(timezone.utc).isoformat()}}, upsert=True)
+    await audit("settings", "tenant_settings", request, t, None, "Paramètres carburant : " + ", ".join(f"{k} {before.get(k)} → {v}" for k, v in changes.items()))
+    return {"fuel": after, "defaults": fm.DEFAULT_FUEL_SETTINGS}
+
+
 
 # ---------------------------------------------------------------------------
 # Inspections (état des lieux)
@@ -5517,6 +6346,7 @@ async def validate_scanned_document(doc_id: str, payload: DocumentValidate, requ
             fuel_tx = await _upsert_fuel_transaction(
                 doc_id, doc_data, vehicle, tid(request),
                 (getattr(request.state, "user", None) or {}).get("email") or "utilisateur", tx_extra)
+            warnings.extend(await _fuel_post_upsert(tid(request), request, fuel_tx, vehicle, await th_for(request), "document"))  # Lot F
         else:
             warnings.append({"code": "TRANSACTION_SKIPPED",
                              "detail": "Ni montant, ni litres, ni kWh validés — aucune transaction énergie créée."})
@@ -7184,6 +8014,7 @@ async def startup():
         await legacy_identity.ensure_legacy_indexes(db)
         await ensure_driver_indexes()
         await ensure_fuel_card_indexes()
+        await ensure_fuel_import_indexes()
         await ensure_fine_indexes()
         if NAVIXY_HASH:
             await db.tenant_integrations.update_one(

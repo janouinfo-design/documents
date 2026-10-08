@@ -356,4 +356,29 @@ export const closeFuelCardAssignment = (assignmentId, data = {}) => http.post(`/
 export const getFuelCardHistory = (id) => http.get(`/fuel-cards/${id}/history`).then((r) => r.data);
 export const resolveFuelCard = (params) => http.get("/fuel-cards/resolve", { params }).then((r) => r.data);
 
+// Phase 4C — Lot F : imports carburant, rattachement, anomalies
+export const getFuelImportFields = () => http.get("/fuel/import-fields").then((r) => r.data);
+export const uploadFuelImport = (file, fournisseur) => {
+  const fd = new FormData();
+  fd.append("file", file);
+  if (fournisseur) fd.append("fournisseur", fournisseur);
+  return http.post("/fuel/imports", fd, { headers: { "Content-Type": "multipart/form-data" } }).then((r) => r.data);
+};
+export const getFuelImports = () => http.get("/fuel/imports").then((r) => r.data);
+export const getFuelImport = (id) => http.get(`/fuel/imports/${id}`).then((r) => r.data);
+export const getFuelImportRows = (id, params = {}) => http.get(`/fuel/imports/${id}/rows`, { params }).then((r) => r.data);
+export const setFuelImportMapping = (id, data) => http.post(`/fuel/imports/${id}/mapping`, data).then((r) => r.data);
+export const resolveFuelImportRow = (jobId, rowId, data) => http.patch(`/fuel/imports/${jobId}/rows/${rowId}`, data).then((r) => r.data);
+export const acceptUniqueFuelImportRows = (jobId, data) => http.post(`/fuel/imports/${jobId}/rows/accept-unique`, data).then((r) => r.data);
+export const confirmFuelImport = (id) => http.post(`/fuel/imports/${id}/confirm`).then((r) => r.data);
+export const forceFuelImportRow = (jobId, rowId, data) => http.post(`/fuel/imports/${jobId}/rows/${rowId}/force`, data).then((r) => r.data);
+export const getFuelTransaction = (id) => http.get(`/fuel-transactions/${id}`).then((r) => r.data);
+export const matchFuelTransaction = (id, data) => http.patch(`/fuel-transactions/${id}/match`, data).then((r) => r.data);
+export const setFuelTransactionCard = (id, data) => http.patch(`/fuel-transactions/${id}/card`, data).then((r) => r.data);
+export const runFuelMatch = () => http.post("/fuel/match/run").then((r) => r.data);
+export const getFuelAnomalies = (params = {}) => http.get("/fuel/anomalies", { params }).then((r) => r.data);
+export const scanFuelAnomalies = () => http.post("/fuel/anomalies/scan").then((r) => r.data);
+export const decideFuelAnomaly = (id, data) => http.post(`/fuel/anomalies/${id}/decide`, data).then((r) => r.data);
+export const getFuelSettings = () => http.get("/tenant-settings/fuel").then((r) => r.data);
+
 export default http;

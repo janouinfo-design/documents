@@ -1,0 +1,19 @@
+﻿Ref;Date transaction;Numero de carte;Immatriculation;vehicle_id;Montant TTC;Devise;Montant CHF;Quantite;Prix unitaire;Station;Kilometrage;Produit
+J01;01.06.2026 08:00;**** 1111;;;82.00;CHF;;40;2.05;Migrol Lausanne-Malley;43200;Diesel
+J02;01.06.2026 09:00;2222;VD 600 001;;60.00;CHF;;30;2.00;Shell Vevey;;Diesel
+J03;01.06.2026 10:00;0000;;2d08c925-2686-4266-8892-9277127c4fe2;55.00;CHF;;25;2.20;Migrol Nyon;;Essence
+J04;02.06.2026 10:00;3333;;2d08c925-2686-4266-8892-9277127c4fe2;44.00;CHF;;20;2.20;Migrol Morges;;Essence
+J05;02.06.2026 11:00;4444;;5bb09b00-79cf-4f37-a243-b6af51fd2ada;41.00;CHF;;20;2.05;Migrol Rolle;;Diesel
+J06;02.06.2026 12:00;9999;;5bb09b00-79cf-4f37-a243-b6af51fd2ada;61.50;CHF;;30;2.05;Migrol Gland;;Diesel
+J07;03.06.2026 08:00;;VS 600 003;;41.00;CHF;;20;2.05;Agrola Aigle;;Diesel
+J08;03.06.2026 09:00;;FR 600 004;;41.00;CHF;;20;2.05;Agrola Bex;;Diesel
+J09;03.06.2026 10:00;;NE-600-005;;41.00;CHF;;20;2.05;Agrola Monthey;;Diesel
+J10;03.06.2026 11:00;;TI 600 009;;44.00;CHF;;20;2.20;Coop Pronto Sion;;Essence
+J11;03.06.2026 12:00;;ZH 999 999;;33.00;CHF;;15;2.20;Coop Pronto Zurich;;Essence
+J01;01.06.2026 08:00;**** 1111;;;82.00;CHF;;40;2.05;Migrol Lausanne-Malley;43200;Diesel
+M01;04.05.2026 07:45;1111;;;92.25;CHF;;45;2.05;Migrol Lausanne-Malley;42350;Diesel
+J14;04.06.2026 08:00;1111;;;50.00;EUR;48.50;25;2.00;Total Annemasse;;Diesel
+J15;04.06.2026 09:00;1111;;;30.00;EUR;;15;2.00;Total Annemasse;;Diesel
+J16;04.06.2026 10:00;1111;;;;CHF;;10;2.00;Migrol Lausanne-Malley;;Diesel
+J17;05.06.2026 08:00;1111;;;100.00;CHF;;40;2.05;Migrol Lausanne-Malley;;Diesel
+J18;05.06.2026 09:00;7777;;2d08c925-2686-4266-8892-9277127c4fe2;25.00;CHF;;50;0.50;Ionity Bursins;;Électricité
