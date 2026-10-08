@@ -5,7 +5,7 @@
   "exists": 1
  },
  "counts": {
-  "audit_logs": 89,
+  "audit_logs": 96,
   "documents": 19,
   "fuel_anomalies": 3,
   "fuel_card_assignments": 5,
@@ -526,8 +526,8 @@
   "ouverte": 2
  },
  "fuel_anomalies_by_type": {
-  "double_plein": 2,
-  "incoherence_montant": 1
+  "incoherence_montant": 1,
+  "double_plein": 2
  },
  "documents": {
   "total": 19,
@@ -539,15 +539,15 @@
   "confirmed": 4
  },
  "audit": {
-  "count": 89,
+  "count": 96,
   "lotg_events": {
+   "tenant_settings.settings": 4,
+   "fuel_statement.close_exception": 1,
+   "fuel_reconciliation.justify": 1,
    "fuel_statement.declared": 3,
    "fuel_statement.close": 1,
-   "fuel_statement.create": 4,
-   "fuel_export.download": 9,
-   "tenant_settings.settings": 2,
-   "fuel_reconciliation.justify": 1,
-   "fuel_statement.close_exception": 1
+   "fuel_export.download": 12,
+   "fuel_statement.create": 4
   }
  },
  "tenant_settings": {
