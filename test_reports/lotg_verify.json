@@ -1,0 +1,764 @@
+{
+ "checks": [
+  {
+   "check": "tenant isolation (aucune écriture Lot G hors tenant cible)",
+   "result": "PASS",
+   "detail": "collections Lot G hors cible inchangées ; tenants hors cible : 12"
+  },
+  {
+   "check": "default unchanged (counts + hash stable, PREEXISTING_UNCHANGED)",
+   "result": "PASS",
+   "detail": "15 collections · diff=aucune"
+  },
+  {
+   "check": "other tenants unchanged (counts + hash stable)",
+   "result": "PASS",
+   "detail": "diff=aucune · tenants=True"
+  },
+  {
+   "check": "CAN priority (V1 mai : conso = CAN 100 L, tickets ≠ conso)",
+   "result": "PASS",
+   "detail": "ecart=10.0 L tickets=50.0"
+  },
+  {
+   "check": "CAN absent → aucune consommation inventée (V3)",
+   "result": "PASS",
+   "detail": ""
+  },
+  {
+   "check": "ASTRA comparative (6.5 référence, réelle 6.7 conservée)",
+   "result": "PASS",
+   "detail": ""
+  },
+  {
+   "check": "thresholds null => INDICATIF",
+   "result": "PASS",
+   "detail": "settings={'threshold_pct': None, 'threshold_l': None}"
+  },
+  {
+   "check": "thresholds configured (5 % / 5 L) => A_CONTROLER / A_CONTROLER / OK, puis retour null",
+   "result": "PASS",
+   "detail": "('A_CONTROLER', 'A_CONTROLER', 'OK')"
+  },
+  {
+   "check": "justification persistée (explique, ne corrige pas)",
+   "result": "PASS",
+   "detail": "Jerrican de 10 L pour la tondeuse du dép"
+  },
+  {
+   "check": "all blocker types covered (décompte mai)",
+   "result": "PASS",
+   "detail": "{'pending_fx': 1, 'matched_review': 1, 'unmatched': 1, 'open_anomaly': 3, 'forced_duplicate': 1}"
+  },
+  {
+   "check": "blocker_count / blocked_line_count / breakdown cohérents",
+   "result": "PASS",
+   "detail": "count=7 lines=6"
+  },
+  {
+   "check": "draft transactions unlocked (correctif + période courante)",
+   "result": "PASS",
+   "detail": "3 transaction(s) de brouillon, aucune verrouillée"
+  },
+  {
+   "check": "closed transactions locked (locked / statement_id / locked_at)",
+   "result": "PASS",
+   "detail": "15 transaction(s) verrouillée(s) par 2 décomptes clôturés"
+  },
+  {
+   "check": "close_exception blockers preserved",
+   "result": "PASS",
+   "detail": "snapshot=7 par=lotg-admin@lotg-ui-test.ch"
+  },
+  {
+   "check": "close normal = 0 blocker (décompte avril)",
+   "result": "PASS",
+   "detail": ""
+  },
+  {
+   "check": "corrective excludes locked transactions (tardive incluse)",
+   "result": "PASS",
+   "detail": ""
+  },
+  {
+   "check": "declared preserved (avril complet · mai partiel null=N/A · courant complet)",
+   "result": "PASS",
+   "detail": "mai deltas={'delta_montant': 114.0, 'delta_montant_pct': 11.4, 'montant_comparable': True, 'delta_volume_l': None, 'delta_kwh': None, 'delta_nb_lignes': None}"
+  },
+  {
+   "check": "STATEMENT_LOCKED 409 sur mutations impactantes (match / card / document / delete / declared / recalcul)",
+   "result": "PASS",
+   "detail": "{'match': (409, 'STATEMENT_LOCKED'), 'card': (409, 'STATEMENT_LOCKED'), 'doc_montant': (409, 'STATEMENT_LOCKED'), 'doc_delete': (409, 'STATEMENT_LOCKED'), 'declared_closed': (409, 'STATEMENT_LOCKED'), 'recalc_closed': (409, 'STATEMENT_LOCKED')}"
+  },
+  {
+   "check": "aucun endpoint de réouverture",
+   "result": "PASS",
+   "detail": ""
+  },
+  {
+   "check": "anomaly decision after lock (justifiée, source inchangée)",
+   "result": "PASS",
+   "detail": ""
+  },
+  {
+   "check": "no cross-tenant writes (toutes les transactions / décomptes du tenant référencent le tenant)",
+   "result": "PASS",
+   "detail": ""
+  },
+  {
+   "check": "read_only : lecture 200 / mutations 403 (preuve phase seed)",
+   "result": "PASS",
+   "detail": "{\"reads\": {\"reco\": 200, \"statements\": 200, \"statement\": 200, \"settings\": 200, \"export\": 200}, \"mutations\": {\"thresholds\": 403, \"justify\": 403, \"create\": 403, \"d"
+  },
+  {
+   "check": "exports SHA-256 audités (preuve phase seed : 8 exports)",
+   "result": "PASS",
+   "detail": "8/8"
+  },
+  {
+   "check": "cas A–AB (phase seed) tous PASS",
+   "result": "PASS",
+   "detail": "FAIL=aucun"
+  }
+ ],
+ "verdict": "PASS",
+ "default_diff": {},
+ "others_diff": {},
+ "raw_default_hash_diff": [],
+ "baseline": "/app/test_reports/lotg_baseline_before_seed.json",
+ "cases": {
+  "A": {
+   "case": "A",
+   "description": "CAN présent + achats égaux",
+   "seed_data": {
+    "vehicle": "84b79d21-5e10-45e1-bb00-68fd449756c1",
+    "period": "2026-04",
+    "can_l": 50,
+    "purchases_l": 50
+   },
+   "expected": "ecart_l = 0, source can",
+   "observed": "ecart_l=0.0 source=can",
+   "result": "PASS",
+   "evidence": {
+    "reconciliation": {
+     "achats": {
+      "litres": 50.0,
+      "kwh": 0.0,
+      "chf": 100.0,
+      "n_tx": 1,
+      "pending_fx": 0,
+      "by_fournisseur": {
+       "—": 1
+      }
+     },
+     "consommation": {
+      "source": "can",
+      "litres": 50.0,
+      "km": 1500,
+      "l_100km": 3.3,
+      "from_day": "2026-03-31",
+      "to_day": "2026-04-30",
+      "snapshots": 3
+     },
+     "ecart_l": 0.0,
+     "ecart_pct": 0.0,
+     "status": "INDICATIF"
+    }
+   }
+  },
+  "B": {
+   "case": "B",
+   "description": "CAN présent + achats > consommation CAN",
+   "seed_data": {
+    "vehicle": "84b79d21-5e10-45e1-bb00-68fd449756c1",
+    "period": "2026-05",
+    "can_l": 100,
+    "purchases_l": 110
+   },
+   "expected": "ecart_l = +10 (+10 %), CAN prioritaire (tickets ≠ conso)",
+   "observed": "ecart_l=10.0 pct=10.0 source=can tickets=50.0",
+   "result": "PASS",
+   "evidence": {
+    "transaction_ids": [
+     "6c81711f-864e-46d6-a67a-a19698ef1fda",
+     "379a8cb1-0b22-4c1e-a3b4-d10fd6a97c6c"
+    ]
+   }
+  },
+  "C": {
+   "case": "C",
+   "description": "CAN présent + achats < consommation CAN",
+   "seed_data": {
+    "vehicle": "42627572-6324-4069-b4f7-69a2e39ef956",
+    "period": "2026-05",
+    "can_l": 80,
+    "purchases_l": 60
+   },
+   "expected": "ecart_l = −20 (−25 %)",
+   "observed": "ecart_l=-20.0 pct=-25.0",
+   "result": "PASS",
+   "evidence": null
+  },
+  "D": {
+   "case": "D",
+   "description": "CAN absent",
+   "seed_data": {
+    "vehicle": "61aa887e-86b2-449b-b548-40238d387382",
+    "period": "2026-05",
+    "can": null,
+    "purchases_l": 85
+   },
+   "expected": "source unavailable, ecart None, estimation tickets indicative, statut INDICATIF",
+   "observed": "source=unavailable ecart=None status=INDICATIF tickets=73.0",
+   "result": "PASS",
+   "evidence": null
+  },
+  "E": {
+   "case": "E",
+   "description": "ASTRA disponible comme référence comparative",
+   "seed_data": {
+    "vehicle": "84b79d21-5e10-45e1-bb00-68fd449756c1",
+    "conso_officielle_l_100km": 6.5,
+    "norme": "WLTP"
+   },
+   "expected": "ASTRA 6.5 référence comparative ; conso réelle CAN 6.7 conservée (jamais écrasée)",
+   "observed": "astra=6.5 role=reference_comparative reelle=6.7 ecart_l_100=0.2",
+   "result": "PASS",
+   "evidence": null
+  },
+  "F": {
+   "case": "F",
+   "description": "Seuils null → INDICATIF",
+   "seed_data": {
+    "threshold_pct": null,
+    "threshold_l": null
+   },
+   "expected": "statut INDICATIF pour V1 / V2 (CAN + achats) sans seuil",
+   "observed": "settings={'threshold_pct': None, 'threshold_l': None} V1=INDICATIF V2=INDICATIF V1avr=INDICATIF",
+   "result": "PASS",
+   "evidence": null
+  },
+  "G": {
+   "case": "G",
+   "description": "Seuils configurés → logique de rapprochement",
+   "seed_data": {
+    "threshold_pct": 5,
+    "threshold_l": 5,
+    "rule": "single_or_both"
+   },
+   "expected": "V1 mai (+10 L / +10 %) A_CONTROLER · V2 mai (−20 L / −25 %) A_CONTROLER · V1 avril (0) OK · retour null → INDICATIF",
+   "observed": "V1=A_CONTROLER V2=A_CONTROLER V1avr=OK après_reset=INDICATIF",
+   "result": "PASS",
+   "evidence": {
+    "note": "seuils remis à null à la fin (état final du tenant = aucun seuil) ; 2 audits tenant_settings"
+   }
+  },
+  "H": {
+   "case": "H",
+   "description": "Justification d'un rapprochement",
+   "seed_data": {
+    "vehicle": "84b79d21-5e10-45e1-bb00-68fd449756c1",
+    "period": "2026-05"
+   },
+   "expected": "justification persistée + audit, achats / CAN / écart inchangés",
+   "observed": "reason=Jerrican de 10 L pour la tonde… audit=oui ecart=10.0 achats=110.0 can=100.0",
+   "result": "PASS",
+   "evidence": {
+    "fuel_reconciliations_id": "98734c5b-51de-4318-ab8e-8476729d751d"
+   }
+  },
+  "I": {
+   "case": "I",
+   "description": "Statement sans blocker → clôturable",
+   "seed_data": {
+    "statement": "e9b5292b-4f63-41ac-b31b-2ab7e53dde49",
+    "number": "DEC-2026-04-001"
+   },
+   "expected": "0 blocker, intégrité PASS → clôturable",
+   "observed": "blocker_count=0 status=cloture",
+   "result": "PASS",
+   "evidence": null
+  },
+  "O": {
+   "case": "O",
+   "description": "Close normal → verrou",
+   "seed_data": {
+    "statement": "e9b5292b-4f63-41ac-b31b-2ab7e53dde49"
+   },
+   "expected": "status cloture, close_exception false, transactions snapshot locked",
+   "observed": "status=cloture exception=False locked=True",
+   "result": "PASS",
+   "evidence": null
+  },
+  "R": {
+   "case": "R",
+   "description": "Declared complet",
+   "seed_data": {
+    "statement": "e9b5292b-4f63-41ac-b31b-2ab7e53dde49",
+    "declared": {
+     "montant": 100.0,
+     "devise": "CHF",
+     "volume_l": 50.0,
+     "kwh": 0.0,
+     "nb_lignes": 1
+    }
+   },
+   "expected": "5 champs declared renseignés",
+   "observed": "declared={'montant': 100.0, 'devise': 'CHF', 'volume_l': 50.0, 'kwh': 0.0, 'nb_lignes': 1}",
+   "result": "PASS",
+   "evidence": null
+  },
+  "U": {
+   "case": "U",
+   "description": "Transaction verrouillée après clôture",
+   "seed_data": {
+    "transaction": "460648e7-dbe6-4334-84c1-7d045dae9cea"
+   },
+   "expected": "locked=true, statement_id, locked_at",
+   "observed": "locked=True statement_id=e9b5292b-4f63-41ac-b31b-2ab7e53dde49 locked_at=2026-10-08T13:38:54.710355+00:00",
+   "result": "PASS",
+   "evidence": null
+  },
+  "J": {
+   "case": "J",
+   "description": "Blocker pending_fx",
+   "seed_data": {
+    "transaction": "b2ffafa8-39a3-4533-b25f-52ce88a23226"
+   },
+   "expected": "blockers == [pending_fx], montant_chf None",
+   "observed": "blockers=['pending_fx'] chf=None",
+   "result": "PASS",
+   "evidence": null
+  },
+  "K": {
+   "case": "K",
+   "description": "Blocker matched_review",
+   "seed_data": {
+    "transaction": "d8539b99-f964-4ff1-bd17-042b25dd93ae"
+   },
+   "expected": "blockers == [matched_review] (carte ambiguë après recalcul)",
+   "observed": "blockers=['matched_review']",
+   "result": "PASS",
+   "evidence": null
+  },
+  "L": {
+   "case": "L",
+   "description": "Blocker unmatched",
+   "seed_data": {
+    "transaction": "3e3701f7-6368-4505-8d60-4334d058ebb4"
+   },
+   "expected": "blockers == [unmatched] (carte sans affectation à la date après recalcul)",
+   "observed": "blockers=['unmatched']",
+   "result": "PASS",
+   "evidence": null
+  },
+  "M": {
+   "case": "M",
+   "description": "Blocker open_anomaly",
+   "seed_data": {
+    "transaction": "2f673e09-cd9e-42c8-b228-3169b7df2066",
+    "anomaly": "double_plein"
+   },
+   "expected": "blockers contient open_anomaly (anomalie détectée par Documents, D8)",
+   "observed": "blockers=['open_anomaly'] open=1",
+   "result": "PASS",
+   "evidence": null
+  },
+  "N": {
+   "case": "N",
+   "description": "Blocker forced_duplicate",
+   "seed_data": {
+    "transaction": "d4fb86a6-0b06-48e8-9012-01dea9fe71cc",
+    "forced_duplicate_of": "b75e98dc-0c63-412b-a469-c680dfcbd251"
+   },
+   "expected": "blockers contient forced_duplicate (doublon forcé avec motif, règle Lot F réelle ; le double passage déclenche aussi une anomalie double_plein D8)",
+   "observed": "blockers=['open_anomaly', 'forced_duplicate'] forced_duplicate_of=b75e98dc-0c63-412b-a469-c680dfcbd251",
+   "result": "PASS",
+   "evidence": null
+  },
+  "P": {
+   "case": "P",
+   "description": "Close normal avec blocker → 409",
+   "seed_data": {
+    "statement": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8"
+   },
+   "expected": "HTTP 409 CLOSE_BLOCKED avec blocker_count / breakdown / lignes",
+   "observed": "status_code=409 code=CLOSE_BLOCKED blockers={'pending_fx': 1, 'matched_review': 1, 'unmatched': 1, 'open_anomaly': 3, 'forced_duplicate': 1}",
+   "result": "PASS",
+   "evidence": {
+    "status_code": 409,
+    "detail": {
+     "code": "CLOSE_BLOCKED",
+     "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+     "number": "DEC-2026-05-001",
+     "blocker_count": 7,
+     "blocked_line_count": 6,
+     "blockers_by_type": {
+      "pending_fx": 1,
+      "matched_review": 1,
+      "unmatched": 1,
+      "open_anomaly": 3,
+      "forced_duplicate": 1
+     },
+     "lines": [
+      {
+       "transaction_id": "b2ffafa8-39a3-4533-b25f-52ce88a23226",
+       "plaque": "VD 700 004",
+       "date": "2026-05-12",
+       "montant": 55.0,
+       "devise": "EUR",
+       "blockers": [
+        "pending_fx"
+       ]
+      },
+      {
+       "transaction_id": "d8539b99-f964-4ff1-bd17-042b25dd93ae",
+       "plaque": "VD 700 004",
+       "date": "2026-05-17",
+       "montant": 44.0,
+       "devise": "CHF",
+       "blockers": [
+        "matched_review"
+       ]
+      },
+      {
+       "transaction_id": "3e3701f7-6368-4505-8d60-4334d058ebb4",
+       "plaque": "VD 700 004",
+       "date": "2026-05-20",
+       "montant": 51.25,
+       "devise": "CHF",
+       "blockers": [
+        "unmatched"
+       ]
+      },
+      {
+       "transaction_id": "2f673e09-cd9e-42c8-b228-3169b7df2066",
+       "plaque": "VD 700 004",
+       "date": "2026-05-22",
+       "montant": 72.0,
+       "devise": "CHF",
+       "blockers": [
+        "open_anomaly"
+       ]
+      },
+      {
+       "transaction_id": "d4fb86a6-0b06-48e8-9012-01dea9fe71cc",
+       "plaque": "VD 700 004",
+       "date": "2026-05-23",
+       "montant": 61.5,
+       "devise": "CHF",
+       "blockers": [
+        "open_anomaly",
+        "forced_duplicate"
+       ]
+      },
+      {
+       "transaction_id": "7329717e-7870-4c3a-953b-96fffe14d95b",
+       "plaque": "VD 700 004",
+       "date": "2026-05-26",
+       "montant": 200.0,
+       "devise": "CHF",
+       "blockers": [
+        "open_anomaly"
+       ]
+      }
+     ],
+     "integrity_errors": [],
+     "blocker_labels": {
+      "pending_fx": "Conversion CHF en attente",
+      "matched_review": "Véhicule à vérifier",
+      "unmatched": "Véhicule non rattaché",
+      "open_anomaly": "Anomalie ouverte",
+      "forced_duplicate": "Doublon forcé"
+     },
+     "message": "Clôture refusée : 7 blocker(s) sur 6 ligne(s)"
+    }
+   }
+  },
+  "Q": {
+   "case": "Q",
+   "description": "Close exception",
+   "seed_data": {
+    "statement": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "number": "DEC-2026-05-001"
+   },
+   "expected": "cloture + close_exception true, motif / acteur / date, blockers snapshotés = conservés, lignes verrouillées",
+   "observed": "status=cloture exception=True by=lotg-admin@lotg-ui-test.ch snapshot=7 totals=7 types=['forced_duplicate', 'matched_review', 'open_anomaly', 'pending_fx', 'unmatched']",
+   "result": "PASS",
+   "evidence": null
+  },
+  "S": {
+   "case": "S",
+   "description": "Declared partiel / null = N/A",
+   "seed_data": {
+    "statement": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "declared": {
+     "montant": 1000.0,
+     "devise": "CHF",
+     "volume_l": null,
+     "kwh": null,
+     "nb_lignes": null
+    }
+   },
+   "expected": "montant/devise renseignés, volume_l / kwh / nb_lignes = null (N/A, jamais 0)",
+   "observed": "declared={'montant': 1000.0, 'devise': 'CHF', 'volume_l': None, 'kwh': None, 'nb_lignes': None}",
+   "result": "PASS",
+   "evidence": null
+  },
+  "T": {
+   "case": "T",
+   "description": "Écarts declared",
+   "seed_data": {
+    "may": {
+     "delta_montant": 114.0,
+     "delta_montant_pct": 11.4,
+     "montant_comparable": true,
+     "delta_volume_l": null,
+     "delta_kwh": null,
+     "delta_nb_lignes": null
+    },
+    "apr": {
+     "delta_montant": 0.0,
+     "delta_montant_pct": 0.0,
+     "montant_comparable": true,
+     "delta_volume_l": 0.0,
+     "delta_kwh": 0.0,
+     "delta_nb_lignes": 0
+    }
+   },
+   "expected": "mai : delta_montant calculé, delta_volume/kwh/nb_lignes None · avril : 4 deltas = 0",
+   "observed": "mai={'delta_montant': 114.0, 'delta_montant_pct': 11.4, 'montant_comparable': True, 'delta_volume_l': None, 'delta_kwh': None, 'delta_nb_lignes': None} avril={'delta_montant': 0.0, 'delta_montant_pct': 0.0, 'montant_comparable': True, 'delta_volume_l': 0.0, 'delta_kwh': 0.0, 'delta_nb_lignes': 0}",
+   "result": "PASS",
+   "evidence": null
+  },
+  "V": {
+   "case": "V",
+   "description": "Mutation verrouillée → 409 STATEMENT_LOCKED",
+   "seed_data": {
+    "transaction": "460648e7-dbe6-4334-84c1-7d045dae9cea",
+    "document": "048d6fcc-3a89-4244-9f42-ae6831813085",
+    "statement": "e9b5292b-4f63-41ac-b31b-2ab7e53dde49"
+   },
+   "expected": "toutes les mutations impactantes → 409 STATEMENT_LOCKED ; notes documentaires → 200",
+   "observed": "{'V.1 match': '409 STATEMENT_LOCKED', 'V.2 card': '409 STATEMENT_LOCKED', 'V.3 document montant': '409 STATEMENT_LOCKED', 'V.3b document mixte notes+montant': '409 STATEMENT_LOCKED', 'V.4 delete document': '409 STATEMENT_LOCKED', 'V.4b validate document': '409 STATEMENT_LOCKED', 'V.5 declared décompte clôturé': '409 STATEMENT_LOCKED', 'V.5b recalcul décompte clôturé': '409 STATEMENT_LOCKED', 'V.6 suppression véhicule verrouillé': '409 STATEMENT_LOCKED'} notes=200",
+   "result": "PASS",
+   "evidence": {
+    "sub_cases": {
+     "V.1 match": {
+      "status": 409,
+      "code": "STATEMENT_LOCKED"
+     },
+     "V.2 card": {
+      "status": 409,
+      "code": "STATEMENT_LOCKED"
+     },
+     "V.3 document montant": {
+      "status": 409,
+      "code": "STATEMENT_LOCKED"
+     },
+     "V.3b document mixte notes+montant": {
+      "status": 409,
+      "code": "STATEMENT_LOCKED"
+     },
+     "V.4 delete document": {
+      "status": 409,
+      "code": "STATEMENT_LOCKED"
+     },
+     "V.4b validate document": {
+      "status": 409,
+      "code": "STATEMENT_LOCKED"
+     },
+     "V.5 declared décompte clôturé": {
+      "status": 409,
+      "code": "STATEMENT_LOCKED"
+     },
+     "V.5b recalcul décompte clôturé": {
+      "status": 409,
+      "code": "STATEMENT_LOCKED"
+     },
+     "V.6 suppression véhicule verrouillé": {
+      "status": 409,
+      "code": "STATEMENT_LOCKED"
+     }
+    },
+    "notes_patch_status": 200
+   }
+  },
+  "W": {
+   "case": "W",
+   "description": "Décision d'anomalie non destructive après clôture",
+   "seed_data": {
+    "anomaly": "1f18a99d-db90-419b-92fd-9dfa566e2935",
+    "transaction": "2f673e09-cd9e-42c8-b228-3169b7df2066"
+   },
+   "expected": "décision justify acceptée (200) sur transaction verrouillée ; transaction source identique ; snapshot du décompte inchangé",
+   "observed": "status=justifiee tx_identique=True blockers_snapshot=7==7",
+   "result": "PASS",
+   "evidence": null
+  },
+  "X": {
+   "case": "X",
+   "description": "Correctif : transaction tardive incluse",
+   "seed_data": {
+    "correctif": "8ca84515-5248-43cf-af59-09dc359b6ac7",
+    "number": "COR-2026-05-001",
+    "late_tx": "01d1a796-31a8-4cba-a7db-48a00315f4df"
+   },
+   "expected": "correctif brouillon, parent = décompte mai, même période / périmètre, ligne tardive incluse (late=true)",
+   "observed": "type=correctif parent=True period=2026-05 lines=['01d1a796-31a8-4cba-a7db-48a00315f4df'] late=[True]",
+   "result": "PASS",
+   "evidence": null
+  },
+  "Y": {
+   "case": "Y",
+   "description": "Correctif : transaction verrouillée exclue",
+   "seed_data": {
+    "correctif": "8ca84515-5248-43cf-af59-09dc359b6ac7",
+    "parent_locked_lines": 14
+   },
+   "expected": "aucune transaction verrouillée du parent dans le correctif ; parent (totaux / lignes / clôture) inchangé",
+   "observed": "intersection=0 parent_inchangé=True",
+   "result": "PASS",
+   "evidence": null
+  },
+  "Z": {
+   "case": "Z",
+   "description": "read_only : lecture / export OK, mutations 403",
+   "seed_data": {
+    "user": "lotg-ro@lotg-ui-test.ch"
+   },
+   "expected": "lectures + export → 200 ; 9 mutations → 403",
+   "observed": "reads={'reco': 200, 'statements': 200, 'statement': 200, 'settings': 200, 'export': 200} mutations={'thresholds': 403, 'justify': 403, 'create': 403, 'declared': 403, 'recalculate': 403, 'close': 403, 'close_exception': 403, 'correctif': 403, 'tx_match': 403}",
+   "result": "PASS",
+   "evidence": {
+    "reads": {
+     "reco": 200,
+     "statements": 200,
+     "statement": 200,
+     "settings": 200,
+     "export": 200
+    },
+    "mutations": {
+     "thresholds": 403,
+     "justify": 403,
+     "create": 403,
+     "declared": 403,
+     "recalculate": 403,
+     "close": 403,
+     "close_exception": 403,
+     "correctif": 403,
+     "tx_match": 403
+    }
+   }
+  },
+  "AA": {
+   "case": "AA",
+   "description": "Cross-tenant fail-closed",
+   "seed_data": {
+    "probes": [
+     "statement_inconnu",
+     "export_inconnu",
+     "reco_vehicule_autre_tenant",
+     "justify_vehicule_autre_tenant",
+     "correctif_parent_inconnu"
+    ]
+   },
+   "expected": "toutes les sondes → 404 ; toutes les transactions du tenant référencent des véhicules du tenant ; décomptes du tenant uniquement",
+   "observed": "probes={'statement_inconnu': 404, 'export_inconnu': 404, 'reco_vehicule_autre_tenant': 404, 'justify_vehicule_autre_tenant': 404, 'correctif_parent_inconnu': 404} tx_vehicules_ok=True statements_tenants={'lotg-ui-test'}",
+   "result": "PASS",
+   "evidence": {
+    "statement_inconnu": 404,
+    "export_inconnu": 404,
+    "reco_vehicule_autre_tenant": 404,
+    "justify_vehicule_autre_tenant": 404,
+    "correctif_parent_inconnu": 404
+   }
+  },
+  "AB": {
+   "case": "AB",
+   "description": "Exports audités SHA-256",
+   "seed_data": {
+    "statement": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "period": "2026-05"
+   },
+   "expected": "8 exports : 200, non vides, SHA-256 recalculé = en-tête = audit download",
+   "observed": "{'statement.csv': True, 'statement.xlsx': True, 'statement.pdf': True, 'reconciliations.csv': True, 'reconciliations.xlsx': True, 'reconciliations.pdf': True, 'transactions.csv': True, 'transactions.xlsx': True}",
+   "result": "PASS",
+   "evidence": {
+    "statement.csv": {
+     "status": 200,
+     "size": 3468,
+     "sha256": "3328f3d1342917bd8d8df89100e546028a43ef0944233071c08416e813a99145",
+     "header_sha256": "3328f3d1342917bd8d8df89100e546028a43ef0944233071c08416e813a99145",
+     "audit_found": true,
+     "audit_size": 3468,
+     "match": true
+    },
+    "statement.xlsx": {
+     "status": 200,
+     "size": 8579,
+     "sha256": "f3c11bc5631185799cdb9049d6c7e3450adc9d9b1c604412c5e3da815bf1d330",
+     "header_sha256": "f3c11bc5631185799cdb9049d6c7e3450adc9d9b1c604412c5e3da815bf1d330",
+     "audit_found": true,
+     "audit_size": 8579,
+     "match": true
+    },
+    "statement.pdf": {
+     "status": 200,
+     "size": 5174,
+     "sha256": "671f39d511763c9630050778b862343e89c22d37a13fc88962c5badcf219590f",
+     "header_sha256": "671f39d511763c9630050778b862343e89c22d37a13fc88962c5badcf219590f",
+     "audit_found": true,
+     "audit_size": 5174,
+     "match": true
+    },
+    "reconciliations.csv": {
+     "status": 200,
+     "size": 1725,
+     "sha256": "b924ba306f1edcb2f2d9511422a89cbbf8de7af0ea9840b4588975a0b1ff09fa",
+     "header_sha256": "b924ba306f1edcb2f2d9511422a89cbbf8de7af0ea9840b4588975a0b1ff09fa",
+     "audit_found": true,
+     "audit_size": 1725,
+     "match": true
+    },
+    "reconciliations.xlsx": {
+     "status": 200,
+     "size": 7009,
+     "sha256": "532a911d63e6f8a3ba7e29c4c8994ae34f06d693ada542fb41437b657b62f560",
+     "header_sha256": "532a911d63e6f8a3ba7e29c4c8994ae34f06d693ada542fb41437b657b62f560",
+     "audit_found": true,
+     "audit_size": 7009,
+     "match": true
+    },
+    "reconciliations.pdf": {
+     "status": 200,
+     "size": 2700,
+     "sha256": "402210b78b7ca266d206b827015f06cc07bcc54d58e1146f290a418380139c54",
+     "header_sha256": "402210b78b7ca266d206b827015f06cc07bcc54d58e1146f290a418380139c54",
+     "audit_found": true,
+     "audit_size": 2700,
+     "match": true
+    },
+    "transactions.csv": {
+     "status": 200,
+     "size": 2858,
+     "sha256": "4383e402c171aa4e658f96e39030848024eeaddc99876d86225ece20201079b2",
+     "header_sha256": "4383e402c171aa4e658f96e39030848024eeaddc99876d86225ece20201079b2",
+     "audit_found": true,
+     "audit_size": 2858,
+     "match": true
+    },
+    "transactions.xlsx": {
+     "status": 200,
+     "size": 8089,
+     "sha256": "161fe3df759b6dcf76967842152d44d77ae0904b6a3bfc736f8ca9a67ed3204d",
+     "header_sha256": "161fe3df759b6dcf76967842152d44d77ae0904b6a3bfc736f8ca9a67ed3204d",
+     "audit_found": true,
+     "audit_size": 8089,
+     "match": true
+    }
+   }
+  }
+ },
+ "note": "verify écrit 2 audits tenant_settings (bascule seuils 5/5 puis null) ; aucune autre écriture"
+}

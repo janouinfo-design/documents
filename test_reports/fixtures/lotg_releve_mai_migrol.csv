@@ -1,0 +1,5 @@
+﻿Ref;Date transaction;Numero de carte;Immatriculation;vehicle_id;Montant TTC;Devise;Montant CHF;Quantite;Prix unitaire;Station;Kilometrage;Produit;Commentaire
+G01;20.05.2026 08:00;1111;;;102.50;CHF;;50;2.05;Migrol Lausanne-Malley;51100;Diesel;LOTG:B import carte 1111 → V1 auto
+G03;20.05.2026 10:00;5555;;536cac23-f8e9-4d7b-aa5f-1cf74a8e8acd;51.25;CHF;;25;2.05;Migrol Gland;;Essence;LOTG:L carte 5555 sans affectation à la date → unmatched après recalcul
+G04;23.05.2026 11:00;6666;;;61.50;CHF;;30;2.05;Migrol Morges;;Essence;LOTG:N original (carte 6666 → V4 auto)
+G04;23.05.2026 11:00;6666;;;61.50;CHF;;30;2.05;Migrol Morges;;Essence;LOTG: doublon intra-fichier mis de côté (non importé, Lot F)

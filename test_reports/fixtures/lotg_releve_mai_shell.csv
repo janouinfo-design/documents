@@ -1,0 +1,2 @@
+﻿Ref;Date transaction;Numero de carte;Immatriculation;vehicle_id;Montant TTC;Devise;Montant CHF;Quantite;Prix unitaire;Station;Kilometrage;Produit;Commentaire
+S01;17.05.2026 12:30;2222;;536cac23-f8e9-4d7b-aa5f-1cf74a8e8acd;44.00;CHF;;20;2.20;Shell Vevey;;Essence;LOTG:K carte 2222 ambiguë (2 cartes Shell) → matched_review après recalcul

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { Fuel, Droplets, Tag, Gauge, PenLine, AlertTriangle, SearchCheck } from "lucide-react";
+import { Fuel, Droplets, Tag, Gauge, PenLine, AlertTriangle, SearchCheck, Lock } from "lucide-react";
 import { getEnergy, getVehicles, getDrivers, getFuelImports } from "@/lib/api";
 import { chfExact, fmtQty, dateFr } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -129,6 +129,7 @@ export default function EnergyPage() {
                 <TableCell data-testid={`fuel-transaction-match-${tx.id}`}>
                   {tx.match_status ? <Pill map={MATCH_META} code={tx.match_status} /> : <span className="text-xs text-slate-400">document</span>}
                   {tx.match_score != null && <p className="text-[10px] text-slate-400">{tx.match_score} pt{tx.match_method ? ` · ${tx.match_method}` : ""}</p>}
+                  {tx.locked && <span className="mt-0.5 inline-flex items-center gap-0.5 rounded-full bg-slate-900 px-1.5 py-0.5 text-[10px] font-bold text-white" title={`Incluse dans le décompte clôturé ${tx.statement_number || tx.statement_id}`} data-testid={`energy-locked-${tx.id}`}><Lock className="h-2.5 w-2.5" /> Verrouillée</span>}
                 </TableCell>
                 <TableCell data-testid={`fuel-transaction-anomalies-${tx.id}`}>
                   {tx.anomalies_open > 0 ? <span className="inline-flex items-center gap-1 rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white"><AlertTriangle className="h-3 w-3" /> {tx.anomalies_open}</span> : <span className="text-xs text-slate-300">—</span>}

@@ -24,6 +24,8 @@ import FinesPage from "@/pages/FinesPage";
 import FuelCardsPage from "@/pages/FuelCardsPage";
 import FuelImportsPage from "@/pages/FuelImportsPage";
 import FuelAnomaliesPage from "@/pages/FuelAnomaliesPage";
+import FuelReconciliationsPage from "@/pages/FuelReconciliationsPage";
+import FuelStatementsPage from "@/pages/FuelStatementsPage";
 import SsoNotConfigured from "@/pages/SsoNotConfigured";
 import { useLocation } from "react-router-dom";
 
@@ -68,6 +70,8 @@ function App() {
                           <Route path="/energie/cartes" element={<FuelCardsPage />} />
                           <Route path="/energie/imports" element={<FuelImportsPage />} />
                           <Route path="/energie/anomalies" element={<FuelAnomaliesPage />} />
+                          <Route path="/energie/rapprochements" element={<FuelReconciliationsPage />} />
+                          <Route path="/energie/releves" element={<FuelStatementsPage />} />
                           <Route path="/conducteurs" element={<DriversPage />} />
                           <Route path="/amendes" element={<FinesPage />} />
                           <Route path="/alertes" element={<AlertsPage />} />

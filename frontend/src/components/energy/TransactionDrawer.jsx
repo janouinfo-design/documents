@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Loader2, Fuel, CreditCard, Truck, FileText, AlertTriangle, PenLine } from "lucide-react";
+import { Loader2, Fuel, CreditCard, Truck, FileText, AlertTriangle, PenLine, Lock } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -53,6 +53,7 @@ export default function TransactionDrawer({ txId, onOpenChange }) {
                 <Pill map={CARD_RES_META} code={cardCode} testId="fuel-transaction-card-status" />
                 {tx.anomalies_open > 0 && <span className="rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white" data-testid="fuel-transaction-anomalies-open">{tx.anomalies_open} anomalie(s) ouverte(s)</span>}
                 {["manual", "legacy_import", "import"].includes(tx.created_from) && <span className="inline-flex items-center gap-1 rounded-full border border-dashed border-amber-400 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-800" data-testid="fuel-transaction-declarative"><PenLine className="h-2.5 w-2.5" /> déclaratif · {tx.created_from}</span>}
+                {tx.locked && <span className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-bold text-white" title={`Incluse dans le décompte clôturé ${tx.statement_number || tx.statement_id}`} data-testid="fuel-transaction-locked"><Lock className="h-2.5 w-2.5" /> Verrouillée · {tx.statement_number || "décompte clôturé"}</span>}
               </div>
               <SheetTitle className="flex items-center gap-2 font-display text-2xl font-bold tracking-tight text-slate-900" data-testid="fuel-transaction-drawer-title">
                 <Fuel className="h-6 w-6 text-slate-400" /> {tx.station || tx.fournisseur || "Transaction"} — {tx.montant != null ? chfExact(tx.montant, tx.devise || "CHF") : "—"}
@@ -60,10 +61,11 @@ export default function TransactionDrawer({ txId, onOpenChange }) {
               <SheetDescription className="text-sm text-slate-500">{dateFr(tx.date)}{tx.heure ? ` ${tx.heure}` : ""} · {tx.fournisseur || "fournisseur inconnu"}{tx.external_transaction_id ? ` · réf. ${tx.external_transaction_id}` : ""}</SheetDescription>
             </header>
 
+            {tx.locked && <p className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-700" data-testid="fuel-transaction-locked-hint">Transaction incluse dans le décompte clôturé <b>{tx.statement_number || tx.statement_id}</b> ({tx.statement_period}) — données source immuables (409 STATEMENT_LOCKED côté serveur). Les décisions d'anomalies restent possibles ; une correction tardive passe par un décompte correctif.</p>}
             {isAdmin && (
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={() => setVehicleDlg(true)} className="gap-1.5" data-testid="fuel-vehicle-correct-btn"><Truck className="h-4 w-4" /> Corriger le véhicule</Button>
-                <Button size="sm" variant="outline" onClick={() => setCardDlg(true)} className="gap-1.5" data-testid="fuel-card-choose-btn"><CreditCard className="h-4 w-4" /> Choisir la carte</Button>
+                <Button size="sm" variant="outline" onClick={() => setVehicleDlg(true)} disabled={!!tx.locked} className="gap-1.5" data-testid="fuel-vehicle-correct-btn"><Truck className="h-4 w-4" /> Corriger le véhicule</Button>
+                <Button size="sm" variant="outline" onClick={() => setCardDlg(true)} disabled={!!tx.locked} className="gap-1.5" data-testid="fuel-card-choose-btn"><CreditCard className="h-4 w-4" /> Choisir la carte</Button>
               </div>
             )}
 

@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Fuel, CreditCard, Upload, AlertTriangle } from "lucide-react";
+import { Fuel, CreditCard, Upload, AlertTriangle, Scale, FileCheck2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -7,9 +7,11 @@ const TABS = [
   { to: "/energie/cartes", label: "Cartes", icon: CreditCard, testId: "energy-tab-cards" },
   { to: "/energie/imports", label: "Imports", icon: Upload, testId: "energy-tab-imports" },
   { to: "/energie/anomalies", label: "Anomalies", icon: AlertTriangle, testId: "energy-tab-anomalies" },
+  { to: "/energie/rapprochements", label: "Rapprochements", icon: Scale, testId: "energy-reconciliations-tab" },
+  { to: "/energie/releves", label: "Relevés / Décomptes", icon: FileCheck2, testId: "energy-statements-tab" },
 ];
 
-// Sous-navigation du module Énergie (spec §2.10 : la page Cartes est un onglet d'Énergie, pas une entrée principale)
+// Sous-navigation du module Énergie (spec §2.10 : onglets d'Énergie, pas d'entrée principale ; Lot G ajoute Rapprochements + Relevés / Décomptes)
 export default function EnergyTabs() {
   return (
     <nav className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 shadow-sm" data-testid="energy-tabs">

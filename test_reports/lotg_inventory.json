@@ -1,0 +1,559 @@
+{
+ "tenant": {
+  "id": "lotg-ui-test",
+  "name": "Lot G UI test (synthétique)",
+  "exists": 1
+ },
+ "counts": {
+  "audit_logs": 89,
+  "documents": 19,
+  "fuel_anomalies": 3,
+  "fuel_card_assignments": 5,
+  "fuel_cards": 5,
+  "fuel_import_jobs": 4,
+  "fuel_import_rows": 7,
+  "fuel_reconciliations": 1,
+  "fuel_snapshots": 7,
+  "fuel_statement_lines": 18,
+  "fuel_statements": 4,
+  "fuel_transaction_matches": 18,
+  "fuel_transactions": 18,
+  "tenant_settings": 1,
+  "users": 2,
+  "vehicle_field_meta": 3,
+  "vehicles": 5
+ },
+ "users": {
+  "count": 2,
+  "roles": {
+   "lotg-admin@lotg-ui-test.ch": "admin",
+   "lotg-ro@lotg-ui-test.ch": "read_only"
+  }
+ },
+ "vehicles": [
+  {
+   "id": "d991fae7-fa40-446f-9bb1-9ec9bd27bbf3",
+   "plaque": "GE 700 005",
+   "marque": "VW",
+   "modele": "ID.Buzz",
+   "type_carburant": "Électrique",
+   "conso_officielle_l_100km": 0
+  },
+  {
+   "id": "84b79d21-5e10-45e1-bb00-68fd449756c1",
+   "plaque": "VD 700 001",
+   "marque": "Skoda",
+   "modele": "Octavia Combi",
+   "type_carburant": "Diesel",
+   "conso_officielle_l_100km": 6.5
+  },
+  {
+   "id": "42627572-6324-4069-b4f7-69a2e39ef956",
+   "plaque": "VD 700 002",
+   "marque": "VW",
+   "modele": "Caddy",
+   "type_carburant": "Diesel",
+   "conso_officielle_l_100km": 0
+  },
+  {
+   "id": "61aa887e-86b2-449b-b548-40238d387382",
+   "plaque": "VD 700 003",
+   "marque": "Ford",
+   "modele": "Transit",
+   "type_carburant": "Diesel",
+   "conso_officielle_l_100km": 0
+  },
+  {
+   "id": "536cac23-f8e9-4d7b-aa5f-1cf74a8e8acd",
+   "plaque": "VD 700 004",
+   "marque": "Renault",
+   "modele": "Kangoo",
+   "type_carburant": "Essence",
+   "conso_officielle_l_100km": 0
+  }
+ ],
+ "fuel_snapshots": 7,
+ "login_attempts(identifier)": 0,
+ "fuel_transactions": {
+  "total": 18,
+  "locked": 15,
+  "unlocked": 3,
+  "by_statement": {
+   "e9b5292b-4f63-41ac-b31b-2ab7e53dde49": [
+    {
+     "transaction_id": "460648e7-dbe6-4334-84c1-7d045dae9cea",
+     "locked_at": "2026-10-08T13:38:54.710355+00:00"
+    }
+   ],
+   "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8": [
+    {
+     "transaction_id": "d68d056d-991c-4ee1-acbc-a39a3810ed45",
+     "locked_at": "2026-10-08T13:38:55.703582+00:00"
+    },
+    {
+     "transaction_id": "379a8cb1-0b22-4c1e-a3b4-d10fd6a97c6c",
+     "locked_at": "2026-10-08T13:38:55.703582+00:00"
+    },
+    {
+     "transaction_id": "5e3c0981-d92b-4045-8507-9cc2cac17e42",
+     "locked_at": "2026-10-08T13:38:55.703582+00:00"
+    },
+    {
+     "transaction_id": "b2ffafa8-39a3-4533-b25f-52ce88a23226",
+     "locked_at": "2026-10-08T13:38:55.703582+00:00"
+    },
+    {
+     "transaction_id": "f9ae0415-7fb7-469d-a987-62d6644d14cf",
+     "locked_at": "2026-10-08T13:38:55.703582+00:00"
+    },
+    {
+     "transaction_id": "d8539b99-f964-4ff1-bd17-042b25dd93ae",
+     "locked_at": "2026-10-08T13:38:55.703582+00:00"
+    },
+    {
+     "transaction_id": "3e3701f7-6368-4505-8d60-4334d058ebb4",
+     "locked_at": "2026-10-08T13:38:55.703582+00:00"
+    },
+    {
+     "transaction_id": "6c81711f-864e-46d6-a67a-a19698ef1fda",
+     "locked_at": "2026-10-08T13:38:55.703582+00:00"
+    },
+    {
+     "transaction_id": "1326fad7-816a-4423-8ffe-f513b2a80c75",
+     "locked_at": "2026-10-08T13:38:55.703582+00:00"
+    },
+    {
+     "transaction_id": "2f673e09-cd9e-42c8-b228-3169b7df2066",
+     "locked_at": "2026-10-08T13:38:55.703582+00:00"
+    },
+    {
+     "transaction_id": "b75e98dc-0c63-412b-a469-c680dfcbd251",
+     "locked_at": "2026-10-08T13:38:55.703582+00:00"
+    },
+    {
+     "transaction_id": "d4fb86a6-0b06-48e8-9012-01dea9fe71cc",
+     "locked_at": "2026-10-08T13:38:55.703582+00:00"
+    },
+    {
+     "transaction_id": "67da4d56-e1ec-49bd-ab93-2f969c59d29c",
+     "locked_at": "2026-10-08T13:38:55.703582+00:00"
+    },
+    {
+     "transaction_id": "7329717e-7870-4c3a-953b-96fffe14d95b",
+     "locked_at": "2026-10-08T13:38:55.703582+00:00"
+    }
+   ]
+  },
+  "items": [
+   {
+    "vehicle_id": "84b79d21-5e10-45e1-bb00-68fd449756c1",
+    "date": "2026-04-10",
+    "montant": 100.0,
+    "devise": "CHF",
+    "created_from": "manual",
+    "motif_saisie": "LOTG:A avril V1 (= CAN 50 L)",
+    "id": "460648e7-dbe6-4334-84c1-7d045dae9cea",
+    "match_status": "manual",
+    "locked": true,
+    "locked_at": "2026-10-08T13:38:54.710355+00:00",
+    "statement_id": "e9b5292b-4f63-41ac-b31b-2ab7e53dde49",
+    "lotg_case": "LOTG:A avril V1 (= CAN 50 L)"
+   },
+   {
+    "vehicle_id": "61aa887e-86b2-449b-b548-40238d387382",
+    "date": "2026-05-03",
+    "montant": 92.25,
+    "devise": "CHF",
+    "created_from": "manual",
+    "motif_saisie": "LOTG:D mai V3 sans CAN (tickets indicatifs)",
+    "id": "d68d056d-991c-4ee1-acbc-a39a3810ed45",
+    "match_status": "manual",
+    "locked": true,
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "lotg_case": "LOTG:D mai V3 sans CAN (tickets indicatifs)"
+   },
+   {
+    "vehicle_id": "84b79d21-5e10-45e1-bb00-68fd449756c1",
+    "date": "2026-05-05",
+    "montant": 120.0,
+    "devise": "CHF",
+    "created_from": "manual",
+    "motif_saisie": "LOTG:B mai V1 (achats 110 L vs CAN 100 L)",
+    "id": "379a8cb1-0b22-4c1e-a3b4-d10fd6a97c6c",
+    "match_status": "manual",
+    "locked": true,
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "lotg_case": "LOTG:B mai V1 (achats 110 L vs CAN 100 L)"
+   },
+   {
+    "vehicle_id": "42627572-6324-4069-b4f7-69a2e39ef956",
+    "date": "2026-05-10",
+    "montant": 132.0,
+    "devise": "CHF",
+    "created_from": "manual",
+    "motif_saisie": "LOTG:C mai V2 (achats 60 L vs CAN 80 L)",
+    "id": "5e3c0981-d92b-4045-8507-9cc2cac17e42",
+    "match_status": "manual",
+    "locked": true,
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "lotg_case": "LOTG:C mai V2 (achats 60 L vs CAN 80 L)"
+   },
+   {
+    "vehicle_id": "536cac23-f8e9-4d7b-aa5f-1cf74a8e8acd",
+    "date": "2026-05-12",
+    "montant": 55.0,
+    "devise": "EUR",
+    "created_from": "manual",
+    "motif_saisie": "LOTG:J pending_fx (EUR sans contre-valeur)",
+    "id": "b2ffafa8-39a3-4533-b25f-52ce88a23226",
+    "match_status": "manual",
+    "locked": true,
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "lotg_case": "LOTG:J pending_fx (EUR sans contre-valeur)"
+   },
+   {
+    "vehicle_id": "d991fae7-fa40-446f-9bb1-9ec9bd27bbf3",
+    "date": "2026-05-15",
+    "montant": 25.0,
+    "devise": "CHF",
+    "created_from": "manual",
+    "motif_saisie": "LOTG:R recharge électrique (kWh)",
+    "id": "f9ae0415-7fb7-469d-a987-62d6644d14cf",
+    "match_status": "manual",
+    "locked": true,
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "lotg_case": "LOTG:R recharge électrique (kWh)"
+   },
+   {
+    "vehicle_id": "536cac23-f8e9-4d7b-aa5f-1cf74a8e8acd",
+    "date": "2026-05-17",
+    "montant": 44.0,
+    "devise": "CHF",
+    "created_from": "import",
+    "commentaire": "LOTG:K carte 2222 ambiguë (2 cartes Shell) → matched_review après recalcul",
+    "forced_duplicate_of": null,
+    "motif_saisie": null,
+    "id": "d8539b99-f964-4ff1-bd17-042b25dd93ae",
+    "match_status": "matched_review",
+    "locked": true,
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "lotg_case": "LOTG:K carte 2222 ambiguë (2 cartes Shell) → matched_review après recalcul"
+   },
+   {
+    "vehicle_id": "536cac23-f8e9-4d7b-aa5f-1cf74a8e8acd",
+    "date": "2026-05-20",
+    "montant": 51.25,
+    "devise": "CHF",
+    "created_from": "import",
+    "commentaire": "LOTG:L carte 5555 sans affectation à la date → unmatched après recalcul",
+    "forced_duplicate_of": null,
+    "motif_saisie": null,
+    "id": "3e3701f7-6368-4505-8d60-4334d058ebb4",
+    "match_status": "unmatched",
+    "locked": true,
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "lotg_case": "LOTG:L carte 5555 sans affectation à la date → unmatched après recalcul"
+   },
+   {
+    "vehicle_id": "84b79d21-5e10-45e1-bb00-68fd449756c1",
+    "date": "2026-05-20",
+    "montant": 102.5,
+    "devise": "CHF",
+    "created_from": "import",
+    "commentaire": "LOTG:B import carte 1111 → V1 auto",
+    "forced_duplicate_of": null,
+    "motif_saisie": null,
+    "id": "6c81711f-864e-46d6-a67a-a19698ef1fda",
+    "match_status": "auto_matched",
+    "locked": true,
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "lotg_case": "LOTG:B import carte 1111 → V1 auto"
+   },
+   {
+    "vehicle_id": "536cac23-f8e9-4d7b-aa5f-1cf74a8e8acd",
+    "date": "2026-05-22",
+    "montant": 70.0,
+    "devise": "CHF",
+    "created_from": "manual",
+    "motif_saisie": "LOTG:M double plein 1/2",
+    "id": "1326fad7-816a-4423-8ffe-f513b2a80c75",
+    "match_status": "manual",
+    "locked": true,
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "lotg_case": "LOTG:M double plein 1/2"
+   },
+   {
+    "vehicle_id": "536cac23-f8e9-4d7b-aa5f-1cf74a8e8acd",
+    "date": "2026-05-22",
+    "montant": 72.0,
+    "devise": "CHF",
+    "created_from": "manual",
+    "motif_saisie": "LOTG:M double plein 2/2 (anomalie ouverte)",
+    "id": "2f673e09-cd9e-42c8-b228-3169b7df2066",
+    "match_status": "manual",
+    "locked": true,
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "lotg_case": "LOTG:M double plein 2/2 (anomalie ouverte)"
+   },
+   {
+    "vehicle_id": "536cac23-f8e9-4d7b-aa5f-1cf74a8e8acd",
+    "date": "2026-05-23",
+    "montant": 61.5,
+    "devise": "CHF",
+    "created_from": "import",
+    "commentaire": "LOTG:N original (carte 6666 → V4 auto)",
+    "forced_duplicate_of": null,
+    "motif_saisie": null,
+    "id": "b75e98dc-0c63-412b-a469-c680dfcbd251",
+    "match_status": "auto_matched",
+    "locked": true,
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "lotg_case": "LOTG:N original (carte 6666 → V4 auto)"
+   },
+   {
+    "vehicle_id": "536cac23-f8e9-4d7b-aa5f-1cf74a8e8acd",
+    "date": "2026-05-23",
+    "montant": 61.5,
+    "devise": "CHF",
+    "created_from": "import",
+    "commentaire": "LOTG:N doublon (référence déjà importée) forcé avec motif",
+    "forced_duplicate_of": "b75e98dc-0c63-412b-a469-c680dfcbd251",
+    "motif_saisie": null,
+    "id": "d4fb86a6-0b06-48e8-9012-01dea9fe71cc",
+    "match_status": "auto_matched",
+    "locked": true,
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "lotg_case": "LOTG:N doublon (référence déjà importée) forcé avec motif"
+   },
+   {
+    "vehicle_id": "61aa887e-86b2-449b-b548-40238d387382",
+    "date": "2026-05-25",
+    "montant": 82.0,
+    "devise": "CHF",
+    "created_from": "manual",
+    "motif_saisie": "LOTG:D mai V3 sans CAN (tickets indicatifs)",
+    "id": "67da4d56-e1ec-49bd-ab93-2f969c59d29c",
+    "match_status": "manual",
+    "locked": true,
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "lotg_case": "LOTG:D mai V3 sans CAN (tickets indicatifs)"
+   },
+   {
+    "vehicle_id": "536cac23-f8e9-4d7b-aa5f-1cf74a8e8acd",
+    "date": "2026-05-26",
+    "montant": 200.0,
+    "devise": "CHF",
+    "created_from": "manual",
+    "motif_saisie": "LOTG:M incohérence quantité × prix (anomalie ouverte conservée)",
+    "id": "7329717e-7870-4c3a-953b-96fffe14d95b",
+    "match_status": "manual",
+    "locked": true,
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "lotg_case": "LOTG:M incohérence quantité × prix (anomalie ouverte conservée)"
+   },
+   {
+    "vehicle_id": "61aa887e-86b2-449b-b548-40238d387382",
+    "date": "2026-05-28",
+    "montant": 67.65,
+    "devise": "CHF",
+    "created_from": "manual",
+    "motif_saisie": "LOTG:X ticket tardif après clôture (correctif)",
+    "id": "01d1a796-31a8-4cba-a7db-48a00315f4df",
+    "match_status": "manual",
+    "lotg_case": "LOTG:X ticket tardif après clôture (correctif)"
+   },
+   {
+    "vehicle_id": "84b79d21-5e10-45e1-bb00-68fd449756c1",
+    "date": "2026-10-03",
+    "montant": 92.25,
+    "devise": "CHF",
+    "created_from": "import",
+    "commentaire": "LOTG:brouillon courant import carte 1111 → V1",
+    "forced_duplicate_of": null,
+    "motif_saisie": null,
+    "id": "7d6003c2-9e03-4d2e-959b-616eb33b04c0",
+    "match_status": "auto_matched",
+    "lotg_case": "LOTG:brouillon courant import carte 1111 → V1"
+   },
+   {
+    "vehicle_id": "42627572-6324-4069-b4f7-69a2e39ef956",
+    "date": "2026-10-05",
+    "montant": 88.0,
+    "devise": "CHF",
+    "created_from": "manual",
+    "motif_saisie": "LOTG:brouillon période courante V2",
+    "id": "942e7ee8-356f-4083-b0d2-f7dfe9084490",
+    "match_status": "manual",
+    "lotg_case": "LOTG:brouillon période courante V2"
+   }
+  ]
+ },
+ "fuel_reconciliations": [
+  {
+   "id": "98734c5b-51de-4318-ab8e-8476729d751d",
+   "vehicle_id": "84b79d21-5e10-45e1-bb00-68fd449756c1",
+   "period_month": "2026-05",
+   "justification": "Jerrican de 10 L pour la tondeuse du dépôt (achat sans consommation véhicule)",
+   "history": 1
+  }
+ ],
+ "fuel_statements": [
+  {
+   "id": "e9b5292b-4f63-41ac-b31b-2ab7e53dde49",
+   "number": "DEC-2026-04-001",
+   "type": "regulier",
+   "parent_statement_id": null,
+   "period_month": "2026-04",
+   "scope": {
+    "type": "tenant",
+    "fournisseur": null
+   },
+   "status": "cloture",
+   "declared": {
+    "montant": 100.0,
+    "devise": "CHF",
+    "volume_l": 50.0,
+    "kwh": 0.0,
+    "nb_lignes": 1
+   },
+   "closed_at": "2026-10-08T13:38:54.710355+00:00",
+   "closed_by": "lotg-admin@lotg-ui-test.ch",
+   "close_exception": false,
+   "lines_count": 1,
+   "blocker_count": 0,
+   "blockers_by_type": {},
+   "montant_chf": 100.0,
+   "exception_reason": null
+  },
+  {
+   "id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+   "number": "DEC-2026-05-001",
+   "type": "regulier",
+   "parent_statement_id": null,
+   "period_month": "2026-05",
+   "scope": {
+    "type": "tenant",
+    "fournisseur": null
+   },
+   "status": "cloture",
+   "declared": {
+    "montant": 1000.0,
+    "devise": "CHF",
+    "volume_l": null,
+    "kwh": null,
+    "nb_lignes": null
+   },
+   "closed_at": "2026-10-08T13:38:55.703582+00:00",
+   "closed_by": "lotg-admin@lotg-ui-test.ch",
+   "close_exception": true,
+   "lines_count": 14,
+   "blocker_count": 7,
+   "blockers_by_type": {
+    "pending_fx": 1,
+    "matched_review": 1,
+    "unmatched": 1,
+    "open_anomaly": 3,
+    "forced_duplicate": 1
+   },
+   "montant_chf": 1114.0,
+   "exception_reason": "Clôture mensuelle imposée par la comptabilité — écarts à traiter en correctif"
+  },
+  {
+   "id": "8ca84515-5248-43cf-af59-09dc359b6ac7",
+   "number": "COR-2026-05-001",
+   "type": "correctif",
+   "parent_statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+   "period_month": "2026-05",
+   "scope": {
+    "type": "tenant",
+    "fournisseur": null
+   },
+   "status": "brouillon",
+   "declared": null,
+   "closed_at": null,
+   "closed_by": null,
+   "close_exception": false,
+   "lines_count": 1,
+   "blocker_count": 0,
+   "blockers_by_type": {},
+   "montant_chf": 67.65,
+   "exception_reason": null
+  },
+  {
+   "id": "3d4c1b23-9df3-45a8-b793-87d546e98b71",
+   "number": "DEC-2026-10-001",
+   "type": "regulier",
+   "parent_statement_id": null,
+   "period_month": "2026-10",
+   "scope": {
+    "type": "tenant",
+    "fournisseur": null
+   },
+   "status": "brouillon",
+   "declared": {
+    "montant": 175.0,
+    "devise": "CHF",
+    "volume_l": 85.0,
+    "kwh": 0.0,
+    "nb_lignes": 2
+   },
+   "closed_at": null,
+   "closed_by": null,
+   "close_exception": false,
+   "lines_count": 2,
+   "blocker_count": 0,
+   "blockers_by_type": {},
+   "montant_chf": 180.25,
+   "exception_reason": null
+  }
+ ],
+ "fuel_anomalies_by_status": {
+  "justifiee": 1,
+  "ouverte": 2
+ },
+ "fuel_anomalies_by_type": {
+  "double_plein": 2,
+  "incoherence_montant": 1
+ },
+ "documents": {
+  "total": 19,
+  "fuel_tickets": 19,
+  "with_storage": 0,
+  "files": 0
+ },
+ "fuel_import_jobs_by_status": {
+  "confirmed": 4
+ },
+ "audit": {
+  "count": 89,
+  "lotg_events": {
+   "fuel_statement.declared": 3,
+   "fuel_statement.close": 1,
+   "fuel_statement.create": 4,
+   "fuel_export.download": 9,
+   "tenant_settings.settings": 2,
+   "fuel_reconciliation.justify": 1,
+   "fuel_statement.close_exception": 1
+  }
+ },
+ "tenant_settings": {
+  "reconciliation": {
+   "threshold_pct": null,
+   "threshold_l": null
+  }
+ }
+}

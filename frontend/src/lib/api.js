@@ -381,4 +381,27 @@ export const scanFuelAnomalies = () => http.post("/fuel/anomalies/scan").then((r
 export const decideFuelAnomaly = (id, data) => http.post(`/fuel/anomalies/${id}/decide`, data).then((r) => r.data);
 export const getFuelSettings = () => http.get("/tenant-settings/fuel").then((r) => r.data);
 
+// Phase 4C — Lot G : rapprochements achats ↔ consommation, décomptes (statements), verrou, exports audités
+export const getFuelReconciliations = (params) => http.get("/fuel/reconciliations", { params }).then((r) => r.data);
+export const justifyFuelReconciliation = (vehicleId, period, data) => http.post(`/fuel/reconciliations/${vehicleId}/${period}/justify`, data).then((r) => r.data);
+export const getReconciliationSettings = () => http.get("/tenant-settings/fuel/reconciliation").then((r) => r.data);
+export const updateReconciliationSettings = (data) => http.patch("/tenant-settings/fuel/reconciliation", data).then((r) => r.data);
+export const getFuelStatements = (params = {}) => http.get("/fuel/statements", { params }).then((r) => r.data);
+export const getFuelStatement = (id) => http.get(`/fuel/statements/${id}`).then((r) => r.data);
+export const createFuelStatement = (data) => http.post("/fuel/statements", data).then((r) => r.data);
+export const recalculateFuelStatement = (id) => http.post(`/fuel/statements/${id}/recalculate`).then((r) => r.data);
+export const setFuelStatementDeclared = (id, data) => http.patch(`/fuel/statements/${id}/declared`, data).then((r) => r.data);
+export const closeFuelStatement = (id) => http.post(`/fuel/statements/${id}/close`).then((r) => r.data);
+export const closeFuelStatementException = (id, data) => http.post(`/fuel/statements/${id}/close-exception`, data).then((r) => r.data);
+export const downloadFuelExport = async (path, params) => {
+  const r = await http.get(path, { params, responseType: "blob" });
+  const m = /filename="?([^";]+)"?/.exec(r.headers["content-disposition"] || "");
+  const name = m ? m[1] : `export.${params.format}`;
+  const url = URL.createObjectURL(r.data);
+  const a = Object.assign(document.createElement("a"), { href: url, download: name });
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return { filename: name, size: r.data.size, sha256: r.headers["x-content-sha256"] };
+};
+
 export default http;

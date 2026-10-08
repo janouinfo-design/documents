@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse, Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo.errors import DuplicateKeyError
 import os
 import logging
 import uuid
@@ -40,6 +41,7 @@ import fuel_cards as fc
 import fuel_import as fimp
 import fuel_matching as fm
 import fuel_anomalies as fan
+import fuel_statements as fst
 from drivers import DriverCreate, DriverUpdate, AssignmentCreate, AssignmentClose
 import fines as fin
 from fines import FineStatusChange, FinePaid
@@ -796,10 +798,11 @@ def clean(doc: dict) -> dict:
 
 
 async def audit(action: str, entity: str, request: Request = None, entity_id: str = None,
-                vehicle_id: str = None, detail: str = "", tenant_id: str = None):
-    """Append an audit-trail entry (create/modify/delete/download)."""
+                vehicle_id: str = None, detail: str = "", tenant_id: str = None, extra: dict = None):
+    """Append an audit-trail entry (create/modify/delete/download). `extra` : champs structurés additionnels (Lot G : sha256 export…)."""
     state_user = getattr(request.state, "user", None) if request else None
     rec = {
+        **(extra or {}),
         "id": str(uuid.uuid4()),
         "action": action,
         "entity": entity,
@@ -844,6 +847,26 @@ async def find_tenant_vehicle(request: Request, vehicle_id: str, projection: dic
     if not v:
         raise HTTPException(status_code=404, detail="Véhicule introuvable")
     return v
+
+
+# --- Lot G : verrou serveur des transactions incluses dans un décompte clôturé (409 STATEMENT_LOCKED, aucune réouverture) ---
+def _locked_detail(tx: dict, **extra) -> dict:
+    return {"code": fst.LOCK_CODE, "statement_id": tx.get("statement_id"), "statement_number": tx.get("statement_number"),
+            "period_month": tx.get("statement_period"), "locked_at": tx.get("locked_at"), "transaction_id": tx.get("id"),
+            "message": f"Transaction incluse dans le décompte clôturé {tx.get('statement_number') or tx.get('statement_id')} — modification "
+                       "impossible (aucune réouverture : les corrections tardives passent par un décompte correctif).", **extra}
+
+
+def _ensure_tx_unlocked(tx: dict):
+    if tx.get("locked"):
+        raise HTTPException(status_code=409, detail=_locked_detail(tx))
+
+
+_LOCK_PROJ = {"_id": 0, "id": 1, "statement_id": 1, "statement_number": 1, "statement_period": 1, "locked_at": 1}
+
+
+async def _locked_tx_of_document(tenant_id: str, doc_id: str) -> Optional[dict]:
+    return await db.fuel_transactions.find_one({"tenant_id": tenant_id, "source_document_id": doc_id, "locked": True}, _LOCK_PROJ)
 
 
 def vin_check(vin) -> Optional[dict]:
@@ -1268,6 +1291,9 @@ async def delete_vehicle(vehicle_id: str, request: Request):
         raise HTTPException(status_code=409, detail=(
             "Ce véhicule est synchronisé avec Navixy. Retirez d'abord son tracker du compte Navixy : "
             "à la prochaine synchronisation il sera marqué « Retiré de Navixy » et pourra être supprimé."))
+    locked_tx = await db.fuel_transactions.find_one({"tenant_id": tid(request), "vehicle_id": vehicle_id, "locked": True}, _LOCK_PROJ)
+    if locked_tx:
+        raise HTTPException(status_code=409, detail=_locked_detail(locked_tx, vehicle_id=vehicle_id))
     now = datetime.now(timezone.utc).isoformat()
     state_user = getattr(request.state, "user", None) or {}
     await db.vehicles_archive.insert_one(dict(v, deleted_at=now, deleted_by=state_user.get("email")))
@@ -2833,6 +2859,12 @@ async def update_document(doc_id: str, payload: DocumentUpdate, request: Request
         raise HTTPException(status_code=422, detail="Fréquence inconnue")
     if updates.get("tags") is not None:
         updates["tags"] = [s.strip() for s in updates["tags"] if s and s.strip()][:20]
+    locked_tx = await _locked_tx_of_document(t, doc_id)
+    if locked_tx:
+        # Lot G : verrou granulaire — seuls les champs utilisés par le snapshot sont refusés ; PATCH mixte refusé en entier
+        blocked = [k for k in fst.DOC_PROTECTED_FIELDS if k in updates and updates[k] != doc.get(k)]
+        if blocked:
+            raise HTTPException(status_code=409, detail=_locked_detail(locked_tx, blocked_fields=blocked))
     preavis = (await deadline_settings(t))["urgent_days"]
     if not updates:
         return with_statut(doc, preavis)
@@ -3042,6 +3074,9 @@ async def delete_document(doc_id: str, request: Request):
                                        "document_type": 1, "business_category": 1, "extraction_status": 1})
     if not doc:
         raise HTTPException(status_code=404, detail="Document introuvable")
+    locked_tx = await _locked_tx_of_document(tid(request), doc_id)
+    if locked_tx:
+        raise HTTPException(status_code=409, detail=_locked_detail(locked_tx))
     # Pièce justificative d'une transaction énergie : suppression bloquée (traçabilité), jamais de cascade
     linked = await db.fuel_transactions.count_documents(
         {"tenant_id": tid(request), "source_document_id": doc_id, "is_deleted": False})
@@ -3143,6 +3178,10 @@ async def create_fuel_transaction_nofile(vehicle_id: str, payload: ManualFuelCre
     }.items() if v is not None}
     legacy_key = _nofile_legacy_key(payload, t)
     existing = await db.documents.find_one(legacy_key, {"_id": 0, "id": 1}) if legacy_key else None
+    if existing:
+        locked_tx = await _locked_tx_of_document(t, existing["id"])
+        if locked_tx:
+            raise HTTPException(status_code=409, detail=_locked_detail(locked_tx))
     dup = await _transaction_duplicate(t, vehicle["id"], (existing or {}).get("id"), date_,
                                        doc_data["montant"], doc_data.get("litres"))
     if dup and not payload.duplicate_override:
@@ -5186,6 +5225,7 @@ async def fuel_transaction_manual_match(tx_id: str, payload: fm.ManualMatchPaylo
     audit avant/après, consommation recalculée pour les deux véhicules. Les anomalies existantes restent visibles (décision humaine)."""
     t = tid(request)
     tx = await _tx_or_404(t, tx_id)
+    _ensure_tx_unlocked(tx)
     if len((payload.reason or "").strip()) < fimp.REASON_MIN_LEN:
         raise HTTPException(status_code=422, detail="motif obligatoire (≥ 3 caractères)")
     vehicle = await db.vehicles.find_one({"tenant_id": t, "id": payload.vehicle_id}, {"_id": 0, "id": 1, "plaque": 1})
@@ -5212,6 +5252,7 @@ async def fuel_transaction_manual_card(tx_id: str, payload: fm.ManualCardPayload
     """Choix humain motivé de la carte (cas ambigu / introuvable) ou retrait (card_id=null). Jamais automatique."""
     t = tid(request)
     tx = await _tx_or_404(t, tx_id)
+    _ensure_tx_unlocked(tx)
     if len((payload.reason or "").strip()) < fimp.REASON_MIN_LEN:
         raise HTTPException(status_code=422, detail="motif obligatoire (≥ 3 caractères)")
     card = None
@@ -5237,7 +5278,8 @@ async def fuel_match_run(request: Request):
     t = tid(request)
     th, settings = await th_for(request), await _fuel_settings(t)
     vmap, plates = await _vehicle_index(t)
-    txs = await db.fuel_transactions.find({"tenant_id": t, "is_deleted": False, "match_status": {"$ne": "manual"}}, {"_id": 0}).to_list(None)
+    txs = await db.fuel_transactions.find({"tenant_id": t, "is_deleted": False, "match_status": {"$ne": "manual"}, "locked": {"$ne": True}}, {"_id": 0}).to_list(None)
+    locked_ignored = await db.fuel_transactions.count_documents({"tenant_id": t, "is_deleted": False, "locked": True})  # Lot G : jamais recalculées
     stats = {"auto_matched": 0, "matched_review": 0, "unmatched": 0}
     for tx in txs:
         card_res = await _resolve_card(t, tx.get("fournisseur"), tx.get("carte_last4"), tx.get("date") or drv.today_zurich(), th)
@@ -5251,8 +5293,9 @@ async def fuel_match_run(request: Request):
         res["vehicle_id"] = tx.get("vehicle_id")
         await _save_match(t, tx, res, _nofile_user(request))
         stats[res["status"]] = stats.get(res["status"], 0) + 1
-    await audit("match_run", "fuel_transaction", request, None, None, f"Recalcul des rattachements : {len(txs)} transaction(s) — " + ", ".join(f"{k} {v}" for k, v in stats.items()))
-    return {"recomputed": len(txs), "stats": stats, "written_vehicle_changes": 0}
+    await audit("match_run", "fuel_transaction", request, None, None, f"Recalcul des rattachements : {len(txs)} transaction(s) — " + ", ".join(f"{k} {v}" for k, v in stats.items())
+                + f" · {locked_ignored} verrouillée(s) ignorée(s)")
+    return {"recomputed": len(txs), "stats": stats, "written_vehicle_changes": 0, "locked_ignored": locked_ignored}
 
 
 @api_router.get("/fuel/anomalies")
@@ -5347,9 +5390,508 @@ async def fuel_settings_patch(payload: fm.FuelSettingsPayload, request: Request)
     after = {**before, **changes}
     if after["score_review"] > after["score_auto"]:
         raise HTTPException(status_code=422, detail="score_review ≤ score_auto")
-    await db.tenant_settings.update_one({"tenant_id": t}, {"$set": {"fuel": after, "updated_at": datetime.now(timezone.utc).isoformat()}}, upsert=True)
+    # $set par clé : ne jamais écraser `fuel.reconciliation` (Lot G) ni d'autres sous-blocs
+    await db.tenant_settings.update_one({"tenant_id": t}, {"$set": {**{f"fuel.{k}": v for k, v in changes.items()}, "updated_at": datetime.now(timezone.utc).isoformat()}}, upsert=True)
     await audit("settings", "tenant_settings", request, t, None, "Paramètres carburant : " + ", ".join(f"{k} {before.get(k)} → {v}" for k, v in changes.items()))
     return {"fuel": after, "defaults": fm.DEFAULT_FUEL_SETTINGS}
+
+
+# ---------------------------------------------------------------------------
+# Phase 4C — Lot G (6b) : rapprochements achats ↔ consommation (CAN prioritaire, ASTRA comparatif, seuils null → INDICATIF),
+# décomptes périodiques = snapshot Documents (+ relevé fournisseur `declared` manuel facultatif), blockers, clôture / clôture par
+# exception, verrou serveur (409 STATEMENT_LOCKED), correctifs (jamais de réouverture), exports audités SHA-256.
+# ---------------------------------------------------------------------------
+async def ensure_fuel_statement_indexes():
+    await db.fuel_statements.create_index([("tenant_id", 1), ("id", 1)], unique=True, name="uniq_fuel_statement")
+    await db.fuel_statements.create_index([("tenant_id", 1), ("scope.type", 1), ("scope.fournisseur", 1), ("period_month", 1)], unique=True,
+                                          name="uniq_fuel_statement_regular", partialFilterExpression={"type": "regulier"})
+    await db.fuel_statements.create_index([("tenant_id", 1), ("period_month", -1), ("status", 1)], name="fuel_statement_period")
+    await db.fuel_statement_lines.create_index([("tenant_id", 1), ("statement_id", 1), ("transaction_id", 1)], unique=True, name="uniq_fuel_statement_line")
+    await db.fuel_statement_lines.create_index([("tenant_id", 1), ("transaction_id", 1)], name="fuel_statement_line_tx")
+    await db.fuel_reconciliations.create_index([("tenant_id", 1), ("vehicle_id", 1), ("period_month", 1)], unique=True, name="uniq_fuel_reconciliation")
+    await db.fuel_transactions.create_index([("tenant_id", 1), ("locked", 1)], name="fuel_tx_locked")
+    await db.fuel_transactions.create_index([("tenant_id", 1), ("statement_id", 1)], name="fuel_tx_statement")
+
+
+async def _open_anomaly_counts(tenant_id: str, tx_ids: list) -> dict:
+    if not tx_ids:
+        return {}
+    rows = await db.fuel_anomalies.aggregate([{"$match": {"tenant_id": tenant_id, "status": "ouverte", "transaction_id": {"$in": tx_ids}}},
+                                              {"$group": {"_id": "$transaction_id", "n": {"$sum": 1}}}]).to_list(None)
+    return {r["_id"]: r["n"] for r in rows}
+
+
+async def _with_doc_fx(tenant_id: str, txs: list) -> list:
+    """D7 : la contre-valeur CHF canonique vit sur le document ; une transaction en devise ≠ CHF sans `montant_chf` hérite de celle du document."""
+    need = {x["source_document_id"]: x for x in txs if (x.get("devise") or "CHF") != "CHF" and x.get("montant_chf") is None and x.get("source_document_id")}
+    if need:
+        for d in await db.documents.find({"tenant_id": tenant_id, "id": {"$in": list(need)}, "montant_chf": {"$ne": None}}, {"_id": 0, "id": 1, "montant_chf": 1}).to_list(None):
+            need[d["id"]]["montant_chf"] = d["montant_chf"]
+    return txs
+
+
+async def _reco_settings(tenant_id: str) -> dict:
+    return fst.reconciliation_settings(await db.tenant_settings.find_one({"tenant_id": tenant_id}, {"_id": 0, "fuel": 1}))
+
+
+def _period_or_422(period_month: Optional[str]) -> str:
+    if not fst.valid_period(period_month):
+        raise HTTPException(status_code=422, detail="period_month obligatoire au format YYYY-MM")
+    return period_month
+
+
+async def _reconciliations(tenant_id: str, period_month: str, vehicle_id: Optional[str] = None) -> tuple:
+    """Rapprochements du mois (calcul dynamique, jamais persisté comme source) : achats Documents · CAN (fuel_snapshots) · ASTRA (véhicule) ·
+    justification persistée (fuel_reconciliations). → (items, settings)."""
+    date_from, date_to = fst.period_bounds(period_month)
+    vq = {"tenant_id": tenant_id, **({"id": vehicle_id} if vehicle_id else {})}
+    vehicles = await db.vehicles.find(vq, {"_id": 0, "id": 1, "plaque": 1, "marque": 1, "modele": 1, "conso_officielle_l_100km": 1,
+                                           "conso_officielle_norme": 1, "type_carburant": 1}).to_list(None)
+    if vehicle_id and not vehicles:
+        raise HTTPException(status_code=404, detail="Véhicule introuvable")
+    vids = [v["id"] for v in vehicles]
+    txs = await _with_doc_fx(tenant_id, [x for x in await db.fuel_transactions.find({"tenant_id": tenant_id, "is_deleted": False, "vehicle_id": {"$in": vids}}, {"_id": 0}).to_list(None)
+                                         if fst.in_period(x, date_from, date_to)])
+    snaps = await db.fuel_snapshots.find({"vehicle_id": {"$in": vids}, "day": {"$lte": date_to}},
+                                         {"_id": 0, "vehicle_id": 1, "day": 1, "litres_cumules": 1, "km": 1}).to_list(None)
+    open_an = await _open_anomaly_counts(tenant_id, [x["id"] for x in txs])
+    just = {j["vehicle_id"]: j for j in await db.fuel_reconciliations.find({"tenant_id": tenant_id, "period_month": period_month}, {"_id": 0}).to_list(None)}
+    settings = await _reco_settings(tenant_id)
+    items = []
+    for v in vehicles:
+        vt = [x for x in txs if x.get("vehicle_id") == v["id"]]
+        r = fst.reconcile(v, vt, [s for s in snaps if s["vehicle_id"] == v["id"]], settings, period_month, open_an, (just.get(v["id"]) or {}).get("justification"))
+        if r["status"] == "IMPOSSIBLE":
+            continue
+        r["justification_history"] = (just.get(v["id"]) or {}).get("history") or []
+        items.append(r)
+    items.sort(key=lambda r: (r["status"] != "A_CONTROLER", r.get("plaque") or ""))
+    return items, settings
+
+
+def _reco_filter(items: list, status: Optional[str], justified: Optional[str]) -> list:
+    if status:
+        wanted = status.split(",")
+        if any(s not in fst.RECO_STATUSES for s in wanted):
+            raise HTTPException(status_code=422, detail=f"status : {', '.join(fst.RECO_STATUSES)}")
+        items = [r for r in items if r["status"] in wanted]
+    if justified in ("true", "false"):
+        items = [r for r in items if bool(r.get("justification")) == (justified == "true")]
+    return items
+
+
+@api_router.get("/tenant-settings/fuel/reconciliation")
+async def fuel_reconciliation_settings_get(request: Request):
+    return {"reconciliation": await _reco_settings(tid(request)), "rule": fst.THRESHOLD_RULE}
+
+
+@api_router.patch("/tenant-settings/fuel/reconciliation", dependencies=[Depends(require_roles("admin"))])
+async def fuel_reconciliation_settings_patch(payload: fst.ReconciliationSettingsPayload, request: Request):
+    """Seuils de rapprochement : null par défaut (aucune valeur métier injectée) ; null = seuil désactivé ; > 0 sinon ; audit avant/après."""
+    t = tid(request)
+    errors = fst.reconciliation_settings_errors(payload)
+    if errors:
+        raise HTTPException(status_code=422, detail=" ; ".join(errors))
+    before = await _reco_settings(t)
+    changes = payload.model_dump(exclude_unset=True)
+    if not changes:
+        raise HTTPException(status_code=422, detail="aucun seuil fourni (threshold_pct / threshold_l)")
+    after = {**before, **changes}
+    await db.tenant_settings.update_one({"tenant_id": t}, {"$set": {"fuel.reconciliation": after, "updated_at": datetime.now(timezone.utc).isoformat()}}, upsert=True)
+    await audit("settings", "tenant_settings", request, t, None, "Seuils de rapprochement carburant : " + ", ".join(f"{k} {before.get(k)} → {v}" for k, v in changes.items()),
+                extra={"before": before, "after": after})
+    return {"reconciliation": after, "rule": fst.THRESHOLD_RULE}
+
+
+@api_router.get("/fuel/reconciliations")
+async def fuel_reconciliations_list(request: Request, period_month: Optional[str] = None, vehicle_id: Optional[str] = None,
+                                    status: Optional[str] = None, justified: Optional[str] = None, fournisseur: Optional[str] = None):
+    t = tid(request)
+    period = _period_or_422(period_month)
+    items, settings = await _reconciliations(t, period, vehicle_id)
+    items = _reco_filter(items, status, justified)
+    if fournisseur:
+        items = [r for r in items if fournisseur.strip().lower() in {k.lower() for k in r["achats"]["by_fournisseur"]}]
+    return {"items": items, "total": len(items), "period_month": period, "settings": {**settings, "configured": settings["threshold_pct"] is not None or settings["threshold_l"] is not None,
+                                                                                      "rule": fst.THRESHOLD_RULE},
+            "stats": {"by_status": {s: sum(1 for r in items if r["status"] == s) for s in fst.RECO_STATUSES}, "justified": sum(1 for r in items if r.get("justification")),
+                      "with_blockers": sum(1 for r in items if r["blockers"]["count"])},
+            "statuses": [{"code": s, "label": fst.RECO_LABELS[s]} for s in fst.RECO_STATUSES]}
+
+
+@api_router.post("/fuel/reconciliations/{vehicle_id}/{period_month}/justify", dependencies=[Depends(require_roles("admin"))])
+async def fuel_reconciliation_justify(vehicle_id: str, period_month: str, payload: fst.JustifyPayload, request: Request):
+    """Justification humaine motivée d'un écart : explique, ne corrige jamais (achats / CAN / ASTRA / écart inchangés). Audit avant/après."""
+    t = tid(request)
+    period = _period_or_422(period_month)
+    v = await find_tenant_vehicle(request, vehicle_id, {"_id": 0, "id": 1, "plaque": 1})
+    reason = (payload.reason or "").strip()
+    if len(reason) < fst.REASON_MIN_LEN:
+        raise HTTPException(status_code=422, detail="motif obligatoire (≥ 3 caractères)")
+    items, _ = await _reconciliations(t, period, vehicle_id)
+    if not items:
+        raise HTTPException(status_code=404, detail="Aucun rapprochement pour ce véhicule sur cette période")
+    cur, user, now = items[0], _nofile_user(request), datetime.now(timezone.utc).isoformat()
+    before = await db.fuel_reconciliations.find_one({"tenant_id": t, "vehicle_id": vehicle_id, "period_month": period}, {"_id": 0})
+    entry = {"reason": reason, "by": user, "at": now, "status_at": cur["status"], "ecart_l_at": cur["ecart_l"], "ecart_pct_at": cur["ecart_pct"],
+             "source_consumption_at": cur["source_consumption"]}
+    await db.fuel_reconciliations.update_one({"tenant_id": t, "vehicle_id": vehicle_id, "period_month": period},
+                                             {"$set": {"justification": entry, "updated_at": now}, "$push": {"history": entry},
+                                              "$setOnInsert": {"id": str(uuid.uuid4()), "created_at": now}}, upsert=True)
+    prev = ((before or {}).get("justification") or {}).get("reason")
+    await audit("justify", "fuel_reconciliation", request, f"{vehicle_id}:{period}", vehicle_id,
+                f"Justification du rapprochement {v.get('plaque') or vehicle_id} · {period} : statut {cur['status']} · écart {cur['ecart_l']} L ({cur['ecart_pct']} %) — "
+                f"motif : {reason} ; avant : {prev or '—'}", extra={"period_month": period, "before": (before or {}).get("justification"), "after": entry})
+    return (await _reconciliations(t, period, vehicle_id))[0][0]
+
+
+# --- décomptes -------------------------------------------------------------------------------------------------------
+async def _statement_or_404(tenant_id: str, sid: str) -> dict:
+    st = await db.fuel_statements.find_one({"tenant_id": tenant_id, "id": sid}, {"_id": 0})
+    if not st:
+        raise HTTPException(status_code=404, detail="Décompte introuvable")
+    return st
+
+
+def _ensure_statement_open(st: dict):
+    if st.get("status") == "cloture":
+        raise HTTPException(status_code=409, detail={"code": fst.LOCK_CODE, "statement_id": st["id"], "statement_number": st.get("number"),
+                                                     "period_month": st.get("period_month"), "locked_at": st.get("closed_at"),
+                                                     "message": f"Décompte {st.get('number')} clôturé — immuable (aucune réouverture ; créez un décompte correctif)."})
+
+
+async def _statement_lines(tenant_id: str, sid: str) -> list:
+    return await db.fuel_statement_lines.find({"tenant_id": tenant_id, "statement_id": sid}, {"_id": 0}).sort("seq", 1).to_list(None)
+
+
+async def _eligible_lines(tenant_id: str, scope: dict, period_month: str) -> list:
+    """Lignes éligibles maintenant : transactions Documents du tenant, non supprimées, NON verrouillées, dans le périmètre et le mois (D5)."""
+    date_from, date_to = fst.period_bounds(period_month)
+    vmap, _ = await _vehicle_index(tenant_id)
+    txs = await _with_doc_fx(tenant_id, [x for x in await db.fuel_transactions.find({"tenant_id": tenant_id, "is_deleted": False, "locked": {"$ne": True}}, {"_id": 0}).to_list(None)
+                                         if fst.in_period(x, date_from, date_to) and fst.in_scope(x, scope)])
+    open_an = await _open_anomaly_counts(tenant_id, [x["id"] for x in txs])
+    lines = [fst.build_line(x, open_an.get(x["id"], 0), (vmap.get(x.get("vehicle_id")) or {}).get("plaque")) for x in txs]
+    lines.sort(key=lambda ln: (ln["date"] or "", ln["heure"] or "", ln["transaction_id"]))
+    return lines
+
+
+async def _current_lines(tenant_id: str, tx_ids: list) -> dict:
+    txs = await _with_doc_fx(tenant_id, await db.fuel_transactions.find({"tenant_id": tenant_id, "id": {"$in": tx_ids}, "is_deleted": False}, {"_id": 0}).to_list(None)) if tx_ids else []
+    vmap, _ = await _vehicle_index(tenant_id)
+    open_an = await _open_anomaly_counts(tenant_id, [x["id"] for x in txs])
+    return {x["id"]: {"line": fst.build_line(x, open_an.get(x["id"], 0), (vmap.get(x.get("vehicle_id")) or {}).get("plaque")),
+                      "locked": x.get("locked"), "statement_id": x.get("statement_id")} for x in txs}
+
+
+async def _store_lines(tenant_id: str, st: dict, lines: list):
+    await db.fuel_statement_lines.delete_many({"tenant_id": tenant_id, "statement_id": st["id"]})
+    parent_closed = st.get("parent_closed_at")
+    docs = [{"id": str(uuid.uuid4()), "tenant_id": tenant_id, "statement_id": st["id"], "seq": i, "locked": False, "locked_at": None,
+             "late": bool(parent_closed and (ln.get("tx_created_at") or "") > parent_closed), **ln} for i, ln in enumerate(lines)]
+    if docs:
+        await db.fuel_statement_lines.insert_many([dict(d) for d in docs])
+    return docs
+
+
+def _statement_out(st: dict, lines: Optional[list] = None, **extra) -> dict:
+    out = {**st, "status_label": fst.STATEMENT_LABELS.get(st.get("status"), st.get("status")), "scope_label": fst.scope_label(st.get("scope")),
+           "type_label": "Correctif" if st.get("type") == "correctif" else "Régulier", "deltas": fst.declared_deltas(st["totals"], st.get("declared")),
+           "blocker_labels": fst.BLOCKER_LABELS, **extra}
+    if lines is not None:
+        out["lines"] = [{k: v for k, v in ln.items() if k != "tenant_id"} for ln in lines]
+    return out
+
+
+def _statement_audit_label(st: dict) -> str:
+    return f"{st.get('number')} ({fst.scope_label(st.get('scope'))}, {st.get('period_month')}, {st.get('type')})"
+
+
+@api_router.get("/fuel/statements")
+async def fuel_statements_list(request: Request, period_month: Optional[str] = None, fournisseur: Optional[str] = None, type: Optional[str] = None,
+                               status: Optional[str] = None, with_blockers: Optional[str] = None, close_exception: Optional[str] = None):
+    t = tid(request)
+    q = {"tenant_id": t}
+    if period_month:
+        q["period_month"] = _period_or_422(period_month)
+    if fournisseur:
+        q["scope.fournisseur"] = {"$regex": f"^{re.escape(fournisseur.strip())}$", "$options": "i"}
+    if type:
+        if type not in fst.STATEMENT_TYPES:
+            raise HTTPException(status_code=422, detail="type : regulier ou correctif")
+        q["type"] = type
+    if status:
+        if status not in fst.STATEMENT_STATUSES:
+            raise HTTPException(status_code=422, detail="status : brouillon ou cloture")
+        q["status"] = status
+    if close_exception in ("true", "false"):
+        q["close_exception"] = close_exception == "true"
+    rows = await db.fuel_statements.find(q, {"_id": 0}).sort([("period_month", -1), ("created_at", -1)]).to_list(1000)
+    if with_blockers in ("true", "false"):
+        rows = [s for s in rows if (s["totals"]["blocker_count"] > 0) == (with_blockers == "true")]
+    all_ = await db.fuel_statements.find({"tenant_id": t}, {"_id": 0, "status": 1, "close_exception": 1, "type": 1, "totals.blocker_count": 1}).to_list(None)
+    fournisseurs = sorted({x for x in await db.fuel_transactions.distinct("fournisseur", {"tenant_id": t, "is_deleted": False}) if x})
+    return {"items": [_statement_out(s) for s in rows], "total": len(rows),
+            "stats": {"total": len(all_), "brouillons": sum(1 for s in all_ if s["status"] == "brouillon"), "clotures": sum(1 for s in all_ if s["status"] == "cloture"),
+                      "exceptions": sum(1 for s in all_ if s.get("close_exception")), "correctifs": sum(1 for s in all_ if s.get("type") == "correctif"),
+                      "with_blockers": sum(1 for s in all_ if (s.get("totals") or {}).get("blocker_count"))},
+            "fournisseurs": fournisseurs, "current_period": fst.current_period(),
+            "statuses": [{"code": s, "label": fst.STATEMENT_LABELS[s]} for s in fst.STATEMENT_STATUSES], "types": list(fst.STATEMENT_TYPES),
+            "blocker_types": [{"code": b, "label": fst.BLOCKER_LABELS[b]} for b in fst.BLOCKER_TYPES]}
+
+
+@api_router.post("/fuel/statements", dependencies=[Depends(require_roles("admin"))])
+async def fuel_statement_create(payload: fst.StatementCreate, request: Request):
+    """Décompte régulier (snapshot de travail des transactions Documents du mois — rien n'est verrouillé en brouillon) ou correctif
+    (parent clôturé obligatoire, même période / périmètre, uniquement transactions non verrouillées, parent jamais modifié)."""
+    t, user, now = tid(request), _nofile_user(request), datetime.now(timezone.utc).isoformat()
+    errors = fst.statement_create_errors(payload)
+    if errors:
+        raise HTTPException(status_code=422, detail=" ; ".join(errors))
+    parent = None
+    if payload.type == "correctif":
+        parent = await db.fuel_statements.find_one({"tenant_id": t, "id": payload.parent_statement_id}, {"_id": 0})
+        if not parent:
+            raise HTTPException(status_code=404, detail="Décompte parent introuvable dans ce tenant")
+        if parent["status"] != "cloture":
+            raise HTTPException(status_code=409, detail={"code": "PARENT_NOT_CLOSED", "statement_id": parent["id"], "message": "Un correctif ne peut viser qu'un décompte clôturé"})
+        open_cor = await db.fuel_statements.find_one({"tenant_id": t, "parent_statement_id": parent["id"], "status": {"$ne": "cloture"}}, {"_id": 0, "id": 1, "number": 1})
+        if open_cor:
+            raise HTTPException(status_code=409, detail={"code": "CORRECTIVE_OPEN", "statement_id": open_cor["id"], "number": open_cor["number"],
+                                                         "message": f"Le correctif {open_cor['number']} est encore en brouillon — clôturez-le avant d'en créer un autre"})
+        scope, period = parent["scope"], parent["period_month"]
+    else:
+        scope, period = fst.scope_of(payload), payload.period_month
+        existing = await db.fuel_statements.find_one({"tenant_id": t, "type": "regulier", "period_month": period, "scope.type": scope["type"], "scope.fournisseur": scope["fournisseur"]},
+                                                     {"_id": 0, "id": 1, "number": 1, "status": 1})
+        if existing:
+            raise HTTPException(status_code=409, detail={"code": "STATEMENT_EXISTS", "statement_id": existing["id"], "number": existing["number"], "status": existing["status"],
+                                                         "message": f"Un décompte régulier existe déjà pour {fst.scope_label(scope)} · {period} ({existing['number']})"})
+    lines = await _eligible_lines(t, scope, period)
+    seq = await db.fuel_statements.count_documents({"tenant_id": t, "period_month": period, "type": payload.type}) + 1
+    date_from, date_to = fst.period_bounds(period)
+    st = {"id": str(uuid.uuid4()), "tenant_id": t, "number": fst.statement_number(period, seq, payload.type), "type": payload.type, "scope": scope, "period_month": period,
+          "period_from": date_from, "period_to": date_to, "status": "brouillon", "parent_statement_id": parent["id"] if parent else None,
+          "parent_number": parent["number"] if parent else None, "parent_closed_at": parent["closed_at"] if parent else None, "reason": (payload.reason or "").strip() or None,
+          "declared": None, "totals": fst.totals_of(lines), "snapshot_at": now, "snapshot_count": 1, "created_at": now, "created_by": user, "updated_at": now,
+          "closed_at": None, "closed_by": None, "close_exception": False, "exception": None,
+          "history": [{"at": now, "by": user, "event": "created", "detail": f"snapshot {len(lines)} ligne(s)"}]}
+    try:
+        await db.fuel_statements.insert_one(dict(st))
+    except DuplicateKeyError:
+        raise HTTPException(status_code=409, detail={"code": "STATEMENT_EXISTS", "message": "Un décompte régulier existe déjà pour cette période et ce périmètre"})
+    docs = await _store_lines(t, st, lines)
+    await audit("create", "fuel_statement", request, st["id"], None,
+                f"Décompte {_statement_audit_label(st)} créé — snapshot {len(lines)} ligne(s) · {st['totals']['montant_chf']} CHF · {st['totals']['blocker_count']} blocker(s)"
+                + (f" · correctif de {parent['number']} — motif : {st['reason']}" if parent else ""), extra={"period_month": period, "statement_number": st["number"]})
+    return _statement_out(st, docs)
+
+
+@api_router.get("/fuel/statements/{sid}")
+async def fuel_statement_detail(sid: str, request: Request):
+    t = tid(request)
+    st = await _statement_or_404(t, sid)
+    lines = await _statement_lines(t, sid)
+    extra = {"corrective_eligible": len(await _eligible_lines(t, st["scope"], st["period_month"])) if st["status"] == "cloture" else None}
+    children = await db.fuel_statements.find({"tenant_id": t, "parent_statement_id": sid}, {"_id": 0, "id": 1, "number": 1, "status": 1, "created_at": 1}).to_list(None)
+    return _statement_out(st, lines, correctifs=children, **extra)
+
+
+@api_router.post("/fuel/statements/{sid}/recalculate", dependencies=[Depends(require_roles("admin"))])
+async def fuel_statement_recalculate(sid: str, request: Request):
+    """Recalcul EXPLICITE du snapshot (brouillon uniquement) : ajoute / retire les transactions éligibles, recalcule lignes / totaux / blockers ;
+    `declared`, période, périmètre, type, parent inchangés. Audit avant/après. Clôturé → 409 STATEMENT_LOCKED."""
+    t, user, now = tid(request), _nofile_user(request), datetime.now(timezone.utc).isoformat()
+    st = await _statement_or_404(t, sid)
+    _ensure_statement_open(st)
+    old = await _statement_lines(t, sid)
+    new = await _eligible_lines(t, st["scope"], st["period_month"])
+    old_ids, new_ids = {ln["transaction_id"] for ln in old}, {ln["transaction_id"] for ln in new}
+    added, removed = sorted(new_ids - old_ids), sorted(old_ids - new_ids)
+    before, after = st["totals"], fst.totals_of(new)
+    docs = await _store_lines(t, st, new)
+    entry = {"at": now, "by": user, "event": "recalculated", "lines_before": len(old), "lines_after": len(new), "added": added, "removed": removed,
+             "totals_before": before, "totals_after": after}
+    await db.fuel_statements.update_one({"tenant_id": t, "id": sid}, {"$set": {"totals": after, "snapshot_at": now, "updated_at": now}, "$inc": {"snapshot_count": 1}, "$push": {"history": entry}})
+    await audit("recalculate", "fuel_statement", request, sid, None,
+                f"Snapshot du décompte {_statement_audit_label(st)} recalculé : {len(old)} → {len(new)} ligne(s) (+{len(added)} / −{len(removed)}) · "
+                f"{before['montant_chf']} → {after['montant_chf']} CHF · blockers {before['blocker_count']} → {after['blocker_count']}",
+                extra={"period_month": st["period_month"], "added": added, "removed": removed, "totals_before": before, "totals_after": after})
+    return _statement_out(await _statement_or_404(t, sid), docs, added=added, removed=removed)
+
+
+@api_router.patch("/fuel/statements/{sid}/declared", dependencies=[Depends(require_roles("admin"))])
+async def fuel_statement_declared(sid: str, payload: fst.DeclaredPayload, request: Request):
+    """Relevé fournisseur déclaré (saisie manuelle facultative : montant, devise, volume_l, kwh, nb_lignes). Absent = null (N/A), jamais 0.
+    Aucune transaction source modifiée. Clôturé → 409 STATEMENT_LOCKED."""
+    t, user, now = tid(request), _nofile_user(request), datetime.now(timezone.utc).isoformat()
+    st = await _statement_or_404(t, sid)
+    _ensure_statement_open(st)
+    errors = fst.declared_errors(payload)
+    if errors:
+        raise HTTPException(status_code=422, detail=" ; ".join(errors))
+    declared = fst.declared_from(payload)
+    before = st.get("declared")
+    await db.fuel_statements.update_one({"tenant_id": t, "id": sid}, {"$set": {"declared": declared, "declared_by": user, "declared_at": now, "updated_at": now},
+                                                                      "$push": {"history": {"at": now, "by": user, "event": "declared", "before": before, "after": declared}}})
+    await audit("declared", "fuel_statement", request, sid, None, f"Relevé fournisseur déclaré sur {_statement_audit_label(st)} : {before or '—'} → {declared}",
+                extra={"period_month": st["period_month"], "before": before, "after": declared})
+    return _statement_out(await _statement_or_404(t, sid), await _statement_lines(t, sid))
+
+
+async def _lock_statement(tenant_id: str, st: dict, lines: list, user: str, now: str, request: Request, exception: Optional[dict]) -> dict:
+    """Point d'immutabilité : statut `cloture`, lignes et transactions du snapshot verrouillées (locked / statement_id / locked_at). Idempotent."""
+    tx_ids = [ln["transaction_id"] for ln in lines]
+    event = {"at": now, "by": user, "event": "closed_exception" if exception else "closed", "lines": len(lines), "totals": st["totals"],
+             **({"reason": exception["reason"], "blockers_snapshot": exception["blockers_snapshot"]} if exception else {})}
+    res = await db.fuel_statements.update_one({"tenant_id": tenant_id, "id": st["id"], "status": {"$ne": "cloture"}},
+                                              {"$set": {"status": "cloture", "closed_at": now, "closed_by": user, "updated_at": now, "close_exception": bool(exception),
+                                                        "exception": exception}, "$push": {"history": event}})
+    if res.modified_count == 0:
+        return {"already_closed": True}
+    if tx_ids:
+        await db.fuel_transactions.update_many({"tenant_id": tenant_id, "id": {"$in": tx_ids}},
+                                               {"$set": {"locked": True, "statement_id": st["id"], "statement_number": st["number"], "statement_period": st["period_month"], "locked_at": now}})
+    await db.fuel_statement_lines.update_many({"tenant_id": tenant_id, "statement_id": st["id"]}, {"$set": {"locked": True, "locked_at": now}})
+    bs = (exception or {}).get("blockers_snapshot") or {}
+    await audit("close_exception" if exception else "close", "fuel_statement", request, st["id"], None,
+                (f"Décompte {_statement_audit_label(st)} CLÔTURÉ AVEC EXCEPTION — motif : {exception['reason']} · {bs.get('blocker_count')} blocker(s) conservé(s) "
+                 f"({', '.join(f'{k} {v}' for k, v in (bs.get('blockers_by_type') or {}).items()) or '—'})" if exception else
+                 f"Décompte {_statement_audit_label(st)} clôturé — 0 blocker · intégrité PASS")
+                + f" · {len(tx_ids)} transaction(s) verrouillée(s) · {st['totals']['montant_chf']} CHF",
+                extra={"period_month": st["period_month"], "locked_transaction_ids": tx_ids, "before": {"status": st["status"], "closed_at": None},
+                       "after": {"status": "cloture", "closed_at": now, "close_exception": bool(exception)}, "blockers_snapshot": bs or None})
+    return {"already_closed": False}
+
+
+@api_router.post("/fuel/statements/{sid}/close", dependencies=[Depends(require_roles("admin"))])
+async def fuel_statement_close(sid: str, request: Request):
+    """Clôture normale : 0 blocker ET intégrité PASS (transactions existantes, non verrouillées ailleurs, empreinte inchangée), sinon 409 détaillé.
+    Rien n'est corrigé silencieusement. Double close → idempotent (aucun second événement)."""
+    t, user, now = tid(request), _nofile_user(request), datetime.now(timezone.utc).isoformat()
+    st = await _statement_or_404(t, sid)
+    lines = await _statement_lines(t, sid)
+    if st["status"] == "cloture":
+        return {"ok": True, "already_closed": True, "statement": _statement_out(st, lines)}
+    integrity = fst.integrity_errors(lines, await _current_lines(t, [ln["transaction_id"] for ln in lines]), sid)
+    bs = fst.blockers_snapshot(lines)
+    if integrity or bs["blocker_count"]:
+        raise HTTPException(status_code=409, detail={"code": "CLOSE_BLOCKED", "statement_id": sid, "number": st["number"], **bs, "integrity_errors": integrity,
+                                                     "blocker_labels": fst.BLOCKER_LABELS,
+                                                     "message": f"Clôture refusée : {bs['blocker_count']} blocker(s) sur {bs['blocked_line_count']} ligne(s)"
+                                                                + (f" · {len(integrity)} erreur(s) d'intégrité (recalcul explicite requis)" if integrity else "")})
+    res = await _lock_statement(t, st, lines, user, now, request, None)
+    fresh = await _statement_or_404(t, sid)
+    return {"ok": True, **res, "statement": _statement_out(fresh, await _statement_lines(t, sid))}
+
+
+@api_router.post("/fuel/statements/{sid}/close-exception", dependencies=[Depends(require_roles("admin"))])
+async def fuel_statement_close_exception(sid: str, payload: fst.CloseExceptionPayload, request: Request):
+    """Clôture PAR EXCEPTION (action distincte) : motif obligatoire + confirmation explicite ; blockers snapshotés AVANT clôture et conservés
+    (jamais marqués résolus, sources inchangées) ; même verrou que la clôture normale. Intégrité du snapshot toujours exigée."""
+    t, user, now = tid(request), _nofile_user(request), datetime.now(timezone.utc).isoformat()
+    st = await _statement_or_404(t, sid)
+    reason = (payload.reason or "").strip()
+    if len(reason) < fst.REASON_MIN_LEN:
+        raise HTTPException(status_code=422, detail="motif obligatoire (≥ 3 caractères)")
+    if not payload.confirm:
+        raise HTTPException(status_code=422, detail="confirmation explicite requise (confirm=true)")
+    lines = await _statement_lines(t, sid)
+    if st["status"] == "cloture":
+        return {"ok": True, "already_closed": True, "statement": _statement_out(st, lines)}
+    integrity = fst.integrity_errors(lines, await _current_lines(t, [ln["transaction_id"] for ln in lines]), sid)
+    if integrity:
+        raise HTTPException(status_code=409, detail={"code": "INTEGRITY_FAILED", "statement_id": sid, "integrity_errors": integrity,
+                                                     "message": "Snapshot obsolète ou incohérent : recalculez le snapshot avant de clôturer"})
+    exception = {"reason": reason, "by": user, "at": now, "blockers_snapshot": fst.blockers_snapshot(lines)}
+    res = await _lock_statement(t, st, lines, user, now, request, exception)
+    fresh = await _statement_or_404(t, sid)
+    return {"ok": True, **res, "statement": _statement_out(fresh, await _statement_lines(t, sid))}
+
+
+# --- exports audités (SHA-256 des octets réellement renvoyés) -------------------------------------------------------
+_EXPORT_FORMATS = ("csv", "xlsx", "pdf")
+
+
+def _fmt_or_422(fmt: str, allowed=_EXPORT_FORMATS) -> str:
+    if fmt not in allowed:
+        raise HTTPException(status_code=422, detail=f"format : {', '.join(allowed)}")
+    return fmt
+
+
+async def _export_response(request: Request, kind: str, fmt: str, columns: list, rows: list, title: str, summary: list, filename: str, filters: dict) -> Response:
+    data, mime, sha = fst.export(fmt, columns, rows, title, summary)
+    await audit("download", "fuel_export", request, f"{kind}:{fmt}", None,
+                f"Export {kind} ({fmt}) — {len(rows)} ligne(s) · {len(data)} octets · sha256={sha} · {json.dumps(filters, ensure_ascii=False, default=str)}",
+                extra={"export_type": kind, "format": fmt, "size": len(data), "sha256": sha, "rows": len(rows), "filters": filters,
+                       "statement_id": filters.get("statement_id"), "period_month": filters.get("period_month")})
+    return Response(content=data, media_type=mime, headers={"Content-Disposition": f'attachment; filename="{filename}.{fmt}"', "Cache-Control": "private, no-store",
+                                                             "X-Content-SHA256": sha, "Access-Control-Expose-Headers": "Content-Disposition, X-Content-SHA256"})
+
+
+def _na(v, suffix: str = "") -> str:
+    return "N/A" if v is None else f"{v}{suffix}"
+
+
+@api_router.get("/fuel/statements/{sid}/export")
+async def fuel_statement_export(sid: str, request: Request, format: str = "csv"):
+    t = tid(request)
+    fmt = _fmt_or_422(format)
+    st = await _statement_or_404(t, sid)
+    lines = await _statement_lines(t, sid)
+    rows = [{**ln, "locked": bool(ln.get("locked") or st["status"] == "cloture")} for ln in lines]
+    d, dl, ex = st.get("declared") or {}, fst.declared_deltas(st["totals"], st.get("declared")), st.get("exception") or {}
+    summary = [("Décompte", st["number"]), ("Tenant", t), ("Périmètre", fst.scope_label(st["scope"])), ("Fournisseur", st["scope"].get("fournisseur") or "—"),
+               ("Période", st["period_month"]), ("Type", "Correctif" if st["type"] == "correctif" else "Régulier"), ("Décompte parent", st.get("parent_number") or "—"),
+               ("Statut", fst.STATEMENT_LABELS.get(st["status"], st["status"]) + (" AVEC EXCEPTION" if st.get("close_exception") else "")),
+               ("Clôturé le", st.get("closed_at") or "—"), ("Clôturé par", st.get("closed_by") or "—"), ("Motif exception", ex.get("reason") or "—"),
+               ("Lignes Documents", st["totals"]["n_lignes"]), ("Montant CHF Documents", st["totals"]["montant_chf"]), ("Litres Documents", st["totals"]["litres"]),
+               ("kWh Documents", st["totals"]["kwh"]), ("Lignes FX en attente", st["totals"]["pending_fx"]),
+               ("Relevé déclaré — montant", _na(d.get("montant"), f" {d.get('devise') or 'CHF'}" if d.get("montant") is not None else "")),
+               ("Relevé déclaré — volume L", _na(d.get("volume_l"))), ("Relevé déclaré — kWh", _na(d.get("kwh"))), ("Relevé déclaré — nb lignes", _na(d.get("nb_lignes"))),
+               ("Écart montant (Documents − déclaré)", _na(dl["delta_montant"]) if dl["montant_comparable"] is not False else "non comparable (devise ≠ CHF)"),
+               ("Écart volume L", _na(dl["delta_volume_l"])), ("Écart kWh", _na(dl["delta_kwh"])), ("Écart nb lignes", _na(dl["delta_nb_lignes"])),
+               ("Blockers", st["totals"]["blocker_count"]), ("Lignes bloquées", st["totals"]["blocked_line_count"]), ("Blockers par type", st["totals"]["blockers_by_type"] or "—"),
+               ("Snapshot du", st.get("snapshot_at"))]
+    return await _export_response(request, "statement", fmt, fst.STATEMENT_COLUMNS, rows, f"Décompte {st['number']} — {fst.scope_label(st['scope'])}", summary,
+                                  f"decompte-{st['number']}", {"statement_id": sid, "statement_number": st["number"], "period_month": st["period_month"], "scope": st["scope"]})
+
+
+@api_router.get("/fuel/reconciliations/export")
+async def fuel_reconciliations_export(request: Request, period_month: Optional[str] = None, vehicle_id: Optional[str] = None, status: Optional[str] = None,
+                                      justified: Optional[str] = None, format: str = "csv"):
+    t = tid(request)
+    fmt, period = _fmt_or_422(format), _period_or_422(period_month)
+    items, settings = await _reconciliations(t, period, vehicle_id)
+    items = _reco_filter(items, status, justified)
+    rows = [fst.reco_row(r) for r in items]
+    summary = [("Tenant", t), ("Période", period), ("Véhicules", len(rows)), ("Seuil %", _na(settings["threshold_pct"])), ("Seuil L", _na(settings["threshold_l"])),
+               ("Règle de seuils", fst.THRESHOLD_RULE["label"]), ("Filtre statut", status or "tous"), ("Filtre véhicule", vehicle_id or "tous"),
+               ("Priorité consommation", "CAN mesuré = réelle · tickets = achats (indicatif) · ASTRA = référence comparative")]
+    return await _export_response(request, "reconciliations", fmt, fst.RECO_COLUMNS, rows, f"Rapprochements achats / consommation — {period}", summary,
+                                  f"rapprochements-{period}", {"period_month": period, "vehicle_id": vehicle_id, "status": status, "justified": justified})
+
+
+@api_router.get("/fuel/transactions/export")
+async def fuel_transactions_export(request: Request, period_month: Optional[str] = None, vehicle_id: Optional[str] = None, fournisseur: Optional[str] = None,
+                                   format: str = "csv"):
+    """Transactions de période (CSV / XLSX) : vue Documents, verrou et décompte inclus — lecture seule, aucune mutation."""
+    t = tid(request)
+    fmt, period = _fmt_or_422(format, ("csv", "xlsx")), _period_or_422(period_month)
+    date_from, date_to = fst.period_bounds(period)
+    q = {"tenant_id": t, "is_deleted": False, **({"vehicle_id": vehicle_id} if vehicle_id else {})}
+    vmap, _ = await _vehicle_index(t)
+    txs = await _with_doc_fx(t, [x for x in await db.fuel_transactions.find(q, {"_id": 0}).to_list(None) if x.get("vehicle_id") in vmap and fst.in_period(x, date_from, date_to)
+                                 and (not fournisseur or (x.get("fournisseur") or "").strip().lower() == fournisseur.strip().lower())])
+    txs.sort(key=lambda x: (x.get("date_heure") or x.get("date") or "", x.get("created_at") or ""))
+    dnames = await _driver_names(t, [x.get("driver_id") for x in txs])
+    open_an = await _open_anomaly_counts(t, [x["id"] for x in txs])
+    rows = [{**x, "plaque": (vmap.get(x.get("vehicle_id")) or {}).get("plaque"), "driver_nom": dnames.get(x.get("driver_id")), "anomalies_open": open_an.get(x["id"], 0),
+             "montant_chf": fst.tx_chf(x), "locked": bool(x.get("locked")), "prix_unitaire": x.get("prix_kwh") if x.get("energie") == "electrique" else x.get("prix_litre")} for x in txs]
+    summary = [("Tenant", t), ("Période", period), ("Transactions", len(rows)), ("Filtre véhicule", vehicle_id or "tous"), ("Filtre fournisseur", fournisseur or "tous"),
+               ("Verrouillées", sum(1 for r in rows if r["locked"])), ("Montant CHF compté", round(sum(r["montant_chf"] or 0 for r in rows), 2))]
+    return await _export_response(request, "transactions", fmt, fst.ENERGY_COLUMNS, rows, f"Transactions énergie — {period}", summary, f"transactions-{period}",
+                                  {"period_month": period, "vehicle_id": vehicle_id, "fournisseur": fournisseur})
 
 
 
@@ -6235,6 +6777,9 @@ async def validate_scanned_document(doc_id: str, payload: DocumentValidate, requ
         {"id": doc_id, "is_deleted": False, "tenant_id": tid(request)}, {"_id": 0})
     if not docrec:
         raise HTTPException(status_code=404, detail="Document introuvable")
+    locked_tx = await _locked_tx_of_document(tid(request), doc_id)
+    if locked_tx:
+        raise HTTPException(status_code=409, detail=_locked_detail(locked_tx))
     dtype = payload.document_type
     if dtype not in DOC_TYPES:
         raise HTTPException(status_code=400, detail="Type de document inconnu")
@@ -8016,6 +8561,7 @@ async def startup():
         await ensure_fuel_card_indexes()
         await ensure_fuel_import_indexes()
         await ensure_fine_indexes()
+        await ensure_fuel_statement_indexes()
         if NAVIXY_HASH:
             await db.tenant_integrations.update_one(
                 {"tenant_id": "default", "provider": "navixy"},
