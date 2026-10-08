@@ -1,0 +1,940 @@
+{
+ "tenant": "lotg-ui-test",
+ "collections": {
+  "audit_logs": 127,
+  "documents": 21,
+  "fuel_anomalies": 3,
+  "fuel_card_assignments": 5,
+  "fuel_cards": 5,
+  "fuel_import_jobs": 4,
+  "fuel_import_rows": 7,
+  "fuel_reconciliations": 2,
+  "fuel_snapshots": 7,
+  "fuel_statement_lines": 20,
+  "fuel_statements": 6,
+  "fuel_transaction_matches": 20,
+  "fuel_transactions": 20,
+  "tenant_settings": 1,
+  "tenants": 1,
+  "users": 2,
+  "vehicle_field_meta": 3,
+  "vehicles": 5
+ },
+ "statements": [
+  {
+   "id": "8ca84515-5248-43cf-af59-09dc359b6ac7",
+   "number": "COR-2026-05-001",
+   "type": "correctif",
+   "kind": "correctif",
+   "parent_statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+   "parent_number": "DEC-2026-05-001",
+   "period_month": "2026-05",
+   "scope": {
+    "type": "tenant",
+    "fournisseur": null
+   },
+   "status": "cloture",
+   "lines_count": 1,
+   "blocker_count": 0,
+   "blocked_line_count": 0,
+   "blockers_by_type": {},
+   "close_exception": false,
+   "exception_reason": null,
+   "declared": null,
+   "closed_at": "2026-10-08T13:57:27.724209+00:00",
+   "closed_by": "lotg-admin@lotg-ui-test.ch",
+   "snapshot_count": 1,
+   "history_events": [
+    "created",
+    "closed"
+   ]
+  },
+  {
+   "id": "66193cef-8950-48ae-ade5-3577757b4c4a",
+   "number": "COR-2026-05-002",
+   "type": "correctif",
+   "kind": "correctif",
+   "parent_statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+   "parent_number": "DEC-2026-05-001",
+   "period_month": "2026-05",
+   "scope": {
+    "type": "tenant",
+    "fournisseur": null
+   },
+   "status": "brouillon",
+   "lines_count": 0,
+   "blocker_count": 0,
+   "blocked_line_count": 0,
+   "blockers_by_type": {},
+   "close_exception": false,
+   "exception_reason": null,
+   "declared": null,
+   "closed_at": null,
+   "closed_by": null,
+   "snapshot_count": 1,
+   "history_events": [
+    "created"
+   ]
+  },
+  {
+   "id": "b8a7306f-efc2-4562-a479-c57d2ae906d6",
+   "number": "DEC-2026-03-001",
+   "type": "regulier",
+   "kind": "cloture_normal",
+   "parent_statement_id": null,
+   "parent_number": null,
+   "period_month": "2026-03",
+   "scope": {
+    "type": "tenant",
+    "fournisseur": null
+   },
+   "status": "cloture",
+   "lines_count": 0,
+   "blocker_count": 0,
+   "blocked_line_count": 0,
+   "blockers_by_type": {},
+   "close_exception": false,
+   "exception_reason": null,
+   "declared": null,
+   "closed_at": "2026-10-08T13:55:50.778834+00:00",
+   "closed_by": "lotg-admin@lotg-ui-test.ch",
+   "snapshot_count": 1,
+   "history_events": [
+    "created",
+    "closed"
+   ]
+  },
+  {
+   "id": "e9b5292b-4f63-41ac-b31b-2ab7e53dde49",
+   "number": "DEC-2026-04-001",
+   "type": "regulier",
+   "kind": "cloture_normal",
+   "parent_statement_id": null,
+   "parent_number": null,
+   "period_month": "2026-04",
+   "scope": {
+    "type": "tenant",
+    "fournisseur": null
+   },
+   "status": "cloture",
+   "lines_count": 1,
+   "blocker_count": 0,
+   "blocked_line_count": 0,
+   "blockers_by_type": {},
+   "close_exception": false,
+   "exception_reason": null,
+   "declared": {
+    "montant": 100.0,
+    "devise": "CHF",
+    "volume_l": 50.0,
+    "kwh": 0.0,
+    "nb_lignes": 1
+   },
+   "closed_at": "2026-10-08T13:38:54.710355+00:00",
+   "closed_by": "lotg-admin@lotg-ui-test.ch",
+   "snapshot_count": 1,
+   "history_events": [
+    "created",
+    "declared",
+    "closed"
+   ]
+  },
+  {
+   "id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+   "number": "DEC-2026-05-001",
+   "type": "regulier",
+   "kind": "cloture_exception",
+   "parent_statement_id": null,
+   "parent_number": null,
+   "period_month": "2026-05",
+   "scope": {
+    "type": "tenant",
+    "fournisseur": null
+   },
+   "status": "cloture",
+   "lines_count": 14,
+   "blocker_count": 7,
+   "blocked_line_count": 6,
+   "blockers_by_type": {
+    "pending_fx": 1,
+    "matched_review": 1,
+    "unmatched": 1,
+    "open_anomaly": 3,
+    "forced_duplicate": 1
+   },
+   "close_exception": true,
+   "exception_reason": "Clôture mensuelle imposée par la comptabilité — écarts à traiter en correctif",
+   "declared": {
+    "montant": 1000.0,
+    "devise": "CHF",
+    "volume_l": null,
+    "kwh": null,
+    "nb_lignes": null
+   },
+   "closed_at": "2026-10-08T13:38:55.703582+00:00",
+   "closed_by": "lotg-admin@lotg-ui-test.ch",
+   "snapshot_count": 1,
+   "history_events": [
+    "created",
+    "declared",
+    "closed_exception"
+   ]
+  },
+  {
+   "id": "3d4c1b23-9df3-45a8-b793-87d546e98b71",
+   "number": "DEC-2026-10-001",
+   "type": "regulier",
+   "kind": "cloture_exception",
+   "parent_statement_id": null,
+   "parent_number": null,
+   "period_month": "2026-10",
+   "scope": {
+    "type": "tenant",
+    "fournisseur": null
+   },
+   "status": "cloture",
+   "lines_count": 4,
+   "blocker_count": 1,
+   "blocked_line_count": 1,
+   "blockers_by_type": {
+    "pending_fx": 1
+   },
+   "close_exception": true,
+   "exception_reason": "Clôture octobre imposée (test agent)",
+   "declared": {
+    "montant": 170.0,
+    "devise": "CHF",
+    "volume_l": 85.0,
+    "kwh": 0.0,
+    "nb_lignes": 2
+   },
+   "closed_at": "2026-10-08T13:54:54.190445+00:00",
+   "closed_by": "lotg-admin@lotg-ui-test.ch",
+   "snapshot_count": 2,
+   "history_events": [
+    "created",
+    "declared",
+    "declared",
+    "recalculated",
+    "closed_exception"
+   ]
+  }
+ ],
+ "lines": {
+  "total": 20,
+  "by_statement": {
+   "8ca84515-5248-43cf-af59-09dc359b6ac7": 1,
+   "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8": 14,
+   "3d4c1b23-9df3-45a8-b793-87d546e98b71": 4,
+   "e9b5292b-4f63-41ac-b31b-2ab7e53dde49": 1
+  },
+  "blockers_by_statement": {
+   "8ca84515-5248-43cf-af59-09dc359b6ac7": {},
+   "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8": {
+    "open_anomaly": 3,
+    "unmatched": 1,
+    "pending_fx": 1,
+    "forced_duplicate": 1,
+    "matched_review": 1
+   },
+   "3d4c1b23-9df3-45a8-b793-87d546e98b71": {
+    "pending_fx": 1
+   },
+   "e9b5292b-4f63-41ac-b31b-2ab7e53dde49": {}
+  }
+ },
+ "transactions": {
+  "total": 20,
+  "locked_true": 20,
+  "locked_false": 0,
+  "locked_list": [
+   {
+    "transaction_id": "01d1a796-31a8-4cba-a7db-48a00315f4df",
+    "statement_id": "8ca84515-5248-43cf-af59-09dc359b6ac7",
+    "statement_number": "COR-2026-05-001",
+    "locked_at": "2026-10-08T13:57:27.724209+00:00",
+    "document_id": "62c1b32a-e153-4a9e-be7e-189056f82fa0",
+    "vehicle_id": "61aa887e-86b2-449b-b548-40238d387382",
+    "date": "2026-05-28",
+    "montant": 67.65,
+    "devise": "CHF"
+   },
+   {
+    "transaction_id": "460648e7-dbe6-4334-84c1-7d045dae9cea",
+    "statement_id": "e9b5292b-4f63-41ac-b31b-2ab7e53dde49",
+    "statement_number": "DEC-2026-04-001",
+    "locked_at": "2026-10-08T13:38:54.710355+00:00",
+    "document_id": "048d6fcc-3a89-4244-9f42-ae6831813085",
+    "vehicle_id": "84b79d21-5e10-45e1-bb00-68fd449756c1",
+    "date": "2026-04-10",
+    "montant": 100.0,
+    "devise": "CHF"
+   },
+   {
+    "transaction_id": "d68d056d-991c-4ee1-acbc-a39a3810ed45",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "statement_number": "DEC-2026-05-001",
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "document_id": "82024bb1-5e18-4398-a85a-fafc9a3e86c0",
+    "vehicle_id": "61aa887e-86b2-449b-b548-40238d387382",
+    "date": "2026-05-03",
+    "montant": 92.25,
+    "devise": "CHF"
+   },
+   {
+    "transaction_id": "379a8cb1-0b22-4c1e-a3b4-d10fd6a97c6c",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "statement_number": "DEC-2026-05-001",
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "document_id": "2297238d-9a26-4ee1-8cc0-4da9801b9af7",
+    "vehicle_id": "84b79d21-5e10-45e1-bb00-68fd449756c1",
+    "date": "2026-05-05",
+    "montant": 120.0,
+    "devise": "CHF"
+   },
+   {
+    "transaction_id": "5e3c0981-d92b-4045-8507-9cc2cac17e42",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "statement_number": "DEC-2026-05-001",
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "document_id": "1d6ce5f7-ce20-4b00-ae19-40286f340c26",
+    "vehicle_id": "42627572-6324-4069-b4f7-69a2e39ef956",
+    "date": "2026-05-10",
+    "montant": 132.0,
+    "devise": "CHF"
+   },
+   {
+    "transaction_id": "b2ffafa8-39a3-4533-b25f-52ce88a23226",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "statement_number": "DEC-2026-05-001",
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "document_id": "554c1937-b72d-4ee1-a683-cb620b36e6aa",
+    "vehicle_id": "536cac23-f8e9-4d7b-aa5f-1cf74a8e8acd",
+    "date": "2026-05-12",
+    "montant": 55.0,
+    "devise": "EUR"
+   },
+   {
+    "transaction_id": "f9ae0415-7fb7-469d-a987-62d6644d14cf",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "statement_number": "DEC-2026-05-001",
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "document_id": "64526430-bcbd-4566-ae8e-0aaeb74fb3be",
+    "vehicle_id": "d991fae7-fa40-446f-9bb1-9ec9bd27bbf3",
+    "date": "2026-05-15",
+    "montant": 25.0,
+    "devise": "CHF"
+   },
+   {
+    "transaction_id": "d8539b99-f964-4ff1-bd17-042b25dd93ae",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "statement_number": "DEC-2026-05-001",
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "document_id": "fef65eed-ab1c-4e72-a8bb-30d10d309426",
+    "vehicle_id": "536cac23-f8e9-4d7b-aa5f-1cf74a8e8acd",
+    "date": "2026-05-17",
+    "montant": 44.0,
+    "devise": "CHF"
+   },
+   {
+    "transaction_id": "6c81711f-864e-46d6-a67a-a19698ef1fda",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "statement_number": "DEC-2026-05-001",
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "document_id": "c83cad6c-6860-4aed-8d75-6f4598cacb9f",
+    "vehicle_id": "84b79d21-5e10-45e1-bb00-68fd449756c1",
+    "date": "2026-05-20",
+    "montant": 102.5,
+    "devise": "CHF"
+   },
+   {
+    "transaction_id": "3e3701f7-6368-4505-8d60-4334d058ebb4",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "statement_number": "DEC-2026-05-001",
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "document_id": "8eda4541-31e5-4c06-909d-8109db2d10fa",
+    "vehicle_id": "536cac23-f8e9-4d7b-aa5f-1cf74a8e8acd",
+    "date": "2026-05-20",
+    "montant": 51.25,
+    "devise": "CHF"
+   },
+   {
+    "transaction_id": "1326fad7-816a-4423-8ffe-f513b2a80c75",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "statement_number": "DEC-2026-05-001",
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "document_id": "633e83b6-77c3-4ca2-baae-9f90e976b671",
+    "vehicle_id": "536cac23-f8e9-4d7b-aa5f-1cf74a8e8acd",
+    "date": "2026-05-22",
+    "montant": 70.0,
+    "devise": "CHF"
+   },
+   {
+    "transaction_id": "2f673e09-cd9e-42c8-b228-3169b7df2066",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "statement_number": "DEC-2026-05-001",
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "document_id": "618fdaee-bf24-4d31-9374-7069c770b140",
+    "vehicle_id": "536cac23-f8e9-4d7b-aa5f-1cf74a8e8acd",
+    "date": "2026-05-22",
+    "montant": 72.0,
+    "devise": "CHF"
+   },
+   {
+    "transaction_id": "b75e98dc-0c63-412b-a469-c680dfcbd251",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "statement_number": "DEC-2026-05-001",
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "document_id": "a8599bbc-1569-43e8-82fa-18e2aa6cc1a1",
+    "vehicle_id": "536cac23-f8e9-4d7b-aa5f-1cf74a8e8acd",
+    "date": "2026-05-23",
+    "montant": 61.5,
+    "devise": "CHF"
+   },
+   {
+    "transaction_id": "d4fb86a6-0b06-48e8-9012-01dea9fe71cc",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "statement_number": "DEC-2026-05-001",
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "document_id": "b184b7f5-3df9-4150-9576-24b57392322f",
+    "vehicle_id": "536cac23-f8e9-4d7b-aa5f-1cf74a8e8acd",
+    "date": "2026-05-23",
+    "montant": 61.5,
+    "devise": "CHF"
+   },
+   {
+    "transaction_id": "67da4d56-e1ec-49bd-ab93-2f969c59d29c",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "statement_number": "DEC-2026-05-001",
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "document_id": "e3b0f442-a0b6-42e4-bd03-0e8d11bf458c",
+    "vehicle_id": "61aa887e-86b2-449b-b548-40238d387382",
+    "date": "2026-05-25",
+    "montant": 82.0,
+    "devise": "CHF"
+   },
+   {
+    "transaction_id": "7329717e-7870-4c3a-953b-96fffe14d95b",
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "statement_number": "DEC-2026-05-001",
+    "locked_at": "2026-10-08T13:38:55.703582+00:00",
+    "document_id": "e7c8699b-f2f9-48ec-8c21-813d24083128",
+    "vehicle_id": "536cac23-f8e9-4d7b-aa5f-1cf74a8e8acd",
+    "date": "2026-05-26",
+    "montant": 200.0,
+    "devise": "CHF"
+   },
+   {
+    "transaction_id": "7d6003c2-9e03-4d2e-959b-616eb33b04c0",
+    "statement_id": "3d4c1b23-9df3-45a8-b793-87d546e98b71",
+    "statement_number": "DEC-2026-10-001",
+    "locked_at": "2026-10-08T13:54:54.190445+00:00",
+    "document_id": "63891b6f-ec8a-4bc0-a5d8-088b3678b318",
+    "vehicle_id": "84b79d21-5e10-45e1-bb00-68fd449756c1",
+    "date": "2026-10-03",
+    "montant": 92.25,
+    "devise": "CHF"
+   },
+   {
+    "transaction_id": "942e7ee8-356f-4083-b0d2-f7dfe9084490",
+    "statement_id": "3d4c1b23-9df3-45a8-b793-87d546e98b71",
+    "statement_number": "DEC-2026-10-001",
+    "locked_at": "2026-10-08T13:54:54.190445+00:00",
+    "document_id": "daba4920-bfc4-4fd4-9735-f5d75c44e2aa",
+    "vehicle_id": "42627572-6324-4069-b4f7-69a2e39ef956",
+    "date": "2026-10-05",
+    "montant": 88.0,
+    "devise": "CHF"
+   },
+   {
+    "transaction_id": "1c3fdaa4-1efa-49a6-a20d-900e0e5a1d8b",
+    "statement_id": "3d4c1b23-9df3-45a8-b793-87d546e98b71",
+    "statement_number": "DEC-2026-10-001",
+    "locked_at": "2026-10-08T13:54:54.190445+00:00",
+    "document_id": "d63b9f0b-fad4-43df-af90-6568f8674d7d",
+    "vehicle_id": "84b79d21-5e10-45e1-bb00-68fd449756c1",
+    "date": "2026-10-06",
+    "montant": 61.5,
+    "devise": "CHF"
+   },
+   {
+    "transaction_id": "359a2b48-3c6e-4637-a16d-c6fa36658f67",
+    "statement_id": "3d4c1b23-9df3-45a8-b793-87d546e98b71",
+    "statement_number": "DEC-2026-10-001",
+    "locked_at": "2026-10-08T13:54:54.190445+00:00",
+    "document_id": "e98df712-e1fd-46b1-b9fb-cf7f4e559b79",
+    "vehicle_id": "d991fae7-fa40-446f-9bb1-9ec9bd27bbf3",
+    "date": "2026-10-07",
+    "montant": 40.0,
+    "devise": "EUR"
+   }
+  ],
+  "unlocked_list": []
+ },
+ "reconciliations": [
+  {
+   "id": "789c27ad-1fed-44e0-8006-f3ddf66f3464",
+   "period_month": "2026-05",
+   "vehicle_id": "42627572-6324-4069-b4f7-69a2e39ef956",
+   "justification_reason": "Plein jerrican chantier (justification agent)",
+   "justified_by": "lotg-admin@lotg-ui-test.ch",
+   "status_at": "INDICATIF",
+   "source_consumption_at": "can",
+   "ecart_l_at": -20.0,
+   "history_len": 1
+  },
+  {
+   "id": "98734c5b-51de-4318-ab8e-8476729d751d",
+   "period_month": "2026-05",
+   "vehicle_id": "84b79d21-5e10-45e1-bb00-68fd449756c1",
+   "justification_reason": "Jerrican de 10 L pour la tondeuse du dépôt (achat sans consommation véhicule)",
+   "justified_by": "lotg-admin@lotg-ui-test.ch",
+   "status_at": "INDICATIF",
+   "source_consumption_at": "can",
+   "ecart_l_at": 10.0,
+   "history_len": 1
+  }
+ ],
+ "audit": {
+  "total": 127,
+  "by_action": {
+   "admin_tenant_create": 1,
+   "admin_user_create": 2,
+   "create": 59,
+   "upload": 4,
+   "mapping": 4,
+   "confirm": 4,
+   "force": 1,
+   "match_run": 2,
+   "settings": 6,
+   "justify": 2,
+   "declared": 4,
+   "close": 3,
+   "close_exception": 2,
+   "modify": 2,
+   "decide": 2,
+   "download": 28,
+   "recalculate": 1
+  },
+  "by_entity_action": {
+   "document/create": 20,
+   "document/modify": 2,
+   "fuel_anomaly/create": 3,
+   "fuel_anomaly/decide": 2,
+   "fuel_card/create": 5,
+   "fuel_card_assignment/create": 5,
+   "fuel_export/download": 28,
+   "fuel_import/confirm": 4,
+   "fuel_import/force": 1,
+   "fuel_import/mapping": 4,
+   "fuel_import/upload": 4,
+   "fuel_reconciliation/justify": 2,
+   "fuel_statement/close": 3,
+   "fuel_statement/close_exception": 2,
+   "fuel_statement/create": 6,
+   "fuel_statement/declared": 4,
+   "fuel_statement/recalculate": 1,
+   "fuel_transaction/create": 20,
+   "fuel_transaction/match_run": 2,
+   "tenant/admin_tenant_create": 1,
+   "tenant_settings/settings": 6,
+   "user/admin_user_create": 2
+  },
+  "lot_g_events": {
+   "fuel_export/download": 28,
+   "fuel_reconciliation/justify": 2,
+   "fuel_statement/close": 3,
+   "fuel_statement/close_exception": 2,
+   "fuel_statement/create": 6,
+   "fuel_statement/declared": 4,
+   "fuel_statement/recalculate": 1,
+   "tenant_settings/settings": 6
+  },
+  "downloads": 28,
+  "downloads_with_sha256": 28,
+  "download_by_type_format": {
+   "statement:csv": 10,
+   "statement:xlsx": 4,
+   "statement:pdf": 4,
+   "reconciliations:csv": 2,
+   "reconciliations:xlsx": 2,
+   "reconciliations:pdf": 2,
+   "transactions:csv": 2,
+   "transactions:xlsx": 2
+  },
+  "download_samples": [
+   {
+    "export_type": "statement",
+    "format": "csv",
+    "user": "lotg-ro@lotg-ui-test.ch",
+    "at": "2026-10-08T13:39:00.591207+00:00",
+    "size": 1124,
+    "rows": 1,
+    "statement_id": "e9b5292b-4f63-41ac-b31b-2ab7e53dde49",
+    "period_month": "2026-04",
+    "sha256_prefix": "5b25f6e7b1bb38fa"
+   },
+   {
+    "export_type": "statement",
+    "format": "csv",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T13:39:02.728701+00:00",
+    "size": 3468,
+    "rows": 14,
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "period_month": "2026-05",
+    "sha256_prefix": "3328f3d1342917bd"
+   },
+   {
+    "export_type": "statement",
+    "format": "xlsx",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T13:39:02.949322+00:00",
+    "size": 8579,
+    "rows": 14,
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "period_month": "2026-05",
+    "sha256_prefix": "f3c11bc563118579"
+   },
+   {
+    "export_type": "statement",
+    "format": "pdf",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T13:39:03.091171+00:00",
+    "size": 5174,
+    "rows": 14,
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "period_month": "2026-05",
+    "sha256_prefix": "671f39d511763c96"
+   },
+   {
+    "export_type": "reconciliations",
+    "format": "csv",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T13:39:03.238062+00:00",
+    "size": 1725,
+    "rows": 5,
+    "statement_id": null,
+    "period_month": "2026-05",
+    "sha256_prefix": "b924ba306f1edcb2"
+   },
+   {
+    "export_type": "reconciliations",
+    "format": "xlsx",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T13:39:03.390657+00:00",
+    "size": 7009,
+    "rows": 5,
+    "statement_id": null,
+    "period_month": "2026-05",
+    "sha256_prefix": "532a911d63e6f8a3"
+   },
+   {
+    "export_type": "reconciliations",
+    "format": "pdf",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T13:39:03.522431+00:00",
+    "size": 2700,
+    "rows": 5,
+    "statement_id": null,
+    "period_month": "2026-05",
+    "sha256_prefix": "402210b78b7ca266"
+   },
+   {
+    "export_type": "transactions",
+    "format": "csv",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T13:39:03.650207+00:00",
+    "size": 2858,
+    "rows": 15,
+    "statement_id": null,
+    "period_month": "2026-05",
+    "sha256_prefix": "4383e402c171aa4e"
+   },
+   {
+    "export_type": "transactions",
+    "format": "xlsx",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T13:39:03.825212+00:00",
+    "size": 8089,
+    "rows": 15,
+    "statement_id": null,
+    "period_month": "2026-05",
+    "sha256_prefix": "161fe3df759b6dcf"
+   },
+   {
+    "export_type": "statement",
+    "format": "csv",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T13:47:03.615680+00:00",
+    "size": 3468,
+    "rows": 14,
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "period_month": "2026-05",
+    "sha256_prefix": "3328f3d1342917bd"
+   },
+   {
+    "export_type": "statement",
+    "format": "xlsx",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T13:47:03.764318+00:00",
+    "size": 8579,
+    "rows": 14,
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "period_month": "2026-05",
+    "sha256_prefix": "962ef15edfb3a384"
+   },
+   {
+    "export_type": "statement",
+    "format": "pdf",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T13:47:03.920800+00:00",
+    "size": 5174,
+    "rows": 14,
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "period_month": "2026-05",
+    "sha256_prefix": "d367af8c6fc37b5d"
+   },
+   {
+    "export_type": "transactions",
+    "format": "csv",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T13:59:24.052282+00:00",
+    "size": 1031,
+    "rows": 4,
+    "statement_id": null,
+    "period_month": "2026-10",
+    "sha256_prefix": "92e774958a792aab"
+   },
+   {
+    "export_type": "transactions",
+    "format": "xlsx",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T13:59:26.587545+00:00",
+    "size": 6689,
+    "rows": 4,
+    "statement_id": null,
+    "period_month": "2026-10",
+    "sha256_prefix": "0d683d972085bf9e"
+   },
+   {
+    "export_type": "statement",
+    "format": "csv",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T13:59:32.444458+00:00",
+    "size": 3468,
+    "rows": 14,
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "period_month": "2026-05",
+    "sha256_prefix": "3328f3d1342917bd"
+   },
+   {
+    "export_type": "statement",
+    "format": "xlsx",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T13:59:34.990514+00:00",
+    "size": 8580,
+    "rows": 14,
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "period_month": "2026-05",
+    "sha256_prefix": "4ed9ad76ab38d65d"
+   },
+   {
+    "export_type": "statement",
+    "format": "pdf",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T13:59:37.512615+00:00",
+    "size": 5174,
+    "rows": 14,
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "period_month": "2026-05",
+    "sha256_prefix": "464a0b69a137d2ae"
+   },
+   {
+    "export_type": "reconciliations",
+    "format": "csv",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T13:59:45.621185+00:00",
+    "size": 1811,
+    "rows": 5,
+    "statement_id": null,
+    "period_month": "2026-05",
+    "sha256_prefix": "99b4939acf894624"
+   },
+   {
+    "export_type": "reconciliations",
+    "format": "xlsx",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T13:59:48.157285+00:00",
+    "size": 7033,
+    "rows": 5,
+    "statement_id": null,
+    "period_month": "2026-05",
+    "sha256_prefix": "1fa3e5e1f74c7686"
+   },
+   {
+    "export_type": "reconciliations",
+    "format": "pdf",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T13:59:50.668434+00:00",
+    "size": 2722,
+    "rows": 5,
+    "statement_id": null,
+    "period_month": "2026-05",
+    "sha256_prefix": "c67220a2581239b7"
+   },
+   {
+    "export_type": "statement",
+    "format": "csv",
+    "user": "lotg-ro@lotg-ui-test.ch",
+    "at": "2026-10-08T14:00:45.512116+00:00",
+    "size": 3468,
+    "rows": 14,
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "period_month": "2026-05",
+    "sha256_prefix": "3328f3d1342917bd"
+   },
+   {
+    "export_type": "statement",
+    "format": "csv",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T14:01:00.889986+00:00",
+    "size": 3468,
+    "rows": 14,
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "period_month": "2026-05",
+    "sha256_prefix": "3328f3d1342917bd"
+   },
+   {
+    "export_type": "statement",
+    "format": "csv",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T14:01:01.020314+00:00",
+    "size": 3468,
+    "rows": 14,
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "period_month": "2026-05",
+    "sha256_prefix": "3328f3d1342917bd"
+   },
+   {
+    "export_type": "statement",
+    "format": "csv",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T14:01:01.171791+00:00",
+    "size": 3468,
+    "rows": 14,
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "period_month": "2026-05",
+    "sha256_prefix": "3328f3d1342917bd"
+   },
+   {
+    "export_type": "statement",
+    "format": "csv",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T14:01:01.465661+00:00",
+    "size": 3468,
+    "rows": 14,
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "period_month": "2026-05",
+    "sha256_prefix": "3328f3d1342917bd"
+   },
+   {
+    "export_type": "statement",
+    "format": "csv",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T14:01:16.407167+00:00",
+    "size": 3468,
+    "rows": 14,
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "period_month": "2026-05",
+    "sha256_prefix": "3328f3d1342917bd"
+   },
+   {
+    "export_type": "statement",
+    "format": "xlsx",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T14:01:16.555997+00:00",
+    "size": 8579,
+    "rows": 14,
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "period_month": "2026-05",
+    "sha256_prefix": "3b17140dd9c6dcb7"
+   },
+   {
+    "export_type": "statement",
+    "format": "pdf",
+    "user": "lotg-admin@lotg-ui-test.ch",
+    "at": "2026-10-08T14:01:16.702602+00:00",
+    "size": 5174,
+    "rows": 14,
+    "statement_id": "ef7c3c02-2bb6-443c-b9ee-728d77e65ef8",
+    "period_month": "2026-05",
+    "sha256_prefix": "31b9f801445dd59e"
+   }
+  ]
+ },
+ "locks_table": [
+  {
+   "statement": "COR-2026-05-001",
+   "type": "correctif",
+   "status": "cloture",
+   "close_exception": false,
+   "tx_snapshot": 1,
+   "tx_locked": 1,
+   "verdict": "PASS",
+   "detail": "snapshot=1 locked_by_stmt=1 missing=[] extra=[] parent_intersection=0",
+   "parent_intersection": 0
+  },
+  {
+   "statement": "COR-2026-05-002",
+   "type": "correctif",
+   "status": "brouillon",
+   "close_exception": false,
+   "tx_snapshot": 0,
+   "tx_locked": 0,
+   "verdict": "PASS",
+   "detail": "snapshot=0 tx_locked_in_snapshot=0 parent_intersection=0",
+   "parent_intersection": 0
+  },
+  {
+   "statement": "DEC-2026-03-001",
+   "type": "regulier",
+   "status": "cloture",
+   "close_exception": false,
+   "tx_snapshot": 0,
+   "tx_locked": 0,
+   "verdict": "PASS",
+   "detail": "snapshot=0 locked_by_stmt=0 missing=[] extra=[]"
+  },
+  {
+   "statement": "DEC-2026-04-001",
+   "type": "regulier",
+   "status": "cloture",
+   "close_exception": false,
+   "tx_snapshot": 1,
+   "tx_locked": 1,
+   "verdict": "PASS",
+   "detail": "snapshot=1 locked_by_stmt=1 missing=[] extra=[]"
+  },
+  {
+   "statement": "DEC-2026-05-001",
+   "type": "regulier",
+   "status": "cloture",
+   "close_exception": true,
+   "tx_snapshot": 14,
+   "tx_locked": 14,
+   "verdict": "PASS",
+   "detail": "snapshot=14 locked_by_stmt=14 missing=[] extra=[]"
+  },
+  {
+   "statement": "DEC-2026-10-001",
+   "type": "regulier",
+   "status": "cloture",
+   "close_exception": true,
+   "tx_snapshot": 4,
+   "tx_locked": 4,
+   "verdict": "PASS",
+   "detail": "snapshot=4 locked_by_stmt=4 missing=[] extra=[]"
+  }
+ ]
+}

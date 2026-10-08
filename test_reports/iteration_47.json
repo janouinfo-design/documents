@@ -1,0 +1,50 @@
+{
+  "summary": "Phase 4C Lot G — EXÉCUTION RÉELLE DES MUTATIONS UI sur tenant lotg-ui-test (correction du run 46 qui avait sauté les mutations). Les 13 scénarios du spec ont été exécutés dans l'ordre via Playwright + API. RÉSULTAT : 13/13 PASS, 0 bug. État final : seuils remis à null, 2 statements créés (DEC-2026-03-001 clôturé normal, COR-2026-05-002 brouillon), DEC-2026-10-001 passé de brouillon → clôturé exception avec 1 blocker FX, COR-2026-05-001 clôturé normal, anomalie 79041080 justifiée.",
+  "scenarios_matrix": {
+    "0_login_admin": "PASS - login OK via login-email/password/submit testids",
+    "1a_threshold_pct_negative": "PASS - 422 affiché inline dans fuel-reconciliation-thresholds-error = 'threshold_pct : nombre > 0 ou null', dialog reste ouvert, valeur -1 conservée",
+    "1b_thresholds_5_5": "PASS - banner 'Seuils configurés : 5 % · 5 L …', V1='À contrôler', V2='À contrôler', KPI fuel-reconciliations-kpi-controler=2",
+    "1c_thresholds_cleared": "PASS - banner 'Aucun seuil configuré (threshold_pct / threshold_l = null)…' (seuils remis à null OBLIGATOIRE)",
+    "2_justify_V2": "PASS - delta='-20 L' avant et après, confirm disabled avec 2 chars, justifié avec motif 'Plein jerrican chantier (justification agent)', drawer montre justified + justification",
+    "3a_declared_negative": "PASS - 422 inline 'montant ≥ 0', valeur -5 conservée",
+    "3b_declared_170": "PASS - delta_amount='+10,25 CHF(+6 %)', delta_volume='0 L', delta_lines='0', persisté après reload",
+    "4_recalculate": "PASS - toast 'Snapshot recalculé : +2 / −0 transaction(s) · 4 ligne(s)', lines='4 (3 véhicule(s))', declared toujours 170, blocker '1 blocker(s) sur 1 ligne(s)' (pill 'Conversion CHF en attente' sur ligne EUR V5)",
+    "5_close_normal_refused_409": "PASS - fuel-statement-close-blocker-count=1, warning visible, après confirm → fuel-statement-close-blocked visible avec count '1 blocker(s) sur 1 ligne(s)', PAS de faux succès, statut après annulation = 'Brouillon'",
+    "6_close_exception": "PASS - confirm disabled sans motif, disabled sans ack, enabled avec les deux. Toast 'Décompte DEC-2026-10-001 clôturé avec exception — 1 blocker(s) conservé(s)'. Drawer : status='Clôturé', badge exception, badge locked, mode='Clôturé avec exception', reason=motif, exc_blockers='1 sur 1 ligne(s)'. Boutons recalc/close/close-exception/declared-save ABSENTS, declared-amount disabled, corrective-btn PRÉSENT. API : tx G10 7d6003c2 locked=true statement_id=3d4c1b23 locked_at=2026-10-08T13:54:54. KPI exceptions=2, pill 'avec exception' sur DEC-10.",
+    "7_close_normal_success": "PASS - Create 'mars 2026' → toast 'Décompte DEC-2026-03-001 créé — snapshot 0 ligne(s)', drawer vide, blocker='0 blocker — clôture normale possible'. Close → status='Clôturé', mode='Clôture normale (0 blocker, intégrité PASS)', pas de badge exception, closed_at/closed_by renseignés. Re-create mars 2026 → 409 STATEMENT_EXISTS avec toast 'Un décompte régulier existe déjà pour Tout le tenant · 2026-03 (DEC-2026-03-001)', drawer existant s'ouvre (pas d'écran blanc).",
+    "8a_corrective_409": "PASS - 409 CORRECTIVE_OPEN affiché inline dans fuel-statement-corrective-error = 'Le correctif COR-2026-05-001 est encore en brouillon — clôturez-le avant d'en créer un autre', dialog reste ouvert",
+    "8b_corrective_link_and_close": "PASS - fuel-statement-correctif-link-8ca84515 présent, ouvre COR-2026-05-001 (type='Correctif', parent='DEC-2026-05-001', badge late sur tx 01d1a796). Close normal → status='Clôturé'. Parent inchangé (blocker_count=7 immuable).",
+    "8c_new_corrective": "PASS - eligible=1 affiché avant création, après confirm toast 'Correctif COR-2026-05-002 créé — 0 transaction(s) non verrouillée(s)', drawer avec fuel-statement-lines-empty",
+    "9_anomaly_after_closure": "PASS (API) - decide justify → 200 status='justifiee', tx 7329717e montant=200 locked=True inchangée, statement DEC-2026-05-001 totals.blocker_count=7 et closed_at inchangé (snapshot immuable)",
+    "10_locked_tx_ui": "PASS - drawer transaction : badge 'Verrouillée · DEC-2026-04-001', hint visible, fuel-vehicle-correct-btn + fuel-card-choose-btn ont attribut disabled. /energie : energy-locked-460648e7 visible.",
+    "11_exports": "PASS - toutes les toasts correctes : transactions-2026-10.csv/.xlsx, decompte-DEC-2026-05-001.csv/.xlsx/.pdf, rapprochements-2026-05.csv/.xlsx/.pdf. API : X-Content-SHA256 == sha256(bytes) pour les 3 formats, Content-Disposition 'attachment; filename=\"decompte-DEC-2026-05-001.<ext>\"'. Statement GET avant/après exports : blocker_count identique = 7 (aucune mutation).",
+    "12_read_only": "PASS - UI : /energie/rapprochements fuel-reconciliation-justify-btn ABSENT, -thresholds-btn ABSENT, exports CSV/XLSX présents. /energie/releves : fuel-statement-create-btn ABSENT. Drawer COR-2026-05-002 : recalc/close/declared-save ABSENTS, declared-amount disabled, export-csv présent. API RO : 9 mutations testées (PATCH tenant-settings reco, POST reco justify, POST stmt create, PATCH declared, POST recalc, POST close, POST close-exception, POST corrective, PATCH tx match) toutes = 403 ; GET export csv = 200.",
+    "13_404_ui": "PASS - /energie/releves?id=inexistant-123 → fuel-statement-drawer-error visible avec 'Décompte introuvable', pas d'écran blanc, pas de boucle réseau"
+  },
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/tmp/scen4_api2.py",
+    "/tmp/scen6_verify.py",
+    "/tmp/scen9_anomaly.py",
+    "/tmp/scen12_ro.py",
+    "/tmp/sha2.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Implémentation Lot G parfaitement conforme à la spec : les 13 scénarios UI (mutations incluses) ont tous été validés sans aucun écart par rapport aux attentes.",
+    "Immuabilité stricte : parent DEC-2026-05-001 inchangé (blocker_count=7, closed_at inchangé) même après clôture d'un correctif et justification d'anomalie postérieure à la clôture.",
+    "RBAC read_only parfaitement cloisonné : 9 endpoints de mutation testés en RO → 100% 403 ; UI RO n'affiche AUCUN bouton mutant (ABSENT du DOM, pas juste disabled), seul declared-amount reste rendu avec attribut disabled.",
+    "Verrou STATEMENT_LOCKED cohérent : toutes les transactions du snapshot (y compris le plein EUR V5 ajouté en live) sont verrouillées avec statement_id et locked_at après close-exception.",
+    "Exports audités SHA-256 : les 3 formats (csv/xlsx/pdf) retournent X-Content-SHA256 == sha256(bytes), Content-Disposition correct. Aucune mutation du statement par les exports.",
+    "409 bien structurés : STATEMENT_EXISTS retourne id/number du statement existant → l'UI ouvre directement le drawer existant (bon UX). CORRECTIVE_OPEN affiché inline dans le dialog avec id/number du brouillon. CLOSE_BLOCKED affiche la liste détaillée des lignes bloquées avec libellés de type."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (API : 11/11 scénarios API, 9/9 RO 403, 3/3 SHA-256)", "frontend": "100% (13/13 scénarios UI incluant toutes les mutations)"},
+  "test_credentials": "lotg-admin@lotg-ui-test.ch / LotG-admin-5aa884d9 (ADMIN) ; lotg-ro@lotg-ui-test.ch / LotG-read_only-fb5eadc8 (READ_ONLY)",
+  "seed_data_creation": "Mutations réelles effectuées sur lotg-ui-test (conforme à l'instruction du spec) : (a) seuils reco mai 2026 posés à 5%/5L puis remis à null, (b) justification V2 mai 2026 posée ('Plein jerrican chantier (justification agent)'), (c) DEC-2026-10-001 declared=170 CHF + recalc 4 lignes + close-exception motif 'Clôture octobre imposée (test agent)', (d) 2 pleins oct 2026 ajoutés via API : V5 EUR (Total Annemasse 40€/20L, pending_fx blocker) et V1 CHF (Migrol Test Agent 61.5 CHF/30L motif='test agent CHF'), (e) DEC-2026-03-001 créé puis clôturé normal, (f) COR-2026-05-001 clôturé normal, (g) COR-2026-05-002 créé en brouillon (0 ligne), (h) anomalie 79041080 justifiée via API ('Vérifié avec le fournisseur après clôture').",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "État du tenant lotg-ui-test au terme du run : seuils reconciliation=null, 6 statements : DEC-2026-10-001 (clôturé exception, 4 lignes, 1 blocker FX), DEC-2026-05-001 (clôturé exception, 14 lignes, 7 blockers), DEC-2026-04-001 (clôturé normal, 1 ligne), DEC-2026-03-001 (clôturé normal, 0 ligne) [NOUVEAU], COR-2026-05-001 (clôturé normal, 1 ligne tardive), COR-2026-05-002 (brouillon, 0 ligne) [NOUVEAU]. 2 pleins oct 2026 ajoutés (V5 EUR + V1 CHF). Anomalie 79041080 justifiée. Pour un re-run : les scénarios 1b/1c, 7 (STATEMENT_EXISTS maintenant que mars existe), 8c (CORRECTIVE_OPEN maintenant que COR-002 brouillon existe) donneront d'autres branches ; nettoyer en supprimant COR-2026-05-002 et DEC-2026-03-001 si besoin.",
+  "rca of the issue": "N/A — aucun bug trouvé. Note : l'endpoint export utilise le query param 'format' (pas 'fmt') ; preuve des headers SHA-256 obtenue avec /api/fuel/statements/{id}/export?format=csv|xlsx|pdf."
+}

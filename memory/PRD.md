@@ -24,7 +24,7 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - Backend: FastAPI + Motor (MongoDB). Tous les endpoints préfixés /api. Multi-tenant strict (`tenant_id` résolu depuis l'utilisateur authentifié, jamais du client).
 - Stockage: Emergent object storage (EMERGENT_LLM_KEY) ou local (`STORAGE_BACKEND`), références en base (collections files/documents).
 - Drawer véhicule partagé via VehicleDrawerContext (ouvrable depuis toutes les pages).
-- Modules backend : `server.py` (routes), `auth.py`, `storage.py`, `extraction.py` (OCR), `astra_data.py`, `legacy_identity.py` (Lot A), `nofile.py` (Lot B), `drivers.py` (Lot C), `fines.py` (Lot D), `fuel_cards.py` (Lot E), `fuel_import.py` / `fuel_matching.py` / `fuel_anomalies.py` (Lot F), `reports.py`.
+- Modules backend : `server.py` (routes), `auth.py`, `storage.py`, `extraction.py` (OCR), `astra_data.py`, `legacy_identity.py` (Lot A), `nofile.py` (Lot B), `drivers.py` (Lot C), `fines.py` (Lot D), `fuel_cards.py` (Lot E), `fuel_import.py` / `fuel_matching.py` / `fuel_anomalies.py` (Lot F), `fuel_statements.py` (Lot G : rapprochements, blockers, décomptes, declared/deltas, exports), `reports.py`.
 - Production : VPS Docker Compose + Nginx (`deploy/`) — déploiement UNIQUEMENT sur GO explicite utilisateur.
 
 ## User Personas
@@ -64,10 +64,10 @@ Spécification : `docs/PHASE4C_SPECIFICATION.md` (décisions figées). Livraison
 | D | Amendes : 10 statuts, paiement métier, pièces liées, `/amendes`, exports, enum `type_infraction` 8 valeurs | **PASS FINAL / CLOS** (tenant test supprimé) |
 | E | Cartes carburant : `fuel_cards` + `fuel_card_assignments`, `/energie/cartes`, `GET /api/fuel-cards/resolve` lecture seule | **PASS FINAL / CLOS** — checkpoint `8147c66`, tenant `lote-ui-test` **supprimé** (58 enregistrements, 0 résidu, `default` identique) |
 | F | Imports CSV/XLSX (job → mapping → preview workspace → confirm idempotent), `fuel_transactions.card_id` (si `found` uniquement), matching transaction ↔ carte/véhicule scoré/explicable, anomalies D8 + décision motivée, warnings `CARD_INACTIVE` / `CARD_VEHICLE_MISMATCH`, corrections humaines (individuelle + groupée = N audits), UI Énergie `Imports` / `Transactions` / `Anomalies` | **PASS FINAL / CLOS** — 235 tests PASS, build PASS, testing agent it.45 ; tenant `lotf-ui-test` **supprimé** (275 enregistrements, 0 résidu, `default` identique) ; **Docker validé sur VPS** (`ov-f04fc0`, Docker 29.4.1, 2026-10-08T11:03:50Z : build, imports A-F + server, startup, smoke 18 PASS / 0 FAIL, exit 0, 0 résidu) — réserve Docker **levée** |
-| G | Rapprochement achats/consommation, CAN, statements, close/lock mensuel, exports énergie | **NON AUTORISÉ** |
+| G | Rapprochements achats ↔ consommation (CAN prioritaire, tickets = achats, ASTRA comparative, seuils null → `INDICATIF`, justification), décomptes mensuels = snapshot Documents (`fuel_statements` / `fuel_statement_lines`, scope tenant/fournisseur, `declared` manuel null = N/A, 5 blockers, close normal 409 `CLOSE_BLOCKED` / `close_exception` motivé, correctif), verrou transactions à la clôture seulement (409 `STATEMENT_LOCKED`, aucune réouverture), exports CSV/XLSX/PDF audités SHA-256, UI `/energie/rapprochements` + `/energie/releves` | **LOT G FULL-FLOW = PASS** (2026-06, rapport final `test_reports/lotg_final_report.md`) — 259 tests A–G PASS, build PASS, testing agent it.46 + it.47 (13/13 mutations UI), cas A–AB 28/28 ; **`LOT G CLEANUP = NOT RUN` · `LOT G FINAL CLOSE = NOT DONE`** (tenant `lotg-ui-test` conservé, clôture finale sur GO explicite) |
 | H | Rôles `manager` / `driver`, vues chauffeur | **NON AUTORISÉ** |
 
-MIGRATION = NONE · DRY-RUN = NONE · DEPLOYMENT (Phase 4C) = NONE · 0 donnée Journal réelle lue ou migrée.
+MIGRATION = NONE · DRY-RUN = NONE · DEPLOYMENT (Phase 4C) = NONE · LOT H = NOT AUTHORIZED · 0 donnée Journal réelle lue ou migrée.
 
 ## Décisions Lot F figées (réconciliation spec §6a.5 / §6a.15)
 - Scoring véhicule : `vehicle_id` explicite valide → **100 / `direct_vehicle_id` / auto** · carte unique `found` + exactement 1 affectation `vehicule` à la date + carte utilisable → **90 normatif / `card_assignment` / auto** (règle déterministe, pas une addition du barème ; breakdown `card_unique/assignment_at_date/assigned_vehicle_id/card_usable`) · carte inactive → jamais auto (−50, `matched_review`, `CARD_INACTIVE`) · ambiguïté → jamais auto · **plaque = 0 point, jamais auto-match** (revue humaine) · conducteur +20 (jamais suffisant seul) · carburant +10 / −40 · seuils tenant `score_auto=90` / `score_review=70`.
@@ -75,6 +75,14 @@ MIGRATION = NONE · DRY-RUN = NONE · DEPLOYMENT (Phase 4C) = NONE · 0 donnée 
 - `CARD_INACTIVE` = (statut courant ≠ `active`) OU (`expire_le` renseignée ET `expire_le` < date transaction) — modèle `current_status_tx_date_expiration`, jamais via `audit_logs`. `CARD_VEHICLE_MISMATCH` = warning/anomalie, aucune substitution de `vehicle_id` / `card_id`.
 - Action groupée « Accepter les N propositions à candidat unique » = N décisions humaines, motif global obligatoire, N audits unitaires (`row_id`, `batch_id`, plaque source, avant/après), fail-closed si la ligne a changé.
 - D7 inchangé (document = coût, `pending_fx` exclu) · D8 inchangé (anomalies recalculées par Documents ; legacy `justified` repris uniquement si redétecté même transaction/type ; `issues[]` jamais anomalies) · aucun HMAC Journal (dédup `dedup_key` propre à Documents).
+
+## Décisions Lot G figées
+- Ordre canonique : CAN mesuré = consommation réelle · `fuel_transactions` / tickets = achats (estimation tickets = indicative, jamais une consommation) · ASTRA = référence comparative (jamais substituée) · aucune autre estimation.
+- Seuils `threshold_pct` / `threshold_l` **null par défaut** (aucune valeur arbitraire) ; règle `single_or_both` ; sans seuil → `INDICATIF` ; négatif → 422 ; PATCH admin/superadmin audité avant/après.
+- Décompte = snapshot Documents (pas une source canonique nouvelle), **aucun import fournisseur ligne-à-ligne** ; `declared` manuel facultatif, null = N/A jamais 0, deltas uniquement si devises comparables.
+- Blockers : `pending_fx · matched_review · unmatched · open_anomaly · forced_duplicate` ; close normal ⇔ intégrité PASS et 0 blocker (sinon 409 `CLOSE_BLOCKED` détaillé) ; `close_exception` = motif + confirmation explicite, snapshot des blockers conservé et visible.
+- Verrou (`locked`, `statement_id`, `locked_at` = `closed_at`) **uniquement** à la clôture (normale ou exception) ; brouillon = 0 lock, recalcul admin ; mutation source verrouillée → 409 `STATEMENT_LOCKED` (patch mixte notes+montant rejeté intégralement ; notes/tags seuls autorisés) ; matching ignore les transactions verrouillées ; décisions d'anomalie non destructives autorisées après lock ; **aucun endpoint/UI de réouverture** — corrections tardives = décompte `correctif` (parent requis, même période/scope, transactions non verrouillées uniquement, parent immuable).
+- Exports CSV/XLSX/PDF (décompte, rapprochements, transactions période) = audit `fuel_export/download` tenant-scopé avec acteur, type, format, filtres, `statement_id`, taille, SHA-256 des octets finaux (`X-Content-SHA256`). read_only : lectures + exports 200, toute mutation 403.
 
 ## Dette acceptée (hors lots)
 - Overlay dev CRA « ResizeObserver loop » (dev only, build PASS, 0 bug fonctionnel).
