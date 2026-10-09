@@ -1,0 +1,35 @@
+{
+  "summary": "Frontend-only targeted retest of /mes-amendes (driver loth-driver@loth-ui-test.ch) after backend fix to GET /api/me/fines projection. All assertions PASS. KPI 'En retard' now shows 1 (previously 0), KPI 'À traiter' = 2, KPI 'Montant ouvert' = 160.00 CHF. Table shows exactly LOTH-F3 (ac5e1af6, VD 800 002, 40 CHF, 'En retard de 4 j', statut 'En retard · à payer') and LOTH-F1 (0734272e, VD 800 001, 120 CHF, 'Dans 19 j', 'Contestée'). LOTH-F2 (ea5de1c9) absent. API /api/me/fines returns 200, totals={ouvertes:2, en_retard:1, montant_ouvert_chf:160}, zero forbidden keys leaked (no document_type, business_category, notes_internes, dossier_interne, driver_id). Smoke /mes-pleins = 3 pleins, 0 justificatif manquant; /mes-vehicules shows VD 800 001 (VD 800 002 absent). Redirects / and /vehicules → /mes-pleins. Nav data-role='driver' avec 3 liens (nav-me-fuel, nav-me-fines, nav-me-vehicles). Aucune erreur console fonctionnelle.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100%"},
+  "test_credentials": "loth-driver@loth-ui-test.ch / LotH-driver-10881a1aa8 (driver, tenant loth-ui-test)",
+  "seed_data_creation": "none - read-only test as instructed",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Correctif backend GET /api/me/fines (projection _ME_FINE_PROJ + _ME_FINE_CALC_ONLY) validé end-to-end côté UI. KPI me-fines-kpi-late lit totals.en_retard correctement. Aucune régression détectée sur /mes-pleins ni /mes-vehicules. Lot H driver RBAC toujours fonctionnel.",
+  "detailed_assertions": {
+    "login_redirect": "https://.../mes-pleins ✓",
+    "nav_data_role": "driver ✓",
+    "nav_links_count": {"nav-me-fuel": 1, "nav-me-fines": 1, "nav-me-vehicles": 1},
+    "me_fines_kpi_open": "2 ✓",
+    "me_fines_kpi_late": "1 ✓ (était 0 avant correctif)",
+    "me_fines_kpi_amount": "160.00 CHF ✓",
+    "row_LOTH_F3": {"id": "ac5e1af6-e614-4eba-b09a-e85cebc275df", "plate": "VD 800 002", "amount": "40.00 CHF", "days": "En retard de 4 j", "status": "En retard · à payer"},
+    "row_LOTH_F1": {"id": "0734272e-cb81-40a1-90f5-1c6891b6faaa", "plate": "VD 800 001", "amount": "120.00 CHF", "days": "Dans 19 j", "status": "Contestée"},
+    "LOTH_F2_absent": true,
+    "forbidden_strings_in_body": "none (INTERNE-, notes_internes, dossier)",
+    "api_me_fines": {"status": 200, "totals": {"ouvertes": 2, "en_retard": 1, "montant_ouvert_chf": 160}, "items_count": 2, "leaked_keys": []},
+    "mes_pleins_kpis": {"count": 3, "depenses": "255.00 CHF", "volume": "123,0 L", "missing": 0},
+    "mes_vehicules": {"VD 800 001 present": true, "VD 800 002 absent": true},
+    "redirects": {"/vehicules": "/mes-pleins", "/": "/mes-pleins"}
+  }
+}
