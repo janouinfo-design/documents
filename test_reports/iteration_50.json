@@ -1,0 +1,27 @@
+{
+  "summary": "Frontend-only test of the new 'œil' (eye) preview button on the Documents page and consistency with the vehicle fiche. All acceptance criteria passed: eye button opens the in-app FilePreview modal (data-testid='file-preview-dialog') without opening a new browser tab, download link is present, modal closes on Escape, and the same modal is used from the vehicle Documents tab.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped)", "frontend": "100%"},
+  "test_credentials": "admin@demo-logitrak.ch / DemoPreview2026! (tenant demo-logitrak)",
+  "seed_data_creation": "None (used existing demo tenant data: 13 docs with file on Documents page, expertise-bmw-2024.pdf on ZH 556 713 vehicle)",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Verified: /documents page has 13 doc-page-view- and 13 doc-page-download- buttons. Clicking the eye opens the FilePreview modal (iframe for PDF) with 'file-download-link'; no new tab is opened (context.pages count stays at 1). Modal closes on Escape. On vehicle fiche (ZH 556 713 → Documents tab → Contrôle technique folder auto-expands), the doc-preview- eye button also opens the same 'file-preview-dialog' modal. Same consistent UX across both pages.",
+  "test_scenarios_passed": [
+    "Login as admin@demo-logitrak.ch successful, dashboard shows 'Données de démonstration' banner",
+    "Documents page: 13 eye buttons + 13 download buttons visible on rows with files",
+    "Eye click opens file-preview-dialog modal (iframe) and does NOT open a new browser tab (pages stayed at 1)",
+    "file-download-link present inside the modal",
+    "Modal closes on Escape key",
+    "Vehicle fiche (ZH 556 713 → Documents → Contrôle technique) doc-preview- button opens the SAME file-preview-dialog modal with iframe + download link, closes on Escape"
+  ]
+}
