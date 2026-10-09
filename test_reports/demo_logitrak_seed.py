@@ -42,9 +42,9 @@ def _cfg(*keys, default=None):
 BASE = (_cfg("REACT_APP_BACKEND_URL", default="http://localhost:8001")).rstrip("/")
 MONGO_URL = _cfg("MONGO_URL")
 DB_NAME = _cfg("DB_NAME")
-# superadmin PLATEFORME (création de tenant) : SUPERADMIN_* en preview ; sur le VPS, renseigner SUPERADMIN_* dans deploy/.env
-SA_EMAIL = _cfg("SUPERADMIN_EMAIL")
-SA_PASSWORD = _cfg("SUPERADMIN_PASSWORD")
+# superadmin PLATEFORME (création de tenant). Préférence SUPERADMIN_* (preview) ; repli ADMIN_* (VPS, si le compte admin est superadmin).
+SA_EMAIL = _cfg("SUPERADMIN_EMAIL", "ADMIN_EMAIL")
+SA_PASSWORD = _cfg("SUPERADMIN_PASSWORD", "ADMIN_PASSWORD")
 T = "demo-logitrak"
 TENANT_NAME = "Démo LogiTrak"
 MARKERS = {"demo_seed": True, "demo_seed_version": "2026-10", "demo_seed_group": "commercial-demo"}
@@ -123,8 +123,8 @@ def login(email, pwd):
 
 def sa_headers():
     if not (SA_EMAIL and SA_PASSWORD):
-        die("SUPERADMIN_EMAIL / SUPERADMIN_PASSWORD manquants — requis pour créer le tenant démo "
-            "(sur le VPS : renseigner SUPERADMIN_* dans deploy/.env puis `docker compose up -d backend`).")
+        die("Aucun compte superadmin trouvé (SUPERADMIN_EMAIL/PASSWORD ou ADMIN_EMAIL/PASSWORD) — "
+            "requis pour créer le tenant démo.")
     return login(SA_EMAIL, SA_PASSWORD)
 
 
