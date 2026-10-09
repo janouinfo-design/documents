@@ -2,6 +2,12 @@
 
 Historique append-only de tout ce qui a été implémenté/déployé/clos (extrait de PRD.md le 2026-06 ; PRD.md ne conserve que le statique + statut courant).
 
+## 2026-06 — VPS : SSO Navixy routé vers la démo + bouton œil (prévisualisation documents)
+- **Correctif collision Navixy (VPS)** : les clients `default` (Compte pilote) et `demo-logitrak` partageaient le même `master_user_id=121349` → SSO non déterministe + synchro de la vraie flotte dans la démo. Résolu en supprimant l'intégration Navixy de la démo, puis en séparant routage SSO (`master_user_id`) et synchro (`api_hash`).
+- **SSO Navixy → démo (choix utilisateur)** : `default` garde sa synchro réelle (`api_hash` + `enabled=true`, `master_user_id` retiré) ; `demo-logitrak` reçoit `master_user_id=121349` (`enabled=false`, sans clé API → aucune synchro) ; `admin@demo-logitrak.ch` pré-lié `navixy_user_id=121349`. Résultat : clic « Documents » dans Navixy → auto-login dans la démo ; vrai parc accessible par login direct. Opérations DB VPS tenant-scopées (aucune modif de code).
+- **Feature — bouton œil (prévisualisation)** : `frontend/src/pages/DocumentsPage.jsx` — ajout d'un bouton œil (`doc-page-view-<id>`) à côté de Télécharger, ouvrant le document en inline (`fileUrl(storage_path)` sans `download`). Vérifié : backend sert `content-disposition: inline` (PDF/images, HTTP 200) vs `attachment` pour le téléchargement. Compile OK. **À déployer sur le VPS (Save to GitHub → git pull + rebuild).**
+
+
 ## 2026-10-09 — Tenant démo commercial `demo-logitrak` (DEMO TENANT = READY)
 - Création d'un tenant dédié « Démo LogiTrak » (`demo-logitrak`) via console superadmin, enrichi d'un jeu réaliste et cohérent (véhicule ↔ conducteur ↔ affectation ↔ carte ↔ transaction ↔ document ↔ facture ↔ amende). Toutes les écritures via l'API du compte admin du tenant ; seule écriture DB directe = marquage `demo_seed`/version/group strictement filtré `tenant_id="demo-logitrak"`.
 - Contenu : 10 véhicules (4 thermiques, 3 EV, 2 PHEV, 1 utilitaire), 6 conducteurs, 4 cartes (Tamoil expirée, Avia suspendue), 16 transactions (8 carburant + 8 recharges EV multi-mois), 33 documents, 4 amendes (ouverte/payée/en retard/contestée), factures entretien/pneus/réparation/assurance/leasing/énergie. Cas visibles : véhicule sans conducteur, ancienne affectation terminée, conducteur sans véhicule, transaction sans carte, document expiré, échéance <30j, document à vérifier, document requis manquant.

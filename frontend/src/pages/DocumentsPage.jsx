@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { Search, FolderCog, ListChecks, Pencil, Download, FolderOpen, Loader2, Sparkles, FileX2, UserRound } from "lucide-react";
+import { Search, FolderCog, ListChecks, Pencil, Download, Eye, FolderOpen, Loader2, Sparkles, FileX2, UserRound } from "lucide-react";
 import { getAllDocuments, getDocCategories, getDeadlineSettings, getVehicles, fileUrl } from "@/lib/api";
 import { dateFr } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -228,12 +228,20 @@ export default function DocumentsPage() {
                     {hasNoFile(d) ? (
                       canWrite && <AttachFileButton doc={d} compact />
                     ) : (
-                      <button
-                        onClick={() => window.open(fileUrl(d.storage_path, { download: true, filename: d.original_filename }), "_blank", "noopener")}
-                        data-testid={`doc-page-download-${d.id}`}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Télécharger">
-                        <Download className="h-4 w-4" />
-                      </button>
+                      <>
+                        <button
+                          onClick={() => window.open(fileUrl(d.storage_path), "_blank", "noopener")}
+                          data-testid={`doc-page-view-${d.id}`}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Voir le document">
+                          <Eye className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => window.open(fileUrl(d.storage_path, { download: true, filename: d.original_filename }), "_blank", "noopener")}
+                          data-testid={`doc-page-download-${d.id}`}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Télécharger">
+                          <Download className="h-4 w-4" />
+                        </button>
+                      </>
                     )}
                     {canWrite && (
                       <button onClick={() => setEditDoc(d)} data-testid={`doc-page-edit-${d.id}`}
