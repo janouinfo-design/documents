@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import QueryErrorState from "@/components/QueryErrorState";
 import { DocStatutBadge, DOC_STATUT_META } from "@/components/documents/DocStatutBadge";
 import DocumentEditDialog from "@/components/documents/DocumentEditDialog";
+import FilePreview from "@/components/FilePreview";
 import { FineSummary, FinePaidButton, isFineDoc } from "@/components/documents/FineMeta";
 import DocCategoriesDialog from "@/components/documents/DocCategoriesDialog";
 import DocRequirementsDialog from "@/components/documents/DocRequirementsDialog";
@@ -38,6 +39,7 @@ export default function DocumentsPage() {
   const [echeance, setEcheance] = useState(searchParams.get("echeance") || ALL);
   const [aValider, setAValider] = useState(searchParams.get("a_valider") === "1");
   const [editDoc, setEditDoc] = useState(null);
+  const [viewDoc, setViewDoc] = useState(null);
   const [catsOpen, setCatsOpen] = useState(false);
   const [reqsOpen, setReqsOpen] = useState(false);
   const [fineOpen, setFineOpen] = useState(false);
@@ -230,7 +232,7 @@ export default function DocumentsPage() {
                     ) : (
                       <>
                         <button
-                          onClick={() => window.open(fileUrl(d.storage_path), "_blank", "noopener")}
+                          onClick={() => setViewDoc(d)}
                           data-testid={`doc-page-view-${d.id}`}
                           className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Voir le document">
                           <Eye className="h-4 w-4" />
@@ -257,6 +259,8 @@ export default function DocumentsPage() {
         </Table>
       </div>
 
+      <FilePreview open={!!viewDoc} onOpenChange={(o) => !o && setViewDoc(null)}
+        file={viewDoc ? { ...viewDoc, path: viewDoc.storage_path } : null} />
       <DocumentEditDialog doc={editDoc} categories={categories} open={!!editDoc} onOpenChange={(o) => !o && setEditDoc(null)} />
       <DocCategoriesDialog categories={categories} open={catsOpen} onOpenChange={setCatsOpen} />
       <DocRequirementsDialog categories={categories} open={reqsOpen} onOpenChange={setReqsOpen} />
