@@ -1,10 +1,10 @@
 # RAPPORT FINAL — LOT H · Rôles `manager` / `driver` + vues chauffeur
 
-> Environnement : **preview uniquement**. Aucun déploiement, aucune migration, aucun dry-run de migration, aucune lecture de données Journal réelles, aucun nettoyage de `loth-ui-test` (celui-ci est **conservé**). Rapport factuel en lecture seule produit après le correctif KPI autorisé et la revalidation complète.
+> Environnement : **preview uniquement**. Aucun déploiement, aucune migration, aucun dry-run de migration, aucune lecture de données Journal réelles. Rapport factuel produit après le correctif KPI autorisé, la revalidation complète, **puis le cleanup final du tenant `loth-ui-test` (GO explicite séparé — voir §9)**.
 
 - Date : 2026-10-09
 - HEAD : `e660d2729fc9e196a2789e76762b10695f1b8cb0` (`checkpoint before testing_agent_full_stack`)
-- Tenant de test isolé : `loth-ui-test` (conservé — `TARGET_TENANT_PRESENT = PASS`)
+- Tenant de test isolé : `loth-ui-test` — validé pendant tout le Full-Flow (`TARGET_TENANT_PRESENT = PASS`), **puis supprimé au cleanup final (§9 · `LOT H CLEANUP = PASS` · `LOTH_RESIDUAL_RECORDS = 0`)**
 
 ---
 
@@ -221,27 +221,66 @@ OTHER_TENANTS_UNCHANGED fingerprint = FAIL (hors Lot H, non bloquant)
 4. **Validation Docker runtime Lot H = NON EXÉCUTÉE en preview** (docker absent). Contrôle **statique** PASS. À exécuter sur le VPS si une preuve runtime est souhaitée (comme Lots F/G).
    - Sévérité : faible. Impact Lot H : aucun module `.py` nouveau → packaging inchangé. Attribution : limite d'outillage preview. Bloquante : **NON**.
 
+5. **5 objets de stockage distants orphelins (cleanup §9).** Les 5 blobs du tenant (`logitrak-fleet/media/…`) ne sont pas supprimables : l'objstore Emergent répond **HTTP 405** sur `DELETE` (aucune API de suppression ; `storage.py` n'expose que `put`/`get`).
+   - Sévérité : faible. Contenu : fixtures synthétiques (PNG 1×1, PDF stub) — aucune donnée réelle.
+   - Impact Lot H : **aucun** — **0 référence DB subsistante** (documents supprimés) ; blobs inatteignables (la route `/files/{path}` exige un document DB du tenant, désormais inexistant). Clés UUID non devinables.
+   - Bloquante : **NON** (limite plateforme, hors périmètre applicatif).
+   - Action future : purge côté plateforme/bucket si une suppression physique est souhaitée.
+
 **Divergences BLOQUANTES = 0.**
 
 ---
 
-## 9. Conclusion
+## 9. Cleanup final — tenant `loth-ui-test` (GO explicite séparé, 2026-10-09)
+
+Script dédié `test_reports/loth_cleanup.py` (DRY-RUN par défaut · `--apply` · `--verify`), modèle Lots F/G, garde-fous stricts :
+cible EXACTE `loth-ui-test` ; filtres `{'tenant_id':'loth-ui-test'}` par collection + `{'id':'loth-ui-test'}` pour `tenants` + `login_attempts` par e-mail `@loth-ui-test.ch` ; **aucun `delete_many` global, aucun `drop`, jamais `default` ni cross-tenant** (assertion `guard()` sur chaque suppression). `--apply` refuse (STOP) si l'état diffère du manifeste DRY-RUN validé.
+
+### 9.1 DRY-RUN (`loth_cleanup_dryrun_manifest.json`) — 0 suppression
+- Manifeste exact : **166 identifiants + 1 tenant + 5 objets storage**.
+- Collections (counts) : alerts 4 · audit_logs 104 · documents 11 · driver_assignments 6 · drivers 4 · fuel_anomalies 2 · fuel_card_assignments 4 · fuel_cards 3 · fuel_transaction_matches 6 · fuel_transactions 6 · inspections 2 · users 9 · vehicle_field_meta 1 · vehicles 4.
+- Users : loth-admin, loth-ro, loth-manager, loth-manager-vide, loth-driver, loth-driver-nonlie, loth-driver-inactif, loth-driver-sans, loth-driver-ui (9).
+- **ISOLATION : 0 document d'un autre tenant ne référence un identifiant de la cible** (aucune clé étrangère croisée). `DRY-RUN = PASS`.
+
+### 9.2 APPLY (`loth_cleanup_apply_manifest.json`) — suppression contrôlée
+- Garde-fou manifeste : OK (166 ids + tenant identiques au DRY-RUN).
+- **SUPPRIMÉ = 167 enregistrements** (enfants → parents) : fuel_transaction_matches 6, fuel_anomalies 2, fuel_card_assignments 4, fuel_cards 3, fuel_transactions 6, documents 11, inspections 2, driver_assignments 6, drivers 4, alerts 4, audit_logs 104, vehicle_field_meta 1, vehicles 4, users 9, tenants(id) 1.
+- Login du compte supprimé (`loth-admin@loth-ui-test.ch`) → **401** ; `login_attempts` du tenant purgés.
+- Storage distant : 5 objets **non supprimables** (objstore `DELETE` → HTTP 405) → orphelins, **0 référence DB** (voir §8.5).
+
+### 9.3 VERIFY (`loth_cleanup_verify.json`, lecture seule) — recomptage indépendant
+Tous les critères du tenant = **0** : tenant absent · users 0 (et 0 par e-mail) · drivers 0 · vehicles 0 · driver_assignments 0 · documents 0 · fuel_transactions 0 · fines 0 · fuel_cards 0 · fuel_card_assignments 0 · fuel_anomalies 0 · fuel_transaction_matches 0 · inspections 0 · alerts 0 · audit_logs 0 · vehicle_field_meta 0 · files 0 · documents_with_storage 0 · login_attempts 0.
+- **Aucune** collection ne porte encore `tenant_id = loth-ui-test` (balayage de toutes les collections).
+- **Aucune** référence orpheline vers un id Lot H (ids/clés étrangères/e-mail = 0).
+- **Aucune** chaîne `loth-ui-test` restante dans les collections applicatives (scan textuel = 0) ; 0 mention dans `audit_logs`.
+- Résultat : **`LOTH_RESIDUAL_RECORDS = 0`**.
+
+### 9.4 Non-impact `default` / autres tenants (empreinte AVANT → APRÈS cleanup)
+Baseline de cleanup = **état juste AVANT la suppression** (capturé dans la même passe `--apply`, pas la baseline historique du 08.10). Fichier `loth_cleanup_fingerprints.json`.
+- `default` : counts AVANT == APRÈS (aucune collection modifiée), hashes stables identiques → **`DEFAULT_UNCHANGED_DURING_CLEANUP = PASS`**.
+- **26 autres tenants** : aucun changement de count ni de hash, `tenants_ids` identiques → **`OTHER_TENANTS_UNCHANGED_DURING_CLEANUP = PASS`**.
+- Les dérives historiques déjà documentées (§3) ne sont **pas** corrigées : `default` n'a été ni nettoyé ni modifié.
+
+---
+
+## 10. Conclusion
 
 ```
 LOT H FULL-FLOW = PASS
   · Correctif KPI /api/me/fines = PASS (document_type + business_category calc-only, jamais exposés)
   · Test ciblé KPI = PASS · Suite Lot H dédiée = 21/21 PASS
   · Régression A–H (mono-process) = 704 PASS / 2 FAIL hors Lot H non bloquants / 2 SKIP documentés (708 tests collectés, durée réelle 739,98 s ≈ 12 min 19 s)
-      - FAIL : test_alerts_ocr::test_alerts_list_structure · test_navixy::test_navixy_sync_imports_fleet (déterministes, code/test non touchés par Lot H)
-      - SKIP : test_alerts_ocr::test_ocr_carte_grise_extracts_plate_and_vin · test_sync_integrity::TestRealNavixyPushReversible::test_push_color_and_restore (préexistants/attendus)
   · loth_seed.py verify : LOT H isolation invariants = PASS (7/7 familles · 43/43 preuves API)
-  · DEFAULT_UNCHANGED fingerprint = FAIL (hors Lot H, non bloquant)
-  · OTHER_TENANTS_UNCHANGED fingerprint = FAIL (hors Lot H, non bloquant)
-  · Frontend build = PASS (exit 0) · Testing agent it.49 = PASS (0 issue)
-  · LOTH_DOCKERFILE_STATIC_CHECK = PASS (runtime Docker non vérifié en preview)
+  · DEFAULT_UNCHANGED fingerprint = FAIL (hors Lot H, non bloquant) · OTHER_TENANTS_UNCHANGED fingerprint = FAIL (hors Lot H, non bloquant)
+  · Frontend build = PASS (exit 0) · Testing agent it.49 = PASS (0 issue) · LOTH_DOCKERFILE_STATIC_CHECK = PASS (runtime Docker non vérifié en preview)
+LOT H CLEANUP = PASS
+  · LOTH_RESIDUAL_RECORDS = 0
+  · DEFAULT_UNCHANGED_DURING_CLEANUP = PASS
+  · OTHER_TENANTS_UNCHANGED_DURING_CLEANUP = PASS
+  · 167 enregistrements DB + tenant supprimés ; 5 objets storage orphelins non supprimables (objstore HTTP 405, 0 référence DB) — divergence NON bloquante
 DIVERGENCES BLOQUANTES = 0
-LOT H CLEANUP = NOT RUN  (tenant loth-ui-test conservé)
+LOT H = PASS FINAL / CLOS
 MIGRATION = NONE · DRY-RUN MIGRATION = NONE · DEPLOYMENT = NONE · DONNÉE JOURNAL RÉELLE LUE/MIGRÉE = 0
 ```
 
-Le verdict Lot H est **PASS** uniquement parce que l'attribution hors Lot H est explicitement prouvée (§3, §4) et que les **7 familles d'isolation sont PASS**. `default` n'est **pas** nettoyé ni modifié pour forcer artificiellement les hashes à revenir à la baseline. Le nettoyage de `loth-ui-test` nécessite un **GO explicite séparé** ultérieur.
+Le verdict Lot H est **PASS** parce que l'attribution hors Lot H est explicitement prouvée (§3, §4) et que les **7 familles d'isolation sont PASS**. Le cleanup final est **PASS** : tenant `loth-ui-test` entièrement supprimé (`LOTH_RESIDUAL_RECORDS = 0`), `default` et les 26 autres tenants strictement inchangés pendant le cleanup. `default` n'a jamais été nettoyé ni modifié pour forcer les hashes. **Lot H est clôturé.** Aucun déploiement, aucune migration.

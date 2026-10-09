@@ -4,7 +4,8 @@
   "exists": 1
  },
  "counts": {
-  "audit_logs": 98,
+  "alerts": 4,
+  "audit_logs": 104,
   "documents": 11,
   "driver_assignments": 6,
   "drivers": 4,
@@ -14,7 +15,7 @@
   "fuel_transaction_matches": 6,
   "fuel_transactions": 6,
   "inspections": 2,
-  "users": 8,
+  "users": 9,
   "vehicle_field_meta": 1,
   "vehicles": 4
  },
@@ -48,6 +49,13 @@
    "disabled": false
   },
   {
+   "email": "loth-driver-ui@loth-ui-test.ch",
+   "role": "driver",
+   "driver_id": "5b446bd3-3bc2-484d-b72c-0927c4c4070c",
+   "vehicle_scope": null,
+   "disabled": false
+  },
+  {
    "email": "loth-driver@loth-ui-test.ch",
    "role": "driver",
    "driver_id": "8f89ab43-c4f8-4757-b4d7-a53f3c122fef",
@@ -66,8 +74,8 @@
    "role": "manager",
    "driver_id": null,
    "vehicle_scope": [
-    "d74fe9d3-29f2-484e-bc3b-75d50d0c866e",
-    "d968fa84-2b1d-469b-9418-86a462489844"
+    "d968fa84-2b1d-469b-9418-86a462489844",
+    "d74fe9d3-29f2-484e-bc3b-75d50d0c866e"
    ],
    "disabled": false
   },
@@ -280,14 +288,14 @@
   }
  ],
  "audit": {
-  "total": 98,
+  "total": 104,
   "by_role": {
-   "manager": 20,
    "admin": 45,
-   "driver": 4,
-   "superadmin": 29
+   "manager": 20,
+   "superadmin": 34,
+   "driver": 5
   }
  },
  "files": 0,
- "documents_with_storage": 4
+ "documents_with_storage": 5
 }

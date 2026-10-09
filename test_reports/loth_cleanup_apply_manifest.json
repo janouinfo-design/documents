@@ -1,0 +1,307 @@
+{
+ "tenant": [
+  {
+   "id": "loth-ui-test",
+   "name": "Lot H UI test (synthétique)"
+  }
+ ],
+ "users": [
+  {
+   "id": "3ba59616-5cb3-47f1-aa65-7d62c6944e64",
+   "email": "loth-admin@loth-ui-test.ch",
+   "role": "admin"
+  },
+  {
+   "id": "3b04cb13-9e13-484c-8c90-169cc1e38e8f",
+   "email": "loth-ro@loth-ui-test.ch",
+   "role": "read_only"
+  },
+  {
+   "id": "1556ba74-b895-43e8-a96c-76eed852858e",
+   "email": "loth-manager@loth-ui-test.ch",
+   "role": "manager"
+  },
+  {
+   "id": "46c91797-6544-4e8c-8a94-e6709b881f8d",
+   "email": "loth-manager-vide@loth-ui-test.ch",
+   "role": "manager"
+  },
+  {
+   "id": "15b17ff7-3762-432c-ad6c-0019b8a72fa4",
+   "email": "loth-driver@loth-ui-test.ch",
+   "role": "driver"
+  },
+  {
+   "id": "67cad888-3e75-4d51-b62a-8bf44de5c934",
+   "email": "loth-driver-nonlie@loth-ui-test.ch",
+   "role": "driver"
+  },
+  {
+   "id": "6d191ba4-af44-4dfc-aafd-fb9ddc61e825",
+   "email": "loth-driver-inactif@loth-ui-test.ch",
+   "role": "driver"
+  },
+  {
+   "id": "19ab9eea-8859-4e06-9369-508ab6dd7987",
+   "email": "loth-driver-sans@loth-ui-test.ch",
+   "role": "driver"
+  },
+  {
+   "id": "7bb24ede-e05e-417c-8f66-b128573df702",
+   "email": "loth-driver-ui@loth-ui-test.ch",
+   "role": "driver"
+  }
+ ],
+ "vehicles": [
+  {
+   "id": "7fb8db1e-fea1-46c7-937b-d1d20e78b832",
+   "plaque": "GE 800 004"
+  },
+  {
+   "id": "d74fe9d3-29f2-484e-bc3b-75d50d0c866e",
+   "plaque": "VD 800 001"
+  },
+  {
+   "id": "d968fa84-2b1d-469b-9418-86a462489844",
+   "plaque": "VD 800 002"
+  },
+  {
+   "id": "dbf86ce0-05d9-46f8-b5c4-54523efefd52",
+   "plaque": "VD 800 003"
+  }
+ ],
+ "drivers": [
+  {
+   "id": "5b446bd3-3bc2-484d-b72c-0927c4c4070c",
+   "matricule": "LOTH-M002"
+  },
+  {
+   "id": "666d40dc-f755-4b7c-820f-f7e515fbf9a5",
+   "matricule": "LOTH-M004"
+  },
+  {
+   "id": "8f89ab43-c4f8-4757-b4d7-a53f3c122fef",
+   "matricule": "LOTH-M001"
+  },
+  {
+   "id": "f50411e2-f197-4ae8-b363-e9bb255f4f6b",
+   "matricule": "LOTH-M003"
+  }
+ ],
+ "driver_assignments": [
+  "27070a5b-eaa8-41d0-9304-c63cfda60829",
+  "a5af33e5-ebef-45fd-b282-cbb92c73c26b",
+  "bb607242-377a-44a0-8865-4a5bd66c8963",
+  "c71912df-1f66-429f-87ba-d7bed23677e3",
+  "cca14225-7ed8-4e26-9c75-612247ab01d8",
+  "ce8c491c-7abf-4280-ac4a-a166541089ae"
+ ],
+ "documents": [
+  "9d75ca0f-d7a5-4f73-927d-58685a66b68a",
+  "9a399d68-2665-4a84-9e32-6651df5ef65c",
+  "c2a8de13-abdc-478b-8d32-d767f27838b7",
+  "0734272e-cb81-40a1-90f5-1c6891b6faaa",
+  "75b22985-368b-4017-9943-5cfe34c77771",
+  "2d6291fe-31b0-4e90-94f5-7f2fc216fc8c",
+  "ac5e1af6-e614-4eba-b09a-e85cebc275df",
+  "1ba67088-496d-4ad8-b56c-52bd0a4bd363",
+  "8c3c1b29-2136-4367-8365-dd7cf7cdd4ea",
+  "ea5de1c9-5d94-4ee4-939d-e2c5e6604451",
+  "0003f77b-6c5b-44a3-b918-4b39c223c81d"
+ ],
+ "fuel_transactions": [
+  "0ae60155-4e60-44e8-82f4-aa662af22894",
+  "d2ea58a5-3d0b-4893-adfd-10b2f3adab77",
+  "4c099b5c-a733-4fab-aa3f-83a71380c899",
+  "a3a0b1f0-e742-4123-bf49-dda422adaf5c",
+  "e3a7a57e-ab3e-4055-9764-e917a4b44026",
+  "398e8d84-de6d-4926-8d4a-3d47feb7dec5"
+ ],
+ "fuel_transaction_matches": [
+  "0facbf5a-e43d-494b-8986-c57ee1d15db9",
+  "5e9a0d50-24b2-472e-8b00-5035a2b2350b",
+  "c0efd3eb-3ad6-447d-850a-4259b3bf86e5",
+  "d1b82afb-6ac4-4b33-884e-b3d86aebc2b8",
+  "1ef96911-008e-4b08-9212-e131dfc5179f",
+  "5f65bc61-7539-4b77-8287-d31ff58c0fb7"
+ ],
+ "fuel_cards": [
+  "23807847-0f6a-489b-a725-b730f8dd80fa",
+  "597a82d1-c281-4dc7-b447-f669f5af4ee8",
+  "d21a22ce-c054-4a19-928f-b06282aeffd4"
+ ],
+ "fuel_card_assignments": [
+  "48bf7352-7fb3-46ec-b9b1-d6f2ed7a9798",
+  "911b950d-3f69-40d6-add2-1641624c0518",
+  "d68fc7ac-5c29-4e6e-8ca5-937b6cd53117",
+  "df21eff3-ea71-4470-a2ba-7aac68c24504"
+ ],
+ "fuel_anomalies": [
+  "bb45260b-df8b-4212-9869-63511248a693",
+  "f29bdbad-a02f-4026-8e5f-7f9e03e6ce79"
+ ],
+ "inspections": [
+  "ebc4efd9-0bb6-4ea5-917f-564e06af1ba3",
+  "0cf73f35-8dfc-4e9a-8a99-d08b68ce4091"
+ ],
+ "alerts": [
+  "a70138ce-e055-4a1e-9447-d387c4afbc1d",
+  "016bf9d8-36ab-4c98-9e01-64c6d8d0d1d3",
+  "b9d3e51d-7697-4cb1-831c-dc712c82c6b0",
+  "b063a4f8-9c15-4b41-8fc2-097f8e4e847f"
+ ],
+ "audit_logs": [
+  "3686dd75-fbb0-4d9c-92df-275f7e056589",
+  "8e641356-c20c-4ac6-9588-c0837c35befe",
+  "6f00d9de-9bc5-449b-b1b3-845ec40dbf93",
+  "676e85fd-7388-45c3-b3dc-41bca284d7e9",
+  "19b09528-c11b-418b-8009-ba29ec2a83e3",
+  "b6d5f464-4ecd-45e5-bc81-0380e3b62fa5",
+  "2f2deeab-8c81-42ac-b1d8-0f581ff24d2a",
+  "a69e82f2-2fd5-43e3-9604-ce6a40b8eeda",
+  "3e88129f-490d-4d36-8553-7cd74e664102",
+  "0b7c5477-b6e9-4a97-ae2b-f7cc065d44c6",
+  "f8367450-8502-49a1-9992-5a355c937807",
+  "b1dd0349-363b-4167-a194-87a04f2bea77",
+  "6693848c-9946-43ff-b1d2-c0330f6e2d9e",
+  "fdf7ebc4-9a9e-47b9-891a-0d2a4ae4cad2",
+  "573c8248-8825-43fd-80e6-8a71523af221",
+  "9bdbf5d2-df2d-4a57-b181-de09733886a4",
+  "44acb31d-a188-4c94-9e75-f36a1df9d607",
+  "dad2ffdf-fa0a-4d66-bb8e-b92a043643ee",
+  "d04d1730-aba5-40e9-9846-09c8b730b516",
+  "75d5800a-4dd3-44b3-91e9-3c698e3095e1",
+  "69bf338c-c7d3-4bfd-aeba-edbe46a34513",
+  "6cf0e207-d051-4627-adae-4a02604731cf",
+  "a4dbeb35-e1e4-4f39-ad37-9ab59109b0ad",
+  "1ff98c55-f5d0-42b9-82f3-d85228748ea0",
+  "e8a34b0b-1398-4750-8a26-363182317475",
+  "ce3e651a-e342-4621-b6bb-16504a7f7433",
+  "97db54cf-cba4-49d0-aaf0-dc8be095ed1b",
+  "c4bcf468-ab12-4327-a48d-6c4277118c8a",
+  "aa6f6264-4254-42cd-97ba-9bc7b9939042",
+  "be702e1b-4f72-4dde-8ee7-500463176384",
+  "e83174a3-12e4-4a5f-a38f-4280058b94d1",
+  "bbbac817-2eb8-43ac-bbd8-1dcac41ff221",
+  "753d804d-a31d-496d-92d6-a8659733c410",
+  "cad39ee8-2830-4624-a380-336c338ccd4c",
+  "90ac541c-0442-43dd-b537-38f25815bd80",
+  "32e10457-8762-455f-9a6e-b3c13abed82a",
+  "1057d31d-93f1-464e-ac08-07f8890cbcf7",
+  "2fc025b5-b76e-49cc-8612-68ba8c277e19",
+  "2bdd10dd-9c11-4031-85f1-efa79ea76abb",
+  "fa182ec1-f6d4-49ea-825e-d1ae8c579b32",
+  "07f058c2-0c16-4d32-be6a-3b703fa4b44f",
+  "a316d51c-07ae-4b1b-9537-4d2d010a2e0d",
+  "8662a96d-6f96-43ac-a749-c9ecb58bf905",
+  "36f420d3-a2c8-4447-95ee-e13f575fdc31",
+  "105291db-2523-4bf1-869c-002326af583a",
+  "fb81b463-50b0-41c9-8d1b-dc6433ba96f5",
+  "98c13c8f-2816-4f28-882e-99402c43dea8",
+  "427a0682-0335-438f-ab35-f9aa1d8ca82b",
+  "16998567-f6c8-47e8-9a0a-8ab3c557faf8",
+  "328fbc16-3f8b-4c77-b34b-2faafa75ab80",
+  "8fd47492-b633-4c34-a481-b9e0aa834436",
+  "ec92e8fd-0a90-4838-bb8b-220be16b7d0f",
+  "a751c332-1319-40c4-84f3-91c786097c63",
+  "7baa5aa5-8c06-4a43-92b0-42fb919a07da",
+  "05e5a70a-2739-42e7-930e-3753776a283d",
+  "bcf696f4-3626-45c3-a8c9-8038540ea060",
+  "44eba9f2-9728-409c-9106-cd34bfa12b44",
+  "b71c3c11-21c7-4573-bfed-3e8d4406c8b7",
+  "d522f414-f71f-4d79-87bf-f85503551c31",
+  "e43c8439-c0de-44aa-96ea-5f215fdbd43c",
+  "beef5222-5357-47e0-9774-3e96e593a3e6",
+  "48232727-4523-4028-b95a-43a255d78897",
+  "30587156-75b0-4728-a481-1f2251046228",
+  "a376f5a2-4082-4cd6-acaa-3c4c3b67e3fc",
+  "828b040a-419b-4eb0-9f79-7b2a7479d6a6",
+  "700957f6-2707-419c-848f-1f08ad193f4f",
+  "54e9b231-00d8-4e19-b377-7da528900295",
+  "9c9b0509-8931-4513-8e9d-fa8d8dff2b54",
+  "ba3a108d-7a6c-498a-9171-a08603c86d0c",
+  "99016b36-ad62-426e-a7e4-0bb6a86632c6",
+  "d880a816-6261-4700-89b4-48e8959fd130",
+  "7b9b3f92-f411-40d0-9687-6fc96251e2bd",
+  "03259b61-850a-400e-814d-dd6017d69e78",
+  "b52cbfe3-e46a-458e-9979-5219bc4c34e6",
+  "821ebdde-b96a-4925-bfce-bf7575085be6",
+  "a4ea2159-4374-4041-82b0-93354e0c6506",
+  "5fbfb550-e86e-4377-8658-55c4b90a49a1",
+  "417fb631-a2b0-44f7-8974-53b383429d57",
+  "52797aa0-aa03-4483-b18a-0095a18a764c",
+  "fa4ddc12-8352-4fa1-afd7-f2b2eec4ce7c",
+  "b995b2a3-22c6-4f69-800c-a0d2e40e7a3e",
+  "0c7784d9-922d-4902-b621-8da598153952",
+  "03249b56-7d5b-4887-96ea-57e9c2a0c600",
+  "799efc71-730f-43c3-bc31-f9e2b70f8c0f",
+  "05316d12-fc0a-4710-aba8-fa26c86238b8",
+  "7a54cd2f-19b2-48f6-b6d0-fc287fef7656",
+  "adfdf60b-14a3-4d60-ade4-ca90498d1896",
+  "863a780c-d7d2-441d-8a0a-3064f07de174",
+  "30be3763-9821-42e4-9a42-3b9bf9fb0cf0",
+  "f1e320c3-9a5c-49ba-b70e-48625e2ac9fc",
+  "cdfea318-06e4-4f56-b220-f1f1d4afee23",
+  "4d803a70-a5d0-4f81-83d1-a1cebedaf322",
+  "2749d67c-32fa-42bd-b495-228ca10d6238",
+  "c16567bc-cf14-4214-bc3e-525fb56cdfe6",
+  "63036b73-9c7e-4095-8bfa-d09344aa97bc",
+  "10b60c7e-c427-49fd-b85e-7be0d72252fb",
+  "231ca2f5-e36a-43a1-8a4d-864ff0193d9a",
+  "77887fdd-c1c7-47f3-b912-937cd56c351f",
+  "6261c889-ebbf-4aca-a628-fe0e83ae1e39",
+  "ee5ced56-e914-47d4-b88e-f29d8d079a67",
+  "84b22c3f-ea9e-49c5-87d0-6448802f8c01",
+  "da205931-9b67-4d07-94a9-418c35d4fa87",
+  "4aa084cf-34f1-4d75-a523-a6f5f53393cc",
+  "1763f8d2-09ee-46a1-b198-1f0af5f5ac29"
+ ],
+ "vehicle_field_meta": [],
+ "counts": {
+  "alerts": 4,
+  "audit_logs": 104,
+  "documents": 11,
+  "driver_assignments": 6,
+  "drivers": 4,
+  "fuel_anomalies": 2,
+  "fuel_card_assignments": 4,
+  "fuel_cards": 3,
+  "fuel_transaction_matches": 6,
+  "fuel_transactions": 6,
+  "inspections": 2,
+  "users": 9,
+  "vehicle_field_meta": 1,
+  "vehicles": 4,
+  "tenants(id)": 1,
+  "users(email)": 9,
+  "login_attempts(email)": 0
+ },
+ "storage": [
+  {
+   "doc_id": "9a399d68-2665-4a84-9e32-6651df5ef65c",
+   "path": "logitrak-fleet/media/d74fe9d3-29f2-484e-bc3b-75d50d0c866e/b767edab-e43e-4d6d-bc22-4e3455ee6ccb.png",
+   "filename": "test_receipt.png"
+  },
+  {
+   "doc_id": "c2a8de13-abdc-478b-8d32-d767f27838b7",
+   "path": "logitrak-fleet/media/d74fe9d3-29f2-484e-bc3b-75d50d0c866e/a6008e8f-88f3-4ab4-8854-3d7332db8fd0.pdf",
+   "filename": "ticket.pdf"
+  },
+  {
+   "doc_id": "75b22985-368b-4017-9943-5cfe34c77771",
+   "path": "logitrak-fleet/media/d74fe9d3-29f2-484e-bc3b-75d50d0c866e/4c8a6802-b89b-4c1a-9e4f-3bb66fa01a29.png",
+   "filename": "loth-photo-v1.png"
+  },
+  {
+   "doc_id": "8c3c1b29-2136-4367-8365-dd7cf7cdd4ea",
+   "path": "logitrak-fleet/media/dbf86ce0-05d9-46f8-b5c4-54523efefd52/c2d63234-d685-479f-b272-ba02427c4ce8.png",
+   "filename": "ticket.png"
+  },
+  {
+   "doc_id": "0003f77b-6c5b-44a3-b918-4b39c223c81d",
+   "path": "logitrak-fleet/media/dbf86ce0-05d9-46f8-b5c4-54523efefd52/a0fb7193-bb02-4f76-9382-18af25d73114.png",
+   "filename": "loth-photo-v3.png"
+  }
+ ],
+ "autres_collections_tenant_id": {}
+}
