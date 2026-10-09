@@ -7,12 +7,13 @@ import {
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { getVehicle, getDocuments, vehicleReportUrl, photoSrc } from "@/lib/api";
+import { getVehicle, getDocuments, vehicleReportUrl, photoSrc, aiVehicleCompliance } from "@/lib/api";
 import { fmtKm } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import StatusBadge from "@/components/StatusBadge";
 import VehiclePhotoMenu from "@/components/VehiclePhotoMenu";
 import DeleteVehicleButton from "@/components/DeleteVehicleButton";
+import AiActionButton from "@/components/ai/AiActionButton";
 import { useAuth } from "@/context/AuthContext";
 import { can } from "@/lib/rbac";
 import GeneralTab from "@/components/tabs/GeneralTab";
@@ -144,6 +145,13 @@ export default function VehicleDrawer({ open, onOpenChange, vehicleId, initialTa
                     >
                       <FileDown className="h-3.5 w-3.5" /> Fiche PDF
                     </Button>
+                    <AiActionButton
+                      testId="vehicle-ai-compliance-btn"
+                      label="Synthèse IA"
+                      title={`Synthèse de conformité — ${vehicle.plaque}`}
+                      run={() => aiVehicleCompliance(vehicle.id)}
+                      downloadName={`conformite-${vehicle.plaque || vehicle.id}.txt`}
+                    />
                     {canDelete && (vehicle.navixy_absent || vehicle.source !== "navixy") && (
                       <DeleteVehicleButton
                         vehicle={vehicle}

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutDashboard, Truck, CalendarClock, Bell, Layers3, UserCircle2, KeyRound, LogOut, ShieldCheck, Building2, Eye, FolderOpen, Wallet, Fuel, GitMerge, Users, Gavel, FlaskConical } from "lucide-react";
+import { LayoutDashboard, Truck, CalendarClock, Bell, Layers3, UserCircle2, KeyRound, LogOut, ShieldCheck, Building2, Eye, FolderOpen, Wallet, Fuel, GitMerge, Users, Gavel, FlaskConical, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getActingTenant, setActingTenant, getPendingReviewCount } from "@/lib/api";
 import {
@@ -22,6 +22,7 @@ const NAV = [
   { to: "/energie", label: "Énergie", icon: Fuel, testId: "nav-energy" },
   { to: "/conducteurs", label: "Conducteurs", icon: Users, testId: "nav-drivers" },
   { to: "/amendes", label: "Amendes", icon: Gavel, testId: "nav-fines" },
+  { to: "/assistant", label: "Assistant IA", icon: Sparkles, testId: "nav-ai", cap: "ai.use" },
   { to: "/alertes", label: "Alertes", icon: Bell, testId: "nav-alerts" },
   { to: "/integrite", label: "Intégrité", icon: ShieldCheck, testId: "nav-integrity", cap: "pages.integrity" },
   { to: "/admin/correspondances", label: "Correspondances", icon: GitMerge, testId: "nav-legacy", cap: "pages.legacy" },

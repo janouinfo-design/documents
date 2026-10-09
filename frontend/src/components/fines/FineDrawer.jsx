@@ -4,7 +4,7 @@ import { CheckCircle2, Undo2, Truck, Loader2, Eye } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { getFine } from "@/lib/api";
+import { getFine, aiFineLetter } from "@/lib/api";
 import { chfExact, dateFr } from "@/lib/format";
 import { useAuth } from "@/context/AuthContext";
 import { can } from "@/lib/rbac";
@@ -18,6 +18,7 @@ import FineAttachments from "@/components/fines/FineAttachments";
 import FineHistory from "@/components/fines/FineHistory";
 import { NoFileBadge, AttachFileButton, hasNoFile } from "@/components/documents/NoFileBadge";
 import FilePreview from "@/components/FilePreview";
+import AiActionButton from "@/components/ai/AiActionButton";
 import { PAID_STATUSES } from "@/lib/fines";
 
 function PaymentCard({ doc, canEdit }) {
@@ -106,6 +107,13 @@ export default function FineDrawer({ fineId, onOpenChange }) {
                 </Button>
               )}
               {isAdmin && <AttachFileButton doc={doc} />}
+              <AiActionButton
+                testId="fine-ai-letter-btn"
+                label="Courrier IA"
+                title="Courrier d'amende (brouillon IA)"
+                run={() => aiFineLetter(doc.id, { kind: "contestation" })}
+                downloadName="courrier-amende.txt"
+              />
             </div>
 
             <PaymentCard doc={doc} canEdit={isAdmin} />

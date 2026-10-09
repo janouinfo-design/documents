@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { Search, FolderCog, ListChecks, Pencil, Download, Eye, FolderOpen, Loader2, Sparkles, FileX2, UserRound } from "lucide-react";
-import { getAllDocuments, getDocCategories, getDeadlineSettings, getVehicles, fileUrl } from "@/lib/api";
+import { getAllDocuments, getDocCategories, getDeadlineSettings, getVehicles, fileUrl, aiDocumentSummary } from "@/lib/api";
 import { dateFr } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import DocCategoriesDialog from "@/components/documents/DocCategoriesDialog";
 import DocRequirementsDialog from "@/components/documents/DocRequirementsDialog";
 import ManualFineDialog from "@/components/documents/ManualFineDialog";
 import { NoFileBadge, AttachFileButton, hasNoFile } from "@/components/documents/NoFileBadge";
+import AiActionButton from "@/components/ai/AiActionButton";
 import { useAuth } from "@/context/AuthContext";
 import { can } from "@/lib/rbac";
 import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
@@ -227,6 +228,12 @@ export default function DocumentsPage() {
                 <TableCell>
                   <div className="flex justify-end gap-1">
                     <FinePaidButton doc={d} disabled={!canFines} />
+                    <AiActionButton
+                      iconOnly
+                      testId={`doc-ai-summary-${d.id}`}
+                      title="Résumé IA du document"
+                      run={() => aiDocumentSummary(d.id)}
+                    />
                     {hasNoFile(d) ? (
                       canWrite && <AttachFileButton doc={d} compact />
                     ) : (

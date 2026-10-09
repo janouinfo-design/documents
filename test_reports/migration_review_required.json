@@ -1,1 +1,268 @@
-[]
+[
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "fuel_card",
+  "source_id": "9a832fe8-bc90-4cf0-8a8a-2c950c203c12",
+  "target_id": null,
+  "reason_code": "CARD_NOT_FOUND",
+  "reason_text": "carte introuvable dans Documents — aucune création auto (D2)",
+  "documents_tenant_id": "default"
+ },
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "fuel_card",
+  "source_id": "3ba32b62-3805-450f-bfb2-9e96327cdcfd",
+  "target_id": null,
+  "reason_code": "CARD_NOT_FOUND",
+  "reason_text": "carte introuvable dans Documents — aucune création auto (D2)",
+  "documents_tenant_id": "default"
+ },
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "fuel_card",
+  "source_id": "c19bd5e3-ee3c-486b-b4a0-ba1bb4591013",
+  "target_id": null,
+  "reason_code": "CARD_NOT_FOUND",
+  "reason_text": "carte introuvable dans Documents — aucune création auto (D2)",
+  "documents_tenant_id": "default"
+ },
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "fuel_card",
+  "source_id": "6607fc4a-a0bf-42d8-b098-bf02e4267e54",
+  "target_id": null,
+  "reason_code": "CARD_NOT_FOUND",
+  "reason_text": "carte introuvable dans Documents — aucune création auto (D2)",
+  "documents_tenant_id": "default"
+ },
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "fuel_card_assignment",
+  "source_id": "adfb8452-e473-4a7d-a578-441b9eaab057",
+  "target_id": null,
+  "reason_code": "ASSIGNMENT_NEEDS_RESOLUTION",
+  "reason_text": "affectation datée migrée seulement si carte+cible déterminables sans ambiguïté",
+  "documents_tenant_id": "default"
+ },
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "fuel_card_assignment",
+  "source_id": "0dbd980c-90f8-46cb-a389-2bd14c1b399c",
+  "target_id": null,
+  "reason_code": "ASSIGNMENT_NEEDS_RESOLUTION",
+  "reason_text": "affectation datée migrée seulement si carte+cible déterminables sans ambiguïté",
+  "documents_tenant_id": "default"
+ },
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "fuel_card_assignment",
+  "source_id": "e6574ba3-23dc-4e3e-8679-6a77896655c6",
+  "target_id": null,
+  "reason_code": "ASSIGNMENT_NEEDS_RESOLUTION",
+  "reason_text": "affectation datée migrée seulement si carte+cible déterminables sans ambiguïté",
+  "documents_tenant_id": "default"
+ },
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "vehicle_assignment",
+  "source_id": "6641aed8-534b-4b4b-b4a4-84826178e9c6",
+  "target_id": null,
+  "reason_code": "RELATION_UNRESOLVED",
+  "reason_text": "véhicule non confirmé et/ou conducteur non résolu — jamais d'affectation inventée",
+  "documents_tenant_id": "default"
+ },
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "vehicle_assignment",
+  "source_id": "58cfdc9e-f8bd-419c-aec0-de45009d1de5",
+  "target_id": null,
+  "reason_code": "RELATION_UNRESOLVED",
+  "reason_text": "véhicule non confirmé et/ou conducteur non résolu — jamais d'affectation inventée",
+  "documents_tenant_id": "default"
+ },
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "vehicle_assignment",
+  "source_id": "2f4b4b14-675e-4d7c-9817-df65cff2dc63",
+  "target_id": null,
+  "reason_code": "RELATION_UNRESOLVED",
+  "reason_text": "véhicule non confirmé et/ou conducteur non résolu — jamais d'affectation inventée",
+  "documents_tenant_id": "default"
+ },
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "fuel_transaction",
+  "source_id": "2b86022a-7ee7-44e8-af36-a43e5b973333",
+  "target_id": null,
+  "reason_code": "VEHICLE_NOT_CONFIRMED",
+  "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+  "documents_tenant_id": "default",
+  "fx_status": "ok",
+  "anomalies": "RECALCULATE_ON_APPLY (D8)"
+ },
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "fuel_transaction",
+  "source_id": "3eb4a006-ced5-4e9d-a4e5-2454520526ab",
+  "target_id": null,
+  "reason_code": "VEHICLE_NOT_CONFIRMED",
+  "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+  "documents_tenant_id": "default",
+  "fx_status": "ok",
+  "anomalies": "RECALCULATE_ON_APPLY (D8)"
+ },
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "fuel_transaction",
+  "source_id": "47a866fa-e8b7-4f0f-8363-3fa9aea8d018",
+  "target_id": null,
+  "reason_code": "VEHICLE_NOT_CONFIRMED",
+  "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+  "documents_tenant_id": "default",
+  "fx_status": "ok",
+  "anomalies": "RECALCULATE_ON_APPLY (D8)"
+ },
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "fuel_transaction",
+  "source_id": "aca19340-2153-4e1d-a622-1d29071c85cd",
+  "target_id": null,
+  "reason_code": "VEHICLE_NOT_CONFIRMED",
+  "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+  "documents_tenant_id": "default",
+  "fx_status": "ok",
+  "anomalies": "RECALCULATE_ON_APPLY (D8)"
+ },
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "fuel_transaction",
+  "source_id": "ebd4f2df-8b80-4a13-a641-c911c0eaa3e8",
+  "target_id": null,
+  "reason_code": "VEHICLE_NOT_CONFIRMED",
+  "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+  "documents_tenant_id": "default",
+  "fx_status": "ok",
+  "anomalies": "RECALCULATE_ON_APPLY (D8)"
+ },
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "fuel_transaction",
+  "source_id": "ae2f94aa-5d05-4ae1-9e65-67e6c642dda5",
+  "target_id": null,
+  "reason_code": "VEHICLE_NOT_CONFIRMED",
+  "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+  "documents_tenant_id": "default",
+  "fx_status": "ok",
+  "anomalies": "RECALCULATE_ON_APPLY (D8)"
+ },
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "fuel_transaction",
+  "source_id": "feac6432-ff06-4ed4-92c8-7e617aa843ee",
+  "target_id": null,
+  "reason_code": "VEHICLE_NOT_CONFIRMED",
+  "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+  "documents_tenant_id": "default",
+  "fx_status": "ok",
+  "anomalies": "RECALCULATE_ON_APPLY (D8)"
+ },
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "fuel_transaction",
+  "source_id": "fa52579a-8a1d-457b-8095-9243338af81b",
+  "target_id": null,
+  "reason_code": "VEHICLE_NOT_CONFIRMED",
+  "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+  "documents_tenant_id": "default",
+  "fx_status": "ok",
+  "anomalies": "RECALCULATE_ON_APPLY (D8)"
+ },
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "fuel_transaction",
+  "source_id": "0b710642-f922-4fd4-8eb1-e46630926563",
+  "target_id": null,
+  "reason_code": "VEHICLE_NOT_CONFIRMED",
+  "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+  "documents_tenant_id": "default",
+  "fx_status": "ok",
+  "anomalies": "RECALCULATE_ON_APPLY (D8)"
+ },
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "fuel_transaction",
+  "source_id": "d688cf51-5df7-490a-b9fe-c9267cffc29f",
+  "target_id": null,
+  "reason_code": "VEHICLE_NOT_CONFIRMED",
+  "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+  "documents_tenant_id": "default",
+  "fx_status": "ok",
+  "anomalies": "RECALCULATE_ON_APPLY (D8)"
+ },
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "fuel_transaction",
+  "source_id": "71425fa7-8695-4278-b227-357fbbbf0ef4",
+  "target_id": null,
+  "reason_code": "VEHICLE_NOT_CONFIRMED",
+  "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+  "documents_tenant_id": "default",
+  "fx_status": "ok",
+  "anomalies": "RECALCULATE_ON_APPLY (D8)"
+ },
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "fuel_transaction",
+  "source_id": "4849146a-8586-4962-8a39-0759170a6533",
+  "target_id": null,
+  "reason_code": "VEHICLE_NOT_CONFIRMED",
+  "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+  "documents_tenant_id": "default",
+  "fx_status": "ok",
+  "anomalies": "RECALCULATE_ON_APPLY (D8)"
+ },
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "fuel_transaction",
+  "source_id": "db40b9b5-15de-4231-bddd-ebec54f35f49",
+  "target_id": null,
+  "reason_code": "VEHICLE_NOT_CONFIRMED",
+  "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+  "documents_tenant_id": "default",
+  "fx_status": "ok",
+  "anomalies": "RECALCULATE_ON_APPLY (D8)"
+ },
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "fuel_transaction",
+  "source_id": "22415a16-7174-4de8-a0f0-c86fe10ef7ab",
+  "target_id": null,
+  "reason_code": "VEHICLE_NOT_CONFIRMED",
+  "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+  "documents_tenant_id": "default",
+  "fx_status": "ok",
+  "anomalies": "RECALCULATE_ON_APPLY (D8)"
+ },
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "fine",
+  "source_id": "f3757e2a-aefc-4626-94dd-17cbbc48b17b",
+  "target_id": null,
+  "reason_code": "VEHICLE_NOT_CONFIRMED",
+  "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+  "documents_tenant_id": "default",
+  "fine_status": "a_payer",
+  "cost_excluded": false
+ },
+ {
+  "category": "REVIEW_REQUIRED",
+  "entity": "fine",
+  "source_id": "69e0aed4-a399-4890-99cb-7669a09f2f8d",
+  "target_id": null,
+  "reason_code": "VEHICLE_NOT_CONFIRMED",
+  "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+  "documents_tenant_id": "default",
+  "fine_status": "payee",
+  "cost_excluded": false
+ }
+]

@@ -38,6 +38,7 @@ const CAPS = {
   "pages.archives": READERS,
   "pages.legacy": READERS,
   "pages.integrity": READERS,
+  "ai.use": WRITERS,
   console: ["superadmin"],
 };
 

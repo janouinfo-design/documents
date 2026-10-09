@@ -1,7 +1,7 @@
 {
- "generated_at": "2026-10-09T09:45:52.754285+00:00",
+ "generated_at": "2026-10-09T13:52:37.998720+00:00",
  "legacy_source": "journal",
- "input_dir": "/tmp/tmpozwiqqqy",
+ "input_dir": "/app/test_reports/migration_input",
  "validated": true,
  "documents_unchanged": true,
  "fp_diff": {
@@ -9,16 +9,985 @@
   "hashes": []
  },
  "totals": {
-  "READY": 0,
+  "READY": 8,
   "ALREADY_PRESENT": 0,
-  "REVIEW_REQUIRED": 0,
-  "BLOCKED": 0,
+  "REVIEW_REQUIRED": 26,
+  "BLOCKED": 9,
   "DUPLICATE": 0,
   "IGNORED": 0
  },
- "by_type": {},
+ "by_type": {
+  "driver": {
+   "READY": 6,
+   "ALREADY_PRESENT": 0,
+   "REVIEW_REQUIRED": 0,
+   "BLOCKED": 9,
+   "DUPLICATE": 0,
+   "IGNORED": 0
+  },
+  "fuel_card": {
+   "READY": 0,
+   "ALREADY_PRESENT": 0,
+   "REVIEW_REQUIRED": 4,
+   "BLOCKED": 0,
+   "DUPLICATE": 0,
+   "IGNORED": 0
+  },
+  "fuel_card_assignment": {
+   "READY": 0,
+   "ALREADY_PRESENT": 0,
+   "REVIEW_REQUIRED": 3,
+   "BLOCKED": 0,
+   "DUPLICATE": 0,
+   "IGNORED": 0
+  },
+  "vehicle_assignment": {
+   "READY": 0,
+   "ALREADY_PRESENT": 0,
+   "REVIEW_REQUIRED": 3,
+   "BLOCKED": 0,
+   "DUPLICATE": 0,
+   "IGNORED": 0
+  },
+  "fuel_transaction": {
+   "READY": 2,
+   "ALREADY_PRESENT": 0,
+   "REVIEW_REQUIRED": 14,
+   "BLOCKED": 0,
+   "DUPLICATE": 0,
+   "IGNORED": 0
+  },
+  "fine": {
+   "READY": 0,
+   "ALREADY_PRESENT": 0,
+   "REVIEW_REQUIRED": 2,
+   "BLOCKED": 0,
+   "DUPLICATE": 0,
+   "IGNORED": 0
+  }
+ },
  "pending_fx": [],
- "tenant_mapping": [],
- "vehicle_mapping": [],
- "plan": []
+ "tenant_mapping": [
+  {
+   "legacy_tenant_id": "default",
+   "match_key": "navixy_master_user_id",
+   "match_value": 121349,
+   "status": "MATCHED",
+   "documents_tenant_id": "default",
+   "candidates": [
+    {
+     "tenant_id": "default",
+     "name": "Compte pilote"
+    }
+   ],
+   "reason": "found"
+  },
+  {
+   "legacy_tenant_id": "163e5600-8036-4810-9266-5385748d4f44",
+   "match_key": "navixy_master_user_id",
+   "match_value": 175698,
+   "status": "UNMAPPED",
+   "documents_tenant_id": null,
+   "candidates": [],
+   "reason": "not_found"
+  },
+  {
+   "legacy_tenant_id": "55d26c74-fda6-47ae-ba89-b909a8ec8f53",
+   "match_key": "navixy_master_user_id",
+   "match_value": 204310,
+   "status": "UNMAPPED",
+   "documents_tenant_id": null,
+   "candidates": [],
+   "reason": "not_found"
+  }
+ ],
+ "vehicle_mapping": [
+  {
+   "legacy_vehicle_id": "995ee4d5-1496-4180-b895-1238f994d36d",
+   "documents_tenant_id": "default",
+   "status": "REVIEW_REQUIRED",
+   "method": "tracker_history_confirmed",
+   "confidence": "to_review",
+   "candidates": [
+    {
+     "vehicle_id": "5909a77b-96a1-4700-84e4-ddb0f375a15d",
+     "vin": "WAU ZZZ 8V JA 151370",
+     "plate": "VD 602 548",
+     "make": "Audi",
+     "model": "A3 2018",
+     "year": 2018,
+     "navixy_tracker_id": 781479,
+     "navixy_vehicle_id": 164367,
+     "matched_by": "navixy_tracker_id"
+    }
+   ],
+   "warnings": [
+    "tracker_join_no_assignment_history"
+   ]
+  },
+  {
+   "legacy_vehicle_id": "3bab3a4e-9d2b-42e4-9e64-f4b90500cf94",
+   "documents_tenant_id": "default",
+   "status": "REVIEW_REQUIRED",
+   "method": "tracker_history_confirmed",
+   "confidence": "to_review",
+   "candidates": [
+    {
+     "vehicle_id": "8540d020-c074-4e29-9c90-5ae78ab1f20d",
+     "vin": null,
+     "plate": "Iphone Rabi",
+     "make": "Iphone",
+     "model": "Rabi",
+     "year": null,
+     "navixy_tracker_id": 1075587,
+     "navixy_vehicle_id": 269564,
+     "matched_by": "navixy_tracker_id"
+    }
+   ],
+   "warnings": [
+    "tracker_join_no_assignment_history"
+   ]
+  },
+  {
+   "legacy_vehicle_id": "5610196b-9dd5-40ee-a454-3e76aee9b744",
+   "documents_tenant_id": "default",
+   "status": "REVIEW_REQUIRED",
+   "method": "tracker_history_confirmed",
+   "confidence": "to_review",
+   "candidates": [
+    {
+     "vehicle_id": "d1099b53-a118-42d8-adfc-3d1b9e1fdcb0",
+     "vin": "WVWZZZ1KZAW123456",
+     "plate": "BE 579928",
+     "make": "Skoda",
+     "model": "Enyaq",
+     "year": null,
+     "navixy_tracker_id": 3076994,
+     "navixy_vehicle_id": 178973,
+     "matched_by": "navixy_tracker_id"
+    }
+   ],
+   "warnings": [
+    "tracker_join_no_assignment_history"
+   ]
+  },
+  {
+   "legacy_vehicle_id": "6ee3b604-faca-4e35-9ffa-6391b97b45da",
+   "documents_tenant_id": "default",
+   "status": "REVIEW_REQUIRED",
+   "method": "tracker_history_confirmed",
+   "confidence": "to_review",
+   "candidates": [
+    {
+     "vehicle_id": "f4f234b5-82d9-4877-84b7-221b217b4b70",
+     "vin": null,
+     "plate": "KAIO Renault Zoe",
+     "make": "KAIO",
+     "model": "Renault Zoe",
+     "year": null,
+     "navixy_tracker_id": 3079431,
+     "navixy_vehicle_id": 269565,
+     "matched_by": "navixy_tracker_id"
+    }
+   ],
+   "warnings": [
+    "tracker_join_no_assignment_history"
+   ]
+  },
+  {
+   "legacy_vehicle_id": "92799499-2b13-47ae-8a93-3a17740f8a94",
+   "documents_tenant_id": "default",
+   "status": "REVIEW_REQUIRED",
+   "method": "tracker_history_confirmed",
+   "confidence": "to_review",
+   "candidates": [
+    {
+     "vehicle_id": "32f08fa5-acef-4182-a109-4622689a59b0",
+     "vin": "WWWZZZ6RZEY063464",
+     "plate": "VD 594862",
+     "make": "VW",
+     "model": "Polo 1.2",
+     "year": null,
+     "navixy_tracker_id": 3131157,
+     "navixy_vehicle_id": 262845,
+     "matched_by": "navixy_tracker_id"
+    }
+   ],
+   "warnings": [
+    "tracker_join_no_assignment_history"
+   ]
+  },
+  {
+   "legacy_vehicle_id": "951f50cb-0a2b-4235-a35d-4c406a984cd2",
+   "documents_tenant_id": "default",
+   "status": "REVIEW_REQUIRED",
+   "method": "tracker_history_confirmed",
+   "confidence": "to_review",
+   "candidates": [
+    {
+     "vehicle_id": "6d00f932-d74d-4e1b-84ad-6116ffb0af33",
+     "vin": null,
+     "plate": "1-Enyaq 01 Bern",
+     "make": "1-Enyaq",
+     "model": "01 Bern",
+     "year": null,
+     "navixy_tracker_id": 3218549,
+     "navixy_vehicle_id": null,
+     "matched_by": "navixy_tracker_id"
+    }
+   ],
+   "warnings": [
+    "tracker_join_no_assignment_history"
+   ]
+  },
+  {
+   "legacy_vehicle_id": "02b4c198-e937-4a46-8e46-265921a37a96",
+   "documents_tenant_id": "default",
+   "status": "REVIEW_REQUIRED",
+   "method": "tracker_history_confirmed",
+   "confidence": "to_review",
+   "candidates": [
+    {
+     "vehicle_id": "50c156cb-1302-4985-a591-adb51ada571a",
+     "vin": "VF1AG0000AB123999",
+     "plate": "KAIO Skoda Enyaq 07",
+     "make": "KAIO",
+     "model": "Skoda Enyaq 07",
+     "year": null,
+     "navixy_tracker_id": 3218550,
+     "navixy_vehicle_id": null,
+     "matched_by": "navixy_tracker_id"
+    }
+   ],
+   "warnings": [
+    "tracker_join_no_assignment_history"
+   ]
+  },
+  {
+   "legacy_vehicle_id": "3ffd0540-eb86-4336-b018-296e911f6375",
+   "documents_tenant_id": "default",
+   "status": "REVIEW_REQUIRED",
+   "method": "tracker_history_confirmed",
+   "confidence": "to_review",
+   "candidates": [
+    {
+     "vehicle_id": "6491d528-d2a6-4b4a-8e66-8d0206422637",
+     "vin": "VF7ABCDEF12345678",
+     "plate": "EX 30 08",
+     "make": "KAIO",
+     "model": "Volvo",
+     "year": null,
+     "navixy_tracker_id": 3218553,
+     "navixy_vehicle_id": null,
+     "matched_by": "navixy_tracker_id"
+    }
+   ],
+   "warnings": [
+    "tracker_join_no_assignment_history"
+   ]
+  },
+  {
+   "legacy_vehicle_id": "2fd6f864-5e58-411b-8500-b337e8233a39",
+   "documents_tenant_id": "default",
+   "status": "REVIEW_REQUIRED",
+   "method": "tracker_history_confirmed",
+   "confidence": "to_review",
+   "candidates": [
+    {
+     "vehicle_id": "acb99cee-23a7-4c76-9b8b-f9521be34408",
+     "vin": null,
+     "plate": "Tab Samsung A9",
+     "make": "Tab",
+     "model": "Samsung A9",
+     "year": null,
+     "navixy_tracker_id": 3353695,
+     "navixy_vehicle_id": null,
+     "matched_by": "navixy_tracker_id"
+    }
+   ],
+   "warnings": [
+    "tracker_join_no_assignment_history"
+   ]
+  },
+  {
+   "legacy_vehicle_id": "09ce071e-b1ec-4dd7-bf20-13d64d13b20d",
+   "documents_tenant_id": "default",
+   "status": "REVIEW_REQUIRED",
+   "method": "tracker_history_confirmed",
+   "confidence": "to_review",
+   "candidates": [
+    {
+     "vehicle_id": "ec488eb5-ac01-47e9-9861-44ec00de5a8f",
+     "vin": null,
+     "plate": "VD 578",
+     "make": "1--890",
+     "model": "(ORHAN)",
+     "year": null,
+     "navixy_tracker_id": 1067937,
+     "navixy_vehicle_id": null,
+     "matched_by": "navixy_tracker_id"
+    }
+   ],
+   "warnings": [
+    "tracker_join_no_assignment_history"
+   ]
+  },
+  {
+   "legacy_vehicle_id": "815e17f5-37db-492b-9415-5fda5e6b2dcc",
+   "documents_tenant_id": "default",
+   "status": "REVIEW_REQUIRED",
+   "method": "tracker_history_confirmed",
+   "confidence": "to_review",
+   "candidates": [
+    {
+     "vehicle_id": "1ad61c35-8f01-476d-8a7b-df5d475a6232",
+     "vin": null,
+     "plate": "VD 584",
+     "make": "2--492",
+     "model": "(IVAN)",
+     "year": null,
+     "navixy_tracker_id": 1067938,
+     "navixy_vehicle_id": null,
+     "matched_by": "navixy_tracker_id"
+    }
+   ],
+   "warnings": [
+    "tracker_join_no_assignment_history"
+   ]
+  },
+  {
+   "legacy_vehicle_id": "eb6c4e4b-b591-4554-a6f8-30cad9df929f",
+   "documents_tenant_id": "default",
+   "status": "REVIEW_REQUIRED",
+   "method": "tracker_history_confirmed",
+   "confidence": "to_review",
+   "candidates": [
+    {
+     "vehicle_id": "9a19070f-6a1f-449e-9d4c-b0883622daba",
+     "vin": null,
+     "plate": "VD 358",
+     "make": "5--707",
+     "model": "(NEDIR)",
+     "year": null,
+     "navixy_tracker_id": 1067939,
+     "navixy_vehicle_id": null,
+     "matched_by": "navixy_tracker_id"
+    }
+   ],
+   "warnings": [
+    "tracker_join_no_assignment_history"
+   ]
+  },
+  {
+   "legacy_vehicle_id": "9cf793ae-391e-4ebf-89e9-70d188d399b4",
+   "status": "UNMATCHED",
+   "method": null,
+   "confidence": "none",
+   "reason": "tenant non mappé (D3)"
+  },
+  {
+   "legacy_vehicle_id": "6cfe5099-cbe8-43f6-9d0e-e604d1992593",
+   "status": "UNMATCHED",
+   "method": null,
+   "confidence": "none",
+   "reason": "tenant non mappé (D3)"
+  },
+  {
+   "legacy_vehicle_id": "2c552929-0b16-419e-8c0e-c829bbd0d38b",
+   "status": "UNMATCHED",
+   "method": null,
+   "confidence": "none",
+   "reason": "tenant non mappé (D3)"
+  },
+  {
+   "legacy_vehicle_id": "ab79d3e6-1cad-455c-807b-b66ff67ed219",
+   "status": "UNMATCHED",
+   "method": null,
+   "confidence": "none",
+   "reason": "tenant non mappé (D3)"
+  },
+  {
+   "legacy_vehicle_id": "530b8173-b163-499d-8baa-9ef89de8a47a",
+   "status": "UNMATCHED",
+   "method": null,
+   "confidence": "none",
+   "reason": "tenant non mappé (D3)"
+  },
+  {
+   "legacy_vehicle_id": "d43d47b8-d79b-48ad-9614-d5beb0898a6d",
+   "status": "UNMATCHED",
+   "method": null,
+   "confidence": "none",
+   "reason": "tenant non mappé (D3)"
+  },
+  {
+   "legacy_vehicle_id": "62d1028b-5435-4a58-8889-a45c9efcca62",
+   "status": "UNMATCHED",
+   "method": null,
+   "confidence": "none",
+   "reason": "tenant non mappé (D3)"
+  },
+  {
+   "legacy_vehicle_id": "14a9c199-abf4-4447-9afc-b4ae8da4c351",
+   "status": "UNMATCHED",
+   "method": null,
+   "confidence": "none",
+   "reason": "tenant non mappé (D3)"
+  },
+  {
+   "legacy_vehicle_id": "7c1e49d0-8d2f-4fa0-b882-33a62010c5fe",
+   "status": "UNMATCHED",
+   "method": null,
+   "confidence": "none",
+   "reason": "tenant non mappé (D3)"
+  },
+  {
+   "legacy_vehicle_id": "8c535e31-5ed5-4217-8f1b-1ff11e79b2a6",
+   "status": "UNMATCHED",
+   "method": null,
+   "confidence": "none",
+   "reason": "tenant non mappé (D3)"
+  },
+  {
+   "legacy_vehicle_id": "53f522ef-ddba-47d2-b8c9-35d90fa864bd",
+   "status": "UNMATCHED",
+   "method": null,
+   "confidence": "none",
+   "reason": "tenant non mappé (D3)"
+  },
+  {
+   "legacy_vehicle_id": "3d1857d0-1ce6-4ae4-bb60-b5587db6d17b",
+   "status": "UNMATCHED",
+   "method": null,
+   "confidence": "none",
+   "reason": "tenant non mappé (D3)"
+  },
+  {
+   "legacy_vehicle_id": "bba15187-07ee-4aa8-b422-3b2661d7e858",
+   "status": "UNMATCHED",
+   "method": null,
+   "confidence": "none",
+   "reason": "tenant non mappé (D3)"
+  },
+  {
+   "legacy_vehicle_id": "36d2f58b-b200-49bb-b911-072331716885",
+   "status": "UNMATCHED",
+   "method": null,
+   "confidence": "none",
+   "reason": "tenant non mappé (D3)"
+  },
+  {
+   "legacy_vehicle_id": "8c901139-d010-4a63-a50d-f1376a56fb7d",
+   "status": "UNMATCHED",
+   "method": null,
+   "confidence": "none",
+   "reason": "tenant non mappé (D3)"
+  },
+  {
+   "legacy_vehicle_id": "d454cd74-9104-4532-82f3-581b2374e0f7",
+   "status": "UNMATCHED",
+   "method": null,
+   "confidence": "none",
+   "reason": "tenant non mappé (D3)"
+  },
+  {
+   "legacy_vehicle_id": "8e9ac430-a4a4-4c3c-af1c-82cdcdf35482",
+   "status": "UNMATCHED",
+   "method": null,
+   "confidence": "none",
+   "reason": "tenant non mappé (D3)"
+  },
+  {
+   "legacy_vehicle_id": "737f34e6-da31-4cd7-94ec-3b52bab51cbe",
+   "status": "UNMATCHED",
+   "method": null,
+   "confidence": "none",
+   "reason": "tenant non mappé (D3)"
+  },
+  {
+   "legacy_vehicle_id": "c9b049c5-7444-4cf0-a697-978e4a090405",
+   "documents_tenant_id": "default",
+   "status": "REVIEW_REQUIRED",
+   "method": "tracker_history_confirmed",
+   "confidence": "to_review",
+   "candidates": [
+    {
+     "vehicle_id": "749f790f-ae9c-4c09-b7dd-d96ab9d891ac",
+     "vin": null,
+     "plate": "Audi obd",
+     "make": "Audi",
+     "model": "obd",
+     "year": null,
+     "navixy_tracker_id": 3657864,
+     "navixy_vehicle_id": null,
+     "matched_by": "navixy_tracker_id"
+    }
+   ],
+   "warnings": [
+    "tracker_join_no_assignment_history"
+   ]
+  },
+  {
+   "legacy_vehicle_id": "5bb464ba-999d-410a-bf45-e786b3bb13f6",
+   "documents_tenant_id": "default",
+   "status": "REVIEW_REQUIRED",
+   "method": "tracker_history_confirmed",
+   "confidence": "to_review",
+   "candidates": [
+    {
+     "vehicle_id": "bcc7f25b-35ca-4c6b-9596-e3862d0a32ce",
+     "vin": null,
+     "plate": "S564",
+     "make": "S564",
+     "model": null,
+     "year": null,
+     "navixy_tracker_id": 3661714,
+     "navixy_vehicle_id": null,
+     "matched_by": "navixy_tracker_id"
+    }
+   ],
+   "warnings": [
+    "tracker_join_no_assignment_history"
+   ]
+  },
+  {
+   "legacy_vehicle_id": "7837375a-2434-4b50-9512-321118e37286",
+   "documents_tenant_id": "default",
+   "status": "REVIEW_REQUIRED",
+   "method": "tracker_history_confirmed",
+   "confidence": "to_review",
+   "candidates": [
+    {
+     "vehicle_id": "076b0cf4-d53f-428a-9a19-26316f0486b1",
+     "vin": null,
+     "plate": "Traceur Test 3",
+     "make": "Traceur",
+     "model": "Test 3",
+     "year": null,
+     "navixy_tracker_id": 3676845,
+     "navixy_vehicle_id": null,
+     "matched_by": "navixy_tracker_id"
+    }
+   ],
+   "warnings": [
+    "tracker_join_no_assignment_history"
+   ]
+  }
+ ],
+ "plan": [
+  {
+   "category": "READY",
+   "entity": "driver",
+   "source_id": "1a3f19ef-d710-4f16-80ae-3c770f252af3",
+   "target_id": null,
+   "reason_code": "OK",
+   "reason_text": "conducteur mappé par id canonique",
+   "documents_tenant_id": "default"
+  },
+  {
+   "category": "READY",
+   "entity": "driver",
+   "source_id": "24f80f95-d036-450f-bdf2-49be0837c295",
+   "target_id": null,
+   "reason_code": "OK",
+   "reason_text": "conducteur mappé par id canonique",
+   "documents_tenant_id": "default"
+  },
+  {
+   "category": "READY",
+   "entity": "driver",
+   "source_id": "2b9de0cf-bbfa-4e77-ace6-9fc9feb7f52a",
+   "target_id": null,
+   "reason_code": "OK",
+   "reason_text": "conducteur mappé par id canonique",
+   "documents_tenant_id": "default"
+  },
+  {
+   "category": "READY",
+   "entity": "driver",
+   "source_id": "4ef47dea-88e0-450b-ac74-49a9266749c2",
+   "target_id": null,
+   "reason_code": "OK",
+   "reason_text": "conducteur mappé par id canonique",
+   "documents_tenant_id": "default"
+  },
+  {
+   "category": "READY",
+   "entity": "driver",
+   "source_id": "e711b0b7-d701-4a07-8455-17e143649c19",
+   "target_id": null,
+   "reason_code": "OK",
+   "reason_text": "conducteur mappé par id canonique",
+   "documents_tenant_id": "default"
+  },
+  {
+   "category": "READY",
+   "entity": "driver",
+   "source_id": "15a67b15-bf8f-41f4-bac7-fb5cf4954a97",
+   "target_id": null,
+   "reason_code": "OK",
+   "reason_text": "conducteur mappé par id canonique",
+   "documents_tenant_id": "default"
+  },
+  {
+   "category": "BLOCKED",
+   "entity": "driver",
+   "source_id": "f28fb4c2-a538-447c-b180-79b6c5e40b17",
+   "target_id": null,
+   "reason_code": "TENANT_UNMAPPED",
+   "reason_text": "tenant Journal non mappé (D3) — aucun fallback"
+  },
+  {
+   "category": "BLOCKED",
+   "entity": "driver",
+   "source_id": "44339446-412b-45f7-b5ab-4b7a4c39f697",
+   "target_id": null,
+   "reason_code": "TENANT_UNMAPPED",
+   "reason_text": "tenant Journal non mappé (D3) — aucun fallback"
+  },
+  {
+   "category": "BLOCKED",
+   "entity": "driver",
+   "source_id": "8aeb0bae-7d08-457f-b1be-c16d00cde7cf",
+   "target_id": null,
+   "reason_code": "TENANT_UNMAPPED",
+   "reason_text": "tenant Journal non mappé (D3) — aucun fallback"
+  },
+  {
+   "category": "BLOCKED",
+   "entity": "driver",
+   "source_id": "7e8f86ee-b1b5-44f3-8768-8280893e5e5c",
+   "target_id": null,
+   "reason_code": "TENANT_UNMAPPED",
+   "reason_text": "tenant Journal non mappé (D3) — aucun fallback"
+  },
+  {
+   "category": "BLOCKED",
+   "entity": "driver",
+   "source_id": "038a1c09-7e10-4e4c-a354-6e2dd7629b48",
+   "target_id": null,
+   "reason_code": "TENANT_UNMAPPED",
+   "reason_text": "tenant Journal non mappé (D3) — aucun fallback"
+  },
+  {
+   "category": "BLOCKED",
+   "entity": "driver",
+   "source_id": "efe4eb87-32a8-4c6d-8f39-068b054e85ca",
+   "target_id": null,
+   "reason_code": "TENANT_UNMAPPED",
+   "reason_text": "tenant Journal non mappé (D3) — aucun fallback"
+  },
+  {
+   "category": "BLOCKED",
+   "entity": "driver",
+   "source_id": "9ff3f545-1708-4b14-aadc-fb2501f4046d",
+   "target_id": null,
+   "reason_code": "TENANT_UNMAPPED",
+   "reason_text": "tenant Journal non mappé (D3) — aucun fallback"
+  },
+  {
+   "category": "BLOCKED",
+   "entity": "driver",
+   "source_id": "4835666d-3fd1-411e-9702-4e393dfcb500",
+   "target_id": null,
+   "reason_code": "TENANT_UNMAPPED",
+   "reason_text": "tenant Journal non mappé (D3) — aucun fallback"
+  },
+  {
+   "category": "BLOCKED",
+   "entity": "driver",
+   "source_id": "749d6e56-d32a-4d28-a9df-3136e6085ad1",
+   "target_id": null,
+   "reason_code": "TENANT_UNMAPPED",
+   "reason_text": "tenant Journal non mappé (D3) — aucun fallback"
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "fuel_card",
+   "source_id": "9a832fe8-bc90-4cf0-8a8a-2c950c203c12",
+   "target_id": null,
+   "reason_code": "CARD_NOT_FOUND",
+   "reason_text": "carte introuvable dans Documents — aucune création auto (D2)",
+   "documents_tenant_id": "default"
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "fuel_card",
+   "source_id": "3ba32b62-3805-450f-bfb2-9e96327cdcfd",
+   "target_id": null,
+   "reason_code": "CARD_NOT_FOUND",
+   "reason_text": "carte introuvable dans Documents — aucune création auto (D2)",
+   "documents_tenant_id": "default"
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "fuel_card",
+   "source_id": "c19bd5e3-ee3c-486b-b4a0-ba1bb4591013",
+   "target_id": null,
+   "reason_code": "CARD_NOT_FOUND",
+   "reason_text": "carte introuvable dans Documents — aucune création auto (D2)",
+   "documents_tenant_id": "default"
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "fuel_card",
+   "source_id": "6607fc4a-a0bf-42d8-b098-bf02e4267e54",
+   "target_id": null,
+   "reason_code": "CARD_NOT_FOUND",
+   "reason_text": "carte introuvable dans Documents — aucune création auto (D2)",
+   "documents_tenant_id": "default"
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "fuel_card_assignment",
+   "source_id": "adfb8452-e473-4a7d-a578-441b9eaab057",
+   "target_id": null,
+   "reason_code": "ASSIGNMENT_NEEDS_RESOLUTION",
+   "reason_text": "affectation datée migrée seulement si carte+cible déterminables sans ambiguïté",
+   "documents_tenant_id": "default"
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "fuel_card_assignment",
+   "source_id": "0dbd980c-90f8-46cb-a389-2bd14c1b399c",
+   "target_id": null,
+   "reason_code": "ASSIGNMENT_NEEDS_RESOLUTION",
+   "reason_text": "affectation datée migrée seulement si carte+cible déterminables sans ambiguïté",
+   "documents_tenant_id": "default"
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "fuel_card_assignment",
+   "source_id": "e6574ba3-23dc-4e3e-8679-6a77896655c6",
+   "target_id": null,
+   "reason_code": "ASSIGNMENT_NEEDS_RESOLUTION",
+   "reason_text": "affectation datée migrée seulement si carte+cible déterminables sans ambiguïté",
+   "documents_tenant_id": "default"
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "vehicle_assignment",
+   "source_id": "6641aed8-534b-4b4b-b4a4-84826178e9c6",
+   "target_id": null,
+   "reason_code": "RELATION_UNRESOLVED",
+   "reason_text": "véhicule non confirmé et/ou conducteur non résolu — jamais d'affectation inventée",
+   "documents_tenant_id": "default"
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "vehicle_assignment",
+   "source_id": "58cfdc9e-f8bd-419c-aec0-de45009d1de5",
+   "target_id": null,
+   "reason_code": "RELATION_UNRESOLVED",
+   "reason_text": "véhicule non confirmé et/ou conducteur non résolu — jamais d'affectation inventée",
+   "documents_tenant_id": "default"
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "vehicle_assignment",
+   "source_id": "2f4b4b14-675e-4d7c-9817-df65cff2dc63",
+   "target_id": null,
+   "reason_code": "RELATION_UNRESOLVED",
+   "reason_text": "véhicule non confirmé et/ou conducteur non résolu — jamais d'affectation inventée",
+   "documents_tenant_id": "default"
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "fuel_transaction",
+   "source_id": "2b86022a-7ee7-44e8-af36-a43e5b973333",
+   "target_id": null,
+   "reason_code": "VEHICLE_NOT_CONFIRMED",
+   "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+   "documents_tenant_id": "default",
+   "fx_status": "ok",
+   "anomalies": "RECALCULATE_ON_APPLY (D8)"
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "fuel_transaction",
+   "source_id": "3eb4a006-ced5-4e9d-a4e5-2454520526ab",
+   "target_id": null,
+   "reason_code": "VEHICLE_NOT_CONFIRMED",
+   "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+   "documents_tenant_id": "default",
+   "fx_status": "ok",
+   "anomalies": "RECALCULATE_ON_APPLY (D8)"
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "fuel_transaction",
+   "source_id": "47a866fa-e8b7-4f0f-8363-3fa9aea8d018",
+   "target_id": null,
+   "reason_code": "VEHICLE_NOT_CONFIRMED",
+   "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+   "documents_tenant_id": "default",
+   "fx_status": "ok",
+   "anomalies": "RECALCULATE_ON_APPLY (D8)"
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "fuel_transaction",
+   "source_id": "aca19340-2153-4e1d-a622-1d29071c85cd",
+   "target_id": null,
+   "reason_code": "VEHICLE_NOT_CONFIRMED",
+   "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+   "documents_tenant_id": "default",
+   "fx_status": "ok",
+   "anomalies": "RECALCULATE_ON_APPLY (D8)"
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "fuel_transaction",
+   "source_id": "ebd4f2df-8b80-4a13-a641-c911c0eaa3e8",
+   "target_id": null,
+   "reason_code": "VEHICLE_NOT_CONFIRMED",
+   "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+   "documents_tenant_id": "default",
+   "fx_status": "ok",
+   "anomalies": "RECALCULATE_ON_APPLY (D8)"
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "fuel_transaction",
+   "source_id": "ae2f94aa-5d05-4ae1-9e65-67e6c642dda5",
+   "target_id": null,
+   "reason_code": "VEHICLE_NOT_CONFIRMED",
+   "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+   "documents_tenant_id": "default",
+   "fx_status": "ok",
+   "anomalies": "RECALCULATE_ON_APPLY (D8)"
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "fuel_transaction",
+   "source_id": "feac6432-ff06-4ed4-92c8-7e617aa843ee",
+   "target_id": null,
+   "reason_code": "VEHICLE_NOT_CONFIRMED",
+   "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+   "documents_tenant_id": "default",
+   "fx_status": "ok",
+   "anomalies": "RECALCULATE_ON_APPLY (D8)"
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "fuel_transaction",
+   "source_id": "fa52579a-8a1d-457b-8095-9243338af81b",
+   "target_id": null,
+   "reason_code": "VEHICLE_NOT_CONFIRMED",
+   "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+   "documents_tenant_id": "default",
+   "fx_status": "ok",
+   "anomalies": "RECALCULATE_ON_APPLY (D8)"
+  },
+  {
+   "category": "READY",
+   "entity": "fuel_transaction",
+   "source_id": "e8a02ea5-d5ae-4c4d-8fd5-51a2334cc53e",
+   "target_id": null,
+   "reason_code": "OK",
+   "reason_text": "tenant mappé (sans véhicule requis)",
+   "documents_tenant_id": "default",
+   "fx_status": "ok",
+   "anomalies": "RECALCULATE_ON_APPLY (D8)"
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "fuel_transaction",
+   "source_id": "0b710642-f922-4fd4-8eb1-e46630926563",
+   "target_id": null,
+   "reason_code": "VEHICLE_NOT_CONFIRMED",
+   "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+   "documents_tenant_id": "default",
+   "fx_status": "ok",
+   "anomalies": "RECALCULATE_ON_APPLY (D8)"
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "fuel_transaction",
+   "source_id": "d688cf51-5df7-490a-b9fe-c9267cffc29f",
+   "target_id": null,
+   "reason_code": "VEHICLE_NOT_CONFIRMED",
+   "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+   "documents_tenant_id": "default",
+   "fx_status": "ok",
+   "anomalies": "RECALCULATE_ON_APPLY (D8)"
+  },
+  {
+   "category": "READY",
+   "entity": "fuel_transaction",
+   "source_id": "d4135cd0-8ba2-4c7d-b827-020960355408",
+   "target_id": null,
+   "reason_code": "OK",
+   "reason_text": "tenant mappé (sans véhicule requis)",
+   "documents_tenant_id": "default",
+   "fx_status": "ok",
+   "anomalies": "RECALCULATE_ON_APPLY (D8)"
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "fuel_transaction",
+   "source_id": "71425fa7-8695-4278-b227-357fbbbf0ef4",
+   "target_id": null,
+   "reason_code": "VEHICLE_NOT_CONFIRMED",
+   "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+   "documents_tenant_id": "default",
+   "fx_status": "ok",
+   "anomalies": "RECALCULATE_ON_APPLY (D8)"
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "fuel_transaction",
+   "source_id": "4849146a-8586-4962-8a39-0759170a6533",
+   "target_id": null,
+   "reason_code": "VEHICLE_NOT_CONFIRMED",
+   "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+   "documents_tenant_id": "default",
+   "fx_status": "ok",
+   "anomalies": "RECALCULATE_ON_APPLY (D8)"
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "fuel_transaction",
+   "source_id": "db40b9b5-15de-4231-bddd-ebec54f35f49",
+   "target_id": null,
+   "reason_code": "VEHICLE_NOT_CONFIRMED",
+   "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+   "documents_tenant_id": "default",
+   "fx_status": "ok",
+   "anomalies": "RECALCULATE_ON_APPLY (D8)"
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "fuel_transaction",
+   "source_id": "22415a16-7174-4de8-a0f0-c86fe10ef7ab",
+   "target_id": null,
+   "reason_code": "VEHICLE_NOT_CONFIRMED",
+   "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+   "documents_tenant_id": "default",
+   "fx_status": "ok",
+   "anomalies": "RECALCULATE_ON_APPLY (D8)"
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "fine",
+   "source_id": "f3757e2a-aefc-4626-94dd-17cbbc48b17b",
+   "target_id": null,
+   "reason_code": "VEHICLE_NOT_CONFIRMED",
+   "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+   "documents_tenant_id": "default",
+   "fine_status": "a_payer",
+   "cost_excluded": false
+  },
+  {
+   "category": "REVIEW_REQUIRED",
+   "entity": "fine",
+   "source_id": "69e0aed4-a399-4890-99cb-7669a09f2f8d",
+   "target_id": null,
+   "reason_code": "VEHICLE_NOT_CONFIRMED",
+   "reason_text": "véhicule non confirmé (quarantaine Lot A/D4)",
+   "documents_tenant_id": "default",
+   "fine_status": "payee",
+   "cost_excluded": false
+  }
+ ]
 }

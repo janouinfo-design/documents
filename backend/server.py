@@ -45,6 +45,7 @@ import fuel_statements as fst
 from drivers import DriverCreate, DriverUpdate, AssignmentCreate, AssignmentClose
 import fines as fin
 from fines import FineStatusChange, FinePaid
+import ai_assistant as ai
 from reports import build_fines_csv, build_fines_xlsx, build_fines_pdf
 
 ROOT_DIR = Path(__file__).parent
@@ -6312,6 +6313,119 @@ async def dashboard(request: Request):
         "vehicles_docs_conformes": vehicles_docs_conformes,
         "deadline_thresholds": th,
     }
+
+
+# ============================================================
+# Assistant IA (Gemini) — lecture seule, scope tenant + manager (admin/manager/superadmin)
+# ============================================================
+class AiAssistantQuery(BaseModel):
+    question: str
+    temperature: Optional[float] = 0.2
+
+
+class AiFineLetterQuery(BaseModel):
+    kind: Optional[str] = "contestation"  # contestation | reponse
+    instructions: Optional[str] = None
+
+
+def _ai_vehicle_brief(v: dict) -> dict:
+    return {k: v.get(k) for k in ("id", "plaque", "marque", "modele", "annee", "vin") if v.get(k)} | {
+        "carburant": v.get("type_carburant"), "statut": v.get("statut"),
+        "km": v.get("kilometrage"), "responsable": v.get("responsable"), "base": v.get("base"),
+    }
+
+
+def _ai_clean(d: dict, drop: tuple) -> dict:
+    return {k: v for k, v in d.items() if k not in drop and v not in (None, "", [], {})}
+
+
+@api_router.get("/ai/status")
+async def ai_status(user: dict = Depends(require_auth)):
+    """Indique si l'assistant IA est configuré (clé Gemini présente côté serveur)."""
+    return {"available": ai.is_available(), "model": ai.MODEL}
+
+
+@api_router.post("/ai/assistant", dependencies=[Depends(require_roles("admin", "manager"))])
+async def ai_assistant_query(payload: AiAssistantQuery, request: Request):
+    if not ai.is_available():
+        raise HTTPException(status_code=503, detail="Assistant IA non configuré (clé Gemini absente).")
+    q = (payload.question or "").strip()
+    if not q:
+        raise HTTPException(status_code=422, detail="Question vide.")
+    t = tid(request)
+    vehicles = await db.vehicles.find(
+        {"tenant_id": t, "archived": {"$ne": True}, **sq(request, "id")}, {"_id": 0}).to_list(400)
+    dl = await collect_deadlines(t, vehicle_ids=vscope(request))
+    fines = await _fines_rows(request, {})
+    kpis = await dashboard(request)
+    context = {
+        "synthese": kpis,
+        "vehicules": [_ai_vehicle_brief(v) for v in vehicles[:400]],
+        "echeances": [{"vehicule": i.get("plaque"), "categorie": i.get("category"),
+                       "label": i.get("label"), "date": i.get("date"),
+                       "jours_restants": i.get("days_remaining"), "statut": i.get("statut")}
+                      for i in dl["items"][:300]],
+        "amendes": [{"vehicule": f.get("plaque"), "statut": f.get("fine_status"),
+                     "montant": f.get("montant"), "devise": f.get("devise"),
+                     "date": f.get("date_infraction") or f.get("date"), "motif": f.get("motif")}
+                    for f in fines[:200]],
+    }
+    text = await ai.generate("chat", ai.build_prompt(context, q), payload.temperature or 0.2)
+    return {"text": text, "model": ai.MODEL}
+
+
+@api_router.post("/ai/vehicles/{vehicle_id}/compliance", dependencies=[Depends(require_roles("admin", "manager"))])
+async def ai_vehicle_compliance(vehicle_id: str, request: Request):
+    if not ai.is_available():
+        raise HTTPException(status_code=503, detail="Assistant IA non configuré (clé Gemini absente).")
+    v = await find_tenant_vehicle(request, vehicle_id)
+    t = tid(request)
+    dl = await collect_deadlines(t, vehicle_ids=[vehicle_id])
+    fines = await _fines_rows(request, {"vehicle_id": vehicle_id})
+    context = {
+        "vehicule": _ai_vehicle_brief(v),
+        "echeances": [{"categorie": i.get("category"), "label": i.get("label"), "date": i.get("date"),
+                       "jours_restants": i.get("days_remaining"), "statut": i.get("statut")}
+                      for i in dl["items"]],
+        "amendes": [{"statut": f.get("fine_status"), "montant": f.get("montant"),
+                     "date": f.get("date_infraction") or f.get("date")} for f in fines],
+    }
+    req = (f"Rédige une synthèse de conformité pour le véhicule {v.get('plaque')} "
+           f"({v.get('marque')} {v.get('modele')}).")
+    text = await ai.generate("compliance_summary", ai.build_prompt(context, req), 0.2)
+    return {"text": text, "model": ai.MODEL}
+
+
+@api_router.post("/ai/fines/{doc_id}/letter", dependencies=[Depends(require_roles("admin", "manager"))])
+async def ai_fine_letter(doc_id: str, payload: AiFineLetterQuery, request: Request):
+    if not ai.is_available():
+        raise HTTPException(status_code=503, detail="Assistant IA non configuré (clé Gemini absente).")
+    fine = await get_fine(doc_id, request)  # 404 cross-tenant / hors scope
+    context = _ai_clean(fine, drop=("pages", "extracted_fields", "storage_path", "sha256",
+                                    "content_type", "size", "history"))
+    kind = (payload.kind or "contestation").strip()
+    kind_fr = "une contestation" if kind == "contestation" else "une réponse à l'autorité"
+    extra = f" Consignes supplémentaires : {payload.instructions}" if payload.instructions else ""
+    req = (f"Rédige {kind_fr} concernant cette amende, en français. Base-toi uniquement sur les faits "
+           f"fournis et laisse des [champs à compléter] si nécessaire.{extra}")
+    text = await ai.generate("fine_response", ai.build_prompt(context, req), 0.3)
+    return {"text": text, "model": ai.MODEL}
+
+
+@api_router.post("/ai/documents/{doc_id}/summary", dependencies=[Depends(require_roles("admin", "manager"))])
+async def ai_document_summary(doc_id: str, request: Request):
+    if not ai.is_available():
+        raise HTTPException(status_code=503, detail="Assistant IA non configuré (clé Gemini absente).")
+    doc = await db.documents.find_one(
+        {"id": doc_id, "tenant_id": tid(request), "is_deleted": False}, {"_id": 0})
+    if not doc or not in_scope(request, doc.get("vehicle_id")):
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    context = _ai_clean(doc, drop=("pages", "storage_path", "sha256", "content_type", "size",
+                                   "tenant_id", "is_deleted"))
+    req = ("Résume ce document et met en avant les dates d'échéance/expiration, les montants et les "
+           "points d'attention. Si c'est une facture ou une amende, précise le montant et l'échéance.")
+    text = await ai.generate("document_summary", ai.build_prompt(context, req), 0.2)
+    return {"text": text, "model": ai.MODEL}
 
 
 @api_router.get("/timeline")

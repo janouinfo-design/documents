@@ -30,6 +30,7 @@ import FuelStatementsPage from "@/pages/FuelStatementsPage";
 import MyFuelPage from "@/pages/MyFuelPage";
 import MyFinesPage from "@/pages/MyFinesPage";
 import MyVehiclesPage from "@/pages/MyVehiclesPage";
+import AiAssistantPage from "@/pages/AiAssistantPage";
 import SsoNotConfigured from "@/pages/SsoNotConfigured";
 import { useLocation } from "react-router-dom";
 
@@ -78,6 +79,7 @@ function RoleRoutes() {
       {can(user, "pages.statements") && <Route path="/energie/releves" element={<FuelStatementsPage />} />}
       <Route path="/conducteurs" element={<DriversPage />} />
       <Route path="/amendes" element={<FinesPage />} />
+      {can(user, "ai.use") && <Route path="/assistant" element={<AiAssistantPage />} />}
       <Route path="/alertes" element={<AlertsPage />} />
       {can(user, "pages.integrity") && <Route path="/integrite" element={<IntegrityPage />} />}
       {can(user, "console") && <Route path="/admin" element={<AdminPage />} />}

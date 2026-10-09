@@ -291,6 +291,11 @@ export const adminUpdateIntegration = (tid, data) =>
 
 // Documents V2 — page centrale, fiche, catégories, profils
 export const getAllDocuments = (params = {}) => http.get("/documents", { params }).then((r) => r.data);
+export const aiStatus = () => http.get("/ai/status").then((r) => r.data);
+export const aiAssistant = (question, temperature = 0.2) => http.post("/ai/assistant", { question, temperature }).then((r) => r.data);
+export const aiVehicleCompliance = (vehicleId) => http.post(`/ai/vehicles/${vehicleId}/compliance`).then((r) => r.data);
+export const aiFineLetter = (fineId, body = {}) => http.post(`/ai/fines/${fineId}/letter`, body).then((r) => r.data);
+export const aiDocumentSummary = (docId) => http.post(`/ai/documents/${docId}/summary`).then((r) => r.data);
 export const getVehiclesArchive = () => http.get("/vehicles-archive").then((r) => r.data);
 export const getArchiveDocuments = (id) => http.get(`/vehicles-archive/${id}/documents`).then((r) => r.data);
 export const restoreArchivedVehicle = (id) => http.post(`/vehicles-archive/${id}/restore`).then((r) => r.data);

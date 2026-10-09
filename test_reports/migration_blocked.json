@@ -1,1 +1,74 @@
-[]
+[
+ {
+  "category": "BLOCKED",
+  "entity": "driver",
+  "source_id": "f28fb4c2-a538-447c-b180-79b6c5e40b17",
+  "target_id": null,
+  "reason_code": "TENANT_UNMAPPED",
+  "reason_text": "tenant Journal non mappé (D3) — aucun fallback"
+ },
+ {
+  "category": "BLOCKED",
+  "entity": "driver",
+  "source_id": "44339446-412b-45f7-b5ab-4b7a4c39f697",
+  "target_id": null,
+  "reason_code": "TENANT_UNMAPPED",
+  "reason_text": "tenant Journal non mappé (D3) — aucun fallback"
+ },
+ {
+  "category": "BLOCKED",
+  "entity": "driver",
+  "source_id": "8aeb0bae-7d08-457f-b1be-c16d00cde7cf",
+  "target_id": null,
+  "reason_code": "TENANT_UNMAPPED",
+  "reason_text": "tenant Journal non mappé (D3) — aucun fallback"
+ },
+ {
+  "category": "BLOCKED",
+  "entity": "driver",
+  "source_id": "7e8f86ee-b1b5-44f3-8768-8280893e5e5c",
+  "target_id": null,
+  "reason_code": "TENANT_UNMAPPED",
+  "reason_text": "tenant Journal non mappé (D3) — aucun fallback"
+ },
+ {
+  "category": "BLOCKED",
+  "entity": "driver",
+  "source_id": "038a1c09-7e10-4e4c-a354-6e2dd7629b48",
+  "target_id": null,
+  "reason_code": "TENANT_UNMAPPED",
+  "reason_text": "tenant Journal non mappé (D3) — aucun fallback"
+ },
+ {
+  "category": "BLOCKED",
+  "entity": "driver",
+  "source_id": "efe4eb87-32a8-4c6d-8f39-068b054e85ca",
+  "target_id": null,
+  "reason_code": "TENANT_UNMAPPED",
+  "reason_text": "tenant Journal non mappé (D3) — aucun fallback"
+ },
+ {
+  "category": "BLOCKED",
+  "entity": "driver",
+  "source_id": "9ff3f545-1708-4b14-aadc-fb2501f4046d",
+  "target_id": null,
+  "reason_code": "TENANT_UNMAPPED",
+  "reason_text": "tenant Journal non mappé (D3) — aucun fallback"
+ },
+ {
+  "category": "BLOCKED",
+  "entity": "driver",
+  "source_id": "4835666d-3fd1-411e-9702-4e393dfcb500",
+  "target_id": null,
+  "reason_code": "TENANT_UNMAPPED",
+  "reason_text": "tenant Journal non mappé (D3) — aucun fallback"
+ },
+ {
+  "category": "BLOCKED",
+  "entity": "driver",
+  "source_id": "749d6e56-d32a-4d28-a9df-3136e6085ad1",
+  "target_id": null,
+  "reason_code": "TENANT_UNMAPPED",
+  "reason_text": "tenant Journal non mappé (D3) — aucun fallback"
+ }
+]

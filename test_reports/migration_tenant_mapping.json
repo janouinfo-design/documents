@@ -1,1 +1,34 @@
-[]
+[
+ {
+  "legacy_tenant_id": "default",
+  "match_key": "navixy_master_user_id",
+  "match_value": 121349,
+  "status": "MATCHED",
+  "documents_tenant_id": "default",
+  "candidates": [
+   {
+    "tenant_id": "default",
+    "name": "Compte pilote"
+   }
+  ],
+  "reason": "found"
+ },
+ {
+  "legacy_tenant_id": "163e5600-8036-4810-9266-5385748d4f44",
+  "match_key": "navixy_master_user_id",
+  "match_value": 175698,
+  "status": "UNMAPPED",
+  "documents_tenant_id": null,
+  "candidates": [],
+  "reason": "not_found"
+ },
+ {
+  "legacy_tenant_id": "55d26c74-fda6-47ae-ba89-b909a8ec8f53",
+  "match_key": "navixy_master_user_id",
+  "match_value": 204310,
+  "status": "UNMAPPED",
+  "documents_tenant_id": null,
+  "candidates": [],
+  "reason": "not_found"
+ }
+]
