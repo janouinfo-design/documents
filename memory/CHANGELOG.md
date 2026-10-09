@@ -8,6 +8,11 @@ Historique append-only de tout ce qui a été implémenté/déployé/clos (extra
 - Comptes : `admin@demo-logitrak.ch`, `driver@demo-logitrak.ch` (lié conducteur actif Marc Rochat/Tesla), `readonly@demo-logitrak.ch` ; mots de passe uniquement dans `memory/test_credentials.md` §6 (gitignored) + `memory/demo_logitrak_credentials.json` (gitignored).
 - Preuves : `test_reports/demo_logitrak_seed.py` (idempotent) + `demo_logitrak_{baseline,result,inventory,verify}.json` + `demo_logitrak_report.md`. **Verify API = 17/17 PASS** ; isolation `DEFAULT_UNCHANGED=PASS` + `OTHER_TENANTS_UNCHANGED=PASS` (26 tenants). Aucun déploiement, aucune migration. Smoke UI confirmé (dashboard + énergie).
 
+## 2026-10-09 — Démo `demo-logitrak` : commandes reset/snapshot + parcours commercial
+- `reset` : remet le tenant à l'état initial (purge strictement `tenant_id=demo-logitrak`, conserve tenant + 3 comptes, puis re-seed + mark + verify). Idempotent. Testé : `DEMO RESET=PASS`, `DEFAULT UNCHANGED=PASS`, `OTHER TENANTS UNCHANGED=PASS`. Blobs storage distants d'anciens documents = orphelins non supprimables (objstore 405, 0 réf DB, non bloquant).
+- `snapshot` : contrôle de santé lecture seule exécutable à tout moment → `DEMO TENANT HEALTH=PASS`, `DEFAULT UNCHANGED=PASS`, `OTHER TENANTS UNCHANGED=PASS` (artefact `demo_logitrak_snapshot.json`).
+- `test_reports/demo_logitrak_walkthrough.md` : parcours de démonstration 5 min en 9 étapes (dashboard → véhicules/EV → conducteurs → cartes → énergie → documents → amendes → chauffeur → read_only) avec entités nommées.
+
 
 ## Implemented (2026-06-04)
 - [x] Backend complet: vehicles CRUD, dashboard KPIs, timeline, documents, inspections, upload/serve.

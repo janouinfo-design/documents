@@ -160,6 +160,17 @@ def baseline():
     print("BASELINE écrite :", BASELINE)
 
 
+def isolation_diff():
+    """Compare le fingerprint courant (hors T) à la baseline → différences default / autres tenants."""
+    before, after = json.loads(BASELINE.read_text()), fingerprint()
+    keys = sorted(set(before["counts"]) | set(after["counts"]))
+    diff = {k: (before["counts"].get(k), after["counts"].get(k)) for k in keys
+            if before["counts"].get(k) != after["counts"].get(k) or before["hashes"].get(k) != after["hashes"].get(k)}
+    diff_default = {k: v for k, v in diff.items() if k.endswith("|default")}
+    diff_others = {k: v for k, v in diff.items() if not k.endswith("|default")}
+    return diff_default, diff_others, before["tenants_ids"] == after["tenants_ids"]
+
+
 # =====================================================================================================================
 #  DONNÉES DÉMO
 # =====================================================================================================================
@@ -696,15 +707,10 @@ def verify():
 
     # ISOLATION
     if BASELINE.exists():
-        before, after = json.loads(BASELINE.read_text()), fingerprint()
-        keys = sorted(set(before["counts"]) | set(after["counts"]))
-        diff = {k: (before["counts"].get(k), after["counts"].get(k)) for k in keys
-                if before["counts"].get(k) != after["counts"].get(k) or before["hashes"].get(k) != after["hashes"].get(k)}
-        diff_default = {k: v for k, v in diff.items() if k.endswith("|default")}
-        diff_others = {k: v for k, v in diff.items() if not k.endswith("|default")}
+        diff_default, diff_others, tenants_match = isolation_diff()
         chk("DEFAULT_UNCHANGED (default identique avant/après)", not diff_default, diff_default or "aucune différence")
         chk("OTHER_TENANTS_UNCHANGED (26 autres tenants identiques)",
-            not diff_others and before["tenants_ids"] == after["tenants_ids"], diff_others or "aucune différence")
+            not diff_others and tenants_match, diff_others or "aucune différence")
     else:
         chk("ISOLATION (baseline absente)", False, "baseline manquante — exécuter baseline avant seed")
 
@@ -771,6 +777,69 @@ def report():
     return ver["verdict"]
 
 
+def reset():
+    """Remet `demo-logitrak` dans son état initial : purge tenant-scopée (sauf tenant + comptes) puis re-seed + mark + verify.
+    Idempotent. N'écrit JAMAIS hors tenant T (filtre `tenant_id=T` sur chaque delete_many)."""
+    if not BASELINE.exists():
+        die("baseline absente : exécuter `baseline` AVANT reset")
+    guard(T)
+    keep = {"tenants", "users", "login_attempts"}  # tenant + comptes de démo conservés (logins/mots de passe stables)
+    deleted = {}
+    for c in sorted(x for x in db.list_collection_names() if not x.startswith("system.")):
+        if c in keep:
+            continue
+        r = db[c].delete_many({"tenant_id": T})
+        if r.deleted_count:
+            deleted[c] = r.deleted_count
+    db.users.update_many({"tenant_id": T}, {"$set": {"disabled": False}})  # réactive d'éventuels comptes désactivés en démo
+    if RESULT.exists():
+        RESULT.unlink()  # ids recréés proprement par le re-seed
+    print("RESET — purge tenant", T, ":", deleted or "aucune donnée métier")
+    print("NOTE blobs : les objets de stockage distants des anciens documents restent orphelins non supprimables "
+          "(objstore HTTP 405, 0 référence DB, non bloquant).")
+    seed()
+    mark()
+    v = verify()
+    dd, do, tm = isolation_diff()
+    print("\n=== RESET VERDICTS ===")
+    print("DEMO RESET =", PASS if v else FAIL)
+    print("DEFAULT UNCHANGED =", PASS if not dd else FAIL, dd or "")
+    print("OTHER TENANTS UNCHANGED =", PASS if (not do and tm) else FAIL, do or "")
+    return v and not dd and not do and tm
+
+
+def snapshot():
+    """Contrôle de santé LECTURE SEULE, exécutable à tout moment : santé du tenant démo + isolation default/autres."""
+    pw = load_or_make_passwords()
+    hA = login(ACCOUNTS["ADMIN"][0], pw["ADMIN"])
+    hD = login(ACCOUNTS["DRIVER"][0], pw["DRIVER"])
+    hR = login(ACCOUNTS["READONLY"][0], pw["READONLY"])
+    vehs = ok(api(hA, "GET", "/vehicles"))
+    drivers = ok(api(hA, "GET", "/drivers"))
+    cards = ok(api(hA, "GET", "/fuel-cards"))
+    fines = ok(api(hA, "GET", "/fines"))
+    energy = ok(api(hA, "GET", "/energy"))
+    mv = ok(api(hD, "GET", "/me/vehicles"))
+    ro_put = api(hR, "PUT", f"/vehicles/{vehs[0]['id']}", {"modele": "X"}).status_code if vehs else 0
+    health = {"vehicules": len(vehs), "conducteurs": len(drivers), "cartes": len(cards["items"]),
+              "transactions": energy["totals"]["transactions"], "amendes": fines["total"],
+              "me_vehicules": mv["total"], "read_only_put": ro_put, "tenant_present": db.tenants.count_documents({"id": T})}
+    health_ok = (health["vehicules"] == 10 and health["conducteurs"] == 6 and health["cartes"] == 4
+                 and health["transactions"] >= 15 and health["amendes"] >= 4 and health["me_vehicules"] >= 1
+                 and health["read_only_put"] == 403 and health["tenant_present"] == 1)
+    dd, do, tm = isolation_diff() if BASELINE.exists() else ({}, {}, False)
+    print("SANTÉ DÉMO :", json.dumps(health, ensure_ascii=False))
+    print("DEMO TENANT HEALTH =", PASS if health_ok else FAIL)
+    print("DEFAULT UNCHANGED =", PASS if (BASELINE.exists() and not dd) else FAIL, dd or "")
+    print("OTHER TENANTS UNCHANGED =", PASS if (BASELINE.exists() and not do and tm) else FAIL, do or "")
+    verdict = health_ok and BASELINE.exists() and not dd and not do and tm
+    (REP / "demo_logitrak_snapshot.json").write_text(json.dumps(
+        {"health": health, "health_ok": health_ok, "default_unchanged": not dd,
+         "other_tenants_unchanged": not do and tm, "verdict": PASS if verdict else FAIL},
+        indent=1, ensure_ascii=False, default=str))
+    return verdict
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "inventory"
     if cmd == "baseline":
@@ -785,6 +854,10 @@ if __name__ == "__main__":
         inventory()
     elif cmd == "report":
         sys.exit(0 if report() == PASS else 1)
+    elif cmd == "reset":
+        sys.exit(0 if reset() else 1)
+    elif cmd == "snapshot":
+        sys.exit(0 if snapshot() else 1)
     elif cmd == "all":
         baseline()
         seed()
@@ -793,4 +866,4 @@ if __name__ == "__main__":
         report()
         sys.exit(0 if v else 1)
     else:
-        die(f"mode inconnu {cmd} (baseline | seed | mark | verify | inventory | report | all)")
+        die(f"mode inconnu {cmd} (baseline | seed | mark | verify | inventory | report | reset | snapshot | all)")

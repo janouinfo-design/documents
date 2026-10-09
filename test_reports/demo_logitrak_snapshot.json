@@ -1,0 +1,16 @@
+{
+ "health": {
+  "vehicules": 10,
+  "conducteurs": 6,
+  "cartes": 4,
+  "transactions": 16,
+  "amendes": 4,
+  "me_vehicules": 1,
+  "read_only_put": 403,
+  "tenant_present": 1
+ },
+ "health_ok": true,
+ "default_unchanged": true,
+ "other_tenants_unchanged": true,
+ "verdict": "PASS"
+}
