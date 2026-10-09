@@ -133,6 +133,21 @@ class ChangePasswordPayload(BaseModel):
     new_password: str
 
 
+async def _enrich_tenant_demo(user: dict) -> dict:
+    """Ajoute, à la charge utilisateur renvoyée (login / me), un drapeau d'affichage `tenant_demo`
+    dérivé du marquage `demo_seed` du tenant (bandeau « Données de démonstration »). Lecture seule,
+    aucune incidence sur l'authentification."""
+    if user.get("role") == "superadmin":
+        user["tenant_demo"] = False
+        return user
+    t = await db.tenants.find_one({"id": user.get("tenant_id") or "default"},
+                                  {"_id": 0, "demo_seed": 1, "name": 1})
+    user["tenant_demo"] = bool(t and t.get("demo_seed"))
+    user["tenant_name"] = (t or {}).get("name")
+    return user
+
+
+
 @auth_router.post("/login")
 async def auth_login(payload: LoginPayload, request: Request):
     email = payload.email.strip().lower()
@@ -151,6 +166,7 @@ async def auth_login(payload: LoginPayload, request: Request):
             raise HTTPException(status_code=401, detail="Compte client désactivé")
     await clear_failures(db, identifier)
     safe = {k: v for k, v in user.items() if k not in ("_id", "password_hash")}
+    safe = await _enrich_tenant_demo(safe)
     return {"token": create_access_token(user["id"], user["email"], user.get("token_version", 0)),
             "user": safe}
 
@@ -272,7 +288,7 @@ async def auth_navixy_exchange(payload: NavixyExchangePayload, request: Request)
 
 @auth_router.get("/me")
 async def auth_me(user: dict = Depends(require_auth)):
-    return user
+    return await _enrich_tenant_demo(dict(user))
 
 
 @auth_router.post("/change-password")

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutDashboard, Truck, CalendarClock, Bell, Layers3, UserCircle2, KeyRound, LogOut, ShieldCheck, Building2, Eye, FolderOpen, Wallet, Fuel, GitMerge, Users, Gavel } from "lucide-react";
+import { LayoutDashboard, Truck, CalendarClock, Bell, Layers3, UserCircle2, KeyRound, LogOut, ShieldCheck, Building2, Eye, FolderOpen, Wallet, Fuel, GitMerge, Users, Gavel, FlaskConical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getActingTenant, setActingTenant, getPendingReviewCount } from "@/lib/api";
 import {
@@ -145,6 +145,18 @@ function UserMenu() {
   );
 }
 
+function DemoBanner() {
+  const { user } = useAuth();
+  if (!user?.tenant_demo) return null;
+  return (
+    <div data-testid="demo-mode-banner"
+      className="flex items-center justify-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-center text-xs font-medium text-amber-800 sm:px-6 lg:px-8">
+      <FlaskConical className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+      <span>Données de démonstration{user?.tenant_name ? ` · ${user.tenant_name}` : ""} — environnement de présentation</span>
+    </div>
+  );
+}
+
 function ActingTenantBanner() {
   const { user } = useAuth();
   const acting = getActingTenant();
@@ -169,6 +181,7 @@ export default function Layout({ children }) {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/85 backdrop-blur-md">
+        <DemoBanner />
         <ActingTenantBanner />
         <div className="mx-auto flex h-16 max-w-[1400px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
           <Brand />

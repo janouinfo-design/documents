@@ -12,6 +12,19 @@ Repères constants (les dates sont relatives au jour du dernier seed/reset) :
 - Cartes : Migrol ••1182 (active) · Shell ••4473 (active) · **Tamoil ••7290 (expirée)** · **Avia ••3651 (suspendue)**.
 - Amendes : **GE-2026-114502 (ouverte)** · **ZH-2026-203994 (en retard)** · **VD-2026-090877 (contestée)** · **VD-2026-088211 (payée)**.
 
+### Réglage fin des dates (optionnel, avant le reset)
+Les dates sont relatives au jour du seed/reset. Pour caler précisément certains cas sur le jour de la présentation, définir des variables d'env avant `reset` (valeurs = jours relatifs à aujourd'hui) :
+- `DEMO_DOC_EXPIRED_DAYS` (défaut `-15`) — document expiré (contrôle technique BMW)
+- `DEMO_DOC_SOON_DAYS` (défaut `20`) — échéance documentaire < 30 j (assurance Passat)
+- `DEMO_CARD_EXPIRED_DAYS` (défaut `-20`) — carte carburant expirée (Tamoil)
+- `DEMO_FINE_OPEN_DAYS` (défaut `22`) — amende ouverte (échéance future, Tesla)
+- `DEMO_FINE_LATE_DAYS` (défaut `-6`) — amende en retard (BMW)
+
+Exemple : `DEMO_DOC_SOON_DAYS=7 DEMO_FINE_LATE_DAYS=-2 python3 test_reports/demo_logitrak_seed.py reset`
+
+### Bandeau « Données de démonstration »
+Un bandeau ambre discret s'affiche en haut de toutes les pages **uniquement** pour les tenants marqués `demo_seed=true` (donc `demo-logitrak`), pour tous les rôles. Le tenant `default` et les autres ne l'affichent jamais. Rien à activer côté démo.
+
 ---
 
 ## 1. Tableau de bord (≈ 30 s) — « tout voir d'un coup d'œil »

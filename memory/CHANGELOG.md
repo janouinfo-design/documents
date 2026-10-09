@@ -13,6 +13,11 @@ Historique append-only de tout ce qui a été implémenté/déployé/clos (extra
 - `snapshot` : contrôle de santé lecture seule exécutable à tout moment → `DEMO TENANT HEALTH=PASS`, `DEFAULT UNCHANGED=PASS`, `OTHER TENANTS UNCHANGED=PASS` (artefact `demo_logitrak_snapshot.json`).
 - `test_reports/demo_logitrak_walkthrough.md` : parcours de démonstration 5 min en 9 étapes (dashboard → véhicules/EV → conducteurs → cartes → énergie → documents → amendes → chauffeur → read_only) avec entités nommées.
 
+## 2026-10-09 — Démo : captures commerciales + dates ajustables + bandeau « Données de démonstration »
+- **Captures commerciales** : jeu de 9 captures (dashboard, véhicules, fiche EV Tesla, amendes, énergie, mes-véhicules, mes-pleins, mes-amendes, + preuve default sans bandeau) via `screenshot_tool`.
+- **Dates ajustables** (`test_reports/demo_logitrak_seed.py`) : variables d'env `DEMO_DOC_EXPIRED_DAYS` (-15), `DEMO_DOC_SOON_DAYS` (20), `DEMO_CARD_EXPIRED_DAYS` (-20), `DEMO_FINE_OPEN_DAYS` (22), `DEMO_FINE_LATE_DAYS` (-6) pour caler les cas « expiré / <30j / amendes » le jour de la présentation (défauts = état actuel, aucun changement fonctionnel).
+- **Bandeau mode présentation** : `/auth/login` + `/auth/me` renvoient `tenant_demo` (dérivé du marquage `demo_seed` du tenant ; route-level, aucune modification de l'authentification/hash/JWT/session). Frontend `components/Layout.jsx` → `DemoBanner` (ambre discret, `data-testid=demo-mode-banner`) affiché uniquement si `user.tenant_demo`. Vérifié : demo admin/driver → bandeau présent ; `default` admin → bandeau absent (count=0).
+
 
 ## Implemented (2026-06-04)
 - [x] Backend complet: vehicles CRUD, dashboard KPIs, timeline, documents, inspections, upload/serve.

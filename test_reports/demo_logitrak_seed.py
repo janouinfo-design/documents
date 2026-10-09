@@ -50,9 +50,29 @@ ACCOUNTS = {"ADMIN": ("admin@demo-logitrak.ch", "admin", "Administration Démo")
 db = MongoClient(ENV["MONGO_URL"])[ENV["DB_NAME"]]
 TODAY = date.today()
 D = lambda n: (TODAY + timedelta(days=n)).isoformat()  # noqa: E731
+
+
+def _off(name, default):
+    try:
+        return int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+# Offsets (jours relatifs au seed/reset) ajustables par variable d'env pour caler les cas visibles le jour de la démo
+OFF_DOC_EXPIRED = _off("DEMO_DOC_EXPIRED_DAYS", -15)   # document expiré (contrôle technique BMW)
+OFF_DOC_SOON = _off("DEMO_DOC_SOON_DAYS", 20)          # échéance documentaire < 30 jours (assurance Passat)
+OFF_CARD_EXPIRED = _off("DEMO_CARD_EXPIRED_DAYS", -20)  # carte carburant expirée (Tamoil)
+OFF_FINE_OPEN = _off("DEMO_FINE_OPEN_DAYS", 22)        # amende ouverte (échéance future, Tesla)
+OFF_FINE_LATE = _off("DEMO_FINE_LATE_DAYS", -6)        # amende en retard (délai dépassé, BMW)
+
 PASS, FAIL = "PASS", "FAIL"
 VOLATILE = {"vehicles": ("updated_at", "kilometrage", "conso_moyenne_l_100km", "conso_source", "conso_updated_at",
-                         "conso_reelle_l_100km", "conso_reelle_source")}
+                         "conso_reelle_l_100km", "conso_reelle_source", "integrations")}
+# Collections mutées en continu par les jobs d'arrière-plan (scheduler Navixy horaire, alertes quotidiennes) ou dérivées
+# — exclues du fingerprint d'ISOLATION : le code démo n'y écrit JAMAIS pour un tenant étranger (scope backend + guard T).
+# Toutes les collections de données métier (vehicles hors sous-doc `integrations`, documents, drivers, fuel_*, …) restent comparées.
+ISO_SKIP = {"login_attempts", "tenant_integrations", "alerts", "fuel_snapshots", "audit_logs"}
 PNG = (b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
        b"\x00\x00\x00\rIDATx\x9cc\xf8\xff\xff?\x00\x05\xfe\x02\xfe\xa7V\xbd\xfa\x00\x00\x00\x00IEND\xaeB`\x82")
 PDF = (b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
@@ -139,7 +159,7 @@ def write_test_credentials(pw):
 # --- baseline / fingerprint (tous tenants SAUF T) --------------------------------------------------------------------
 def fingerprint():
     fp = {"counts": {}, "hashes": {}}
-    for c in sorted(x for x in db.list_collection_names() if not x.startswith("system.") and x != "login_attempts"):
+    for c in sorted(x for x in db.list_collection_names() if not x.startswith("system.") and x not in ISO_SKIP):
         key = "id" if c == "tenants" else "tenant_id"
         for t in sorted(str(x) for x in db[c].distinct(key, {key: {"$ne": T}})):
             h, n = hashlib.sha256(), 0
@@ -490,7 +510,7 @@ def seed():
                 expire_le=D(610), activee_le=D(-280), plafond_mois=1200, produits_autorises=["Diesel"],
                 notes="Carte véhicule de fonction.")
     ensure_card(hA, "card_tamoil", "Tamoil", "7290", [(V["bmw"], D(-500), None)], ids,
-                expire_le=D(-20), activee_le=D(-900), plafond_mois=1000, produits_autorises=["Diesel"],
+                expire_le=D(OFF_CARD_EXPIRED), activee_le=D(-900), plafond_mois=1000, produits_autorises=["Diesel"],
                 notes="Carte arrivée à expiration — à renouveler.")
     ensure_card(hA, "card_avia", "Avia", "3651", [(V["sprinter"], D(-600), None)], ids,
                 statut="suspendue", expire_le=D(300), activee_le=D(-600), plafond_mois=2000,
@@ -533,13 +553,13 @@ def seed():
     ensure_plein(hA, "ev_rav4", V["rav4"], D(-22), 7.10, ids, kwh=16.5, station="Groupe E Move Fribourg", km=23800)
 
     # --- amendes : ouverte (D1/Tesla) · payée (D2/Passat) · en retard (D3/BMW) · contestée (D4/Mégane) ---
-    ensure_fine(hA, "fine_open", V["tesla"], "GE-2026-114502", "Fondation sécurité routière Genève", 120.0, D(22), ids,
+    ensure_fine(hA, "fine_open", V["tesla"], "GE-2026-114502", "Fondation sécurité routière Genève", 120.0, D(OFF_FINE_OPEN), ids,
                 driver_id=ids["d_marc"], infraction="speeding", lieu={"ville": "Genève", "canton": "GE", "lieu": "Pont du Mont-Blanc"},
                 notes_internes="À régler avant échéance.", dossier="DOS-2026-0145")
     fid_paid = ensure_fine(hA, "fine_paid", V["passat"], "VD-2026-088211", "Police cantonale vaudoise", 40.0, D(10), ids,
                            driver_id=ids["d_sophie"], infraction="parking", lieu={"ville": "Lausanne", "canton": "VD"},
                            dossier="DOS-2026-0132")
-    fid_late = ensure_fine(hA, "fine_late", V["bmw"], "ZH-2026-203994", "Stadtpolizei Zürich", 250.0, D(-6), ids,
+    fid_late = ensure_fine(hA, "fine_late", V["bmw"], "ZH-2026-203994", "Stadtpolizei Zürich", 250.0, D(OFF_FINE_LATE), ids,
                            driver_id=ids["d_daniel"], infraction="red_light", lieu={"ville": "Zürich", "canton": "ZH"},
                            priorite="high", notes_internes="Relance reçue — traiter en priorité.", dossier="DOS-2026-0118")
     fid_disp = ensure_fine(hA, "fine_disputed", V["megane"], "VD-2026-090877", "Police municipale Lausanne", 60.0, D(18), ids,
@@ -560,11 +580,11 @@ def seed():
     upload_doc(hA, "doc_leasing_tesla", V["tesla"], "contrat-leasing-tesla.pdf", "Leasing", ids, blob=PDF, ctype="application/pdf")
     # document EXPIRÉ (contrôle technique BMW, échéance passée)
     did_ct = upload_doc(hA, "doc_ct_bmw", V["bmw"], "expertise-bmw-2024.pdf", "Contrôle technique", ids, blob=PDF, ctype="application/pdf")
-    ok(api(hA, "PATCH", f"/documents/{did_ct}", {"date_expiration": D(-15), "fournisseur": "StVA Zürich",
+    ok(api(hA, "PATCH", f"/documents/{did_ct}", {"date_expiration": D(OFF_DOC_EXPIRED), "fournisseur": "StVA Zürich",
                                                  "numero": "EXP-ZH-2024-5521"}))
     # document < 30 JOURS (assurance Passat, bientôt échue)
     did_as = upload_doc(hA, "doc_assurance_passat", V["passat"], "police-assurance-passat.pdf", "Assurance", ids, blob=PDF, ctype="application/pdf")
-    ok(api(hA, "PATCH", f"/documents/{did_as}", {"date_expiration": D(20), "fournisseur": "Zurich Assurances",
+    ok(api(hA, "PATCH", f"/documents/{did_as}", {"date_expiration": D(OFF_DOC_SOON), "fournisseur": "Zurich Assurances",
                                                  "numero": "POL-903221", "preavis_jours": 30}))
     # document EN ATTENTE de validation (a_verifier)
     did_av = upload_doc(hA, "doc_a_verifier", V["megane"], "document-a-verifier-megane.png", "Divers", ids)
