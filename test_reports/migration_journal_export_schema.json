@@ -1,0 +1,1318 @@
+{
+ "legacy_source": "journal",
+ "tenant_match_key": "navixy_master_user_id",
+ "idempotence_key": [
+  "tenant_id(Documents)",
+  "legacy_source",
+  "legacy_id"
+ ],
+ "files": [
+  {
+   "filename": "tenants.json",
+   "entity": "tenant",
+   "required": true,
+   "legacy_id_field": "legacy_tenant_id",
+   "decision": "D3 — mapping par clé technique uniquement ; name jamais utilisé ; aucun fallback default.",
+   "fields": [
+    {
+     "name": "legacy_tenant_id",
+     "type": "string",
+     "required": true,
+     "legacy_id": true,
+     "relation": null,
+     "enum": null,
+     "note": "UUID/clé tenant Journal — identifiant legacy",
+     "do_not_migrate": false
+    },
+    {
+     "name": "navixy_master_user_id",
+     "type": "int",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "D3 : clé de correspondance → tenant_integrations.master_user_id ; absent = tenant NON migré",
+     "do_not_migrate": false
+    },
+    {
+     "name": "name",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "affichage seulement — JAMAIS utilisé pour la correspondance",
+     "do_not_migrate": false
+    }
+   ],
+   "projection_readonly": [
+    "legacy_tenant_id",
+    "navixy_master_user_id",
+    "name"
+   ]
+  },
+  {
+   "filename": "vehicles.json",
+   "entity": "vehicle",
+   "required": true,
+   "legacy_id_field": "legacy_vehicle_id",
+   "decision": "Lot A — resolver vin > navixy_vehicle_id > tracker(warning) > plate(manual_review) ; aucun match auto par plaque/nom/label.",
+   "fields": [
+    {
+     "name": "legacy_vehicle_id",
+     "type": "string",
+     "required": true,
+     "legacy_id": true,
+     "relation": null,
+     "enum": null,
+     "note": "UUID véhicule Journal — identifiant legacy",
+     "do_not_migrate": false
+    },
+    {
+     "name": "legacy_tenant_id",
+     "type": "string",
+     "required": true,
+     "legacy_id": false,
+     "relation": "tenants.legacy_tenant_id",
+     "enum": null,
+     "note": "tenant propriétaire (contexte de résolution)",
+     "do_not_migrate": false
+    },
+    {
+     "name": "plate",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "indice uniquement → manual_review ; jamais jointure automatique",
+     "do_not_migrate": false
+    },
+    {
+     "name": "vin",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "critère fort (resolver)",
+     "do_not_migrate": false
+    },
+    {
+     "name": "navixy_vehicle_id",
+     "type": "int",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "critère fort (resolver)",
+     "do_not_migrate": false
+    },
+    {
+     "name": "navixy_tracker_id",
+     "type": "int",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "critère évolutif → candidate_warning (tracker_join_no_assignment_history)",
+     "do_not_migrate": false
+    },
+    {
+     "name": "navixy_tracker_id_archived",
+     "type": "int",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "historique tracker (contexte)",
+     "do_not_migrate": false
+    },
+    {
+     "name": "model",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "contexte",
+     "do_not_migrate": false
+    }
+   ],
+   "projection_readonly": [
+    "legacy_vehicle_id",
+    "legacy_tenant_id",
+    "plate",
+    "vin",
+    "navixy_vehicle_id",
+    "navixy_tracker_id",
+    "navixy_tracker_id_archived",
+    "model"
+   ]
+  },
+  {
+   "filename": "drivers.json",
+   "entity": "driver",
+   "required": false,
+   "legacy_id_field": "legacy_driver_id",
+   "decision": "Lot C — identité par id canonique UNIQUEMENT ; jamais le nom comme clé ; association insuffisante → REVIEW_REQUIRED.",
+   "fields": [
+    {
+     "name": "legacy_driver_id",
+     "type": "string",
+     "required": true,
+     "legacy_id": true,
+     "relation": null,
+     "enum": null,
+     "note": "UUID conducteur Journal — identifiant legacy",
+     "do_not_migrate": false
+    },
+    {
+     "name": "legacy_tenant_id",
+     "type": "string",
+     "required": true,
+     "legacy_id": false,
+     "relation": "tenants.legacy_tenant_id",
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "name",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "first_name",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "last_name",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "email",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "contexte RH, non clé d'identité",
+     "do_not_migrate": false
+    },
+    {
+     "name": "navixy_employee_id",
+     "type": "int",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "internal_number",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "active",
+     "type": "bool",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "statut actif/inactif",
+     "do_not_migrate": false
+    }
+   ],
+   "projection_readonly": [
+    "legacy_driver_id",
+    "legacy_tenant_id",
+    "name",
+    "first_name",
+    "last_name",
+    "email",
+    "navixy_employee_id",
+    "internal_number",
+    "active"
+   ]
+  },
+  {
+   "filename": "vehicle_assignments.json",
+   "entity": "vehicle_assignment",
+   "required": false,
+   "legacy_id_field": "legacy_assignment_id",
+   "decision": "Affectation datée — migrée seulement si relations résolues sans ambiguïté ; jamais inventée.",
+   "fields": [
+    {
+     "name": "legacy_assignment_id",
+     "type": "string",
+     "required": true,
+     "legacy_id": true,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "legacy_tenant_id",
+     "type": "string",
+     "required": true,
+     "legacy_id": false,
+     "relation": "tenants.legacy_tenant_id",
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "legacy_vehicle_id",
+     "type": "string",
+     "required": true,
+     "legacy_id": false,
+     "relation": "vehicles.legacy_vehicle_id",
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "legacy_driver_id",
+     "type": "string",
+     "required": true,
+     "legacy_id": false,
+     "relation": "drivers.legacy_driver_id",
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "valid_from",
+     "type": "date",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "D5 — fuseau Europe/Zurich",
+     "do_not_migrate": false
+    },
+    {
+     "name": "valid_to",
+     "type": "date",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "null = en cours",
+     "do_not_migrate": false
+    },
+    {
+     "name": "principal",
+     "type": "bool",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    }
+   ],
+   "projection_readonly": [
+    "legacy_assignment_id",
+    "legacy_tenant_id",
+    "legacy_vehicle_id",
+    "legacy_driver_id",
+    "valid_from",
+    "valid_to",
+    "principal"
+   ]
+  },
+  {
+   "filename": "fuel_cards.json",
+   "entity": "fuel_card",
+   "required": false,
+   "legacy_id_field": "legacy_card_id",
+   "decision": "D2/Lot E — identité (provider,last4) NON unique ; aucun HMAC Journal migré ; found/ambiguous/not_found.",
+   "fields": [
+    {
+     "name": "legacy_card_id",
+     "type": "string",
+     "required": true,
+     "legacy_id": true,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "legacy_tenant_id",
+     "type": "string",
+     "required": true,
+     "legacy_id": false,
+     "relation": "tenants.legacy_tenant_id",
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "provider",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "→ fournisseur",
+     "do_not_migrate": false
+    },
+    {
+     "name": "last4",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "4 derniers chiffres — (provider,last4) non unique",
+     "do_not_migrate": false
+    },
+    {
+     "name": "external_card_id",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "status",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "expires_at",
+     "type": "date",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    }
+   ],
+   "projection_readonly": [
+    "legacy_card_id",
+    "legacy_tenant_id",
+    "provider",
+    "last4",
+    "external_card_id",
+    "status",
+    "expires_at"
+   ]
+  },
+  {
+   "filename": "fuel_card_assignments.json",
+   "entity": "fuel_card_assignment",
+   "required": false,
+   "legacy_id_field": "legacy_card_assignment_id",
+   "decision": "Lot E — affectation datée migrée seulement si déterminable sans ambiguïté.",
+   "fields": [
+    {
+     "name": "legacy_card_assignment_id",
+     "type": "string",
+     "required": true,
+     "legacy_id": true,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "legacy_tenant_id",
+     "type": "string",
+     "required": true,
+     "legacy_id": false,
+     "relation": "tenants.legacy_tenant_id",
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "legacy_card_id",
+     "type": "string",
+     "required": true,
+     "legacy_id": false,
+     "relation": "fuel_cards.legacy_card_id",
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "type",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": [
+      "vehicule",
+      "conducteur"
+     ],
+     "note": "type d'affectation",
+     "do_not_migrate": false
+    },
+    {
+     "name": "legacy_vehicle_id",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": "vehicles.legacy_vehicle_id",
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "legacy_driver_id",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": "drivers.legacy_driver_id",
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "valid_from",
+     "type": "date",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "valid_to",
+     "type": "date",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    }
+   ],
+   "projection_readonly": [
+    "legacy_card_assignment_id",
+    "legacy_tenant_id",
+    "legacy_card_id",
+    "type",
+    "legacy_vehicle_id",
+    "legacy_driver_id",
+    "valid_from",
+    "valid_to"
+   ]
+  },
+  {
+   "filename": "fuel_transactions.json",
+   "entity": "fuel_transaction",
+   "required": true,
+   "legacy_id_field": "legacy_transaction_id",
+   "decision": "§4.11 — document = source canonique du coût ; fuel_transaction JAMAIS resommé ; D5 dates ; D7 FX ; D8 anomalies recalculées.",
+   "fields": [
+    {
+     "name": "legacy_transaction_id",
+     "type": "string",
+     "required": true,
+     "legacy_id": true,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "legacy_tenant_id",
+     "type": "string",
+     "required": true,
+     "legacy_id": false,
+     "relation": "tenants.legacy_tenant_id",
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "external_transaction_id",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "→ tx.external_transaction_id · doc.numero ; unique partiel (tenant,fournisseur,ext_id)",
+     "do_not_migrate": false
+    },
+    {
+     "name": "provider",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "→ fournisseur ; 'manuel' → null + created_from=manual",
+     "do_not_migrate": false
+    },
+    {
+     "name": "legacy_card_id",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": "fuel_cards.legacy_card_id",
+     "enum": null,
+     "note": "→ tx.card_id via fuel_cards.legacy_id",
+     "do_not_migrate": false
+    },
+    {
+     "name": "card_last4",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "→ tx.carte_last4",
+     "do_not_migrate": false
+    },
+    {
+     "name": "tx_datetime",
+     "type": "datetime",
+     "required": true,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "D5 : tz-aware→Europe/Zurich ; naïf→heure locale Europe/Zurich + date_heure_tz_assumed=true ; brut conservé dans date_heure_source",
+     "do_not_migrate": false
+    },
+    {
+     "name": "accounting_date",
+     "type": "date",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "→ tx.date_comptable",
+     "do_not_migrate": false
+    },
+    {
+     "name": "station_name",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "station_address",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "station_country",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "station_lat",
+     "type": "float",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "DO NOT MIGRATE",
+     "do_not_migrate": true
+    },
+    {
+     "name": "station_lng",
+     "type": "float",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "DO NOT MIGRATE",
+     "do_not_migrate": true
+    },
+    {
+     "name": "product_type",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": [
+      "diesel",
+      "essence",
+      "adblue",
+      "electric",
+      "other"
+     ],
+     "note": "diesel→Diesel, essence→Essence, adblue→AdBlue (exclu conso), electric→Électricité(energie=electrique), other→Autre",
+     "do_not_migrate": false
+    },
+    {
+     "name": "quantity",
+     "type": "float",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "→ litres(L) / energie_kwh(kWh) / quantite_unite(unit) ; jamais L+kWh additionnés",
+     "do_not_migrate": false
+    },
+    {
+     "name": "unit",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": [
+      "L",
+      "kWh",
+      "unit"
+     ],
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "unit_price",
+     "type": "float",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "→ prix_litre / prix_kwh",
+     "do_not_migrate": false
+    },
+    {
+     "name": "amount_net",
+     "type": "float",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "→ doc.montant_ht",
+     "do_not_migrate": false
+    },
+    {
+     "name": "vat_amount",
+     "type": "float",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "→ doc.tva_chf",
+     "do_not_migrate": false
+    },
+    {
+     "name": "vat_rate",
+     "type": "float",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "→ doc.tva_taux",
+     "do_not_migrate": false
+    },
+    {
+     "name": "amount_total",
+     "type": "float",
+     "required": true,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "→ doc.montant / tx.montant",
+     "do_not_migrate": false
+    },
+    {
+     "name": "currency",
+     "type": "string",
+     "required": true,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "→ devise",
+     "do_not_migrate": false
+    },
+    {
+     "name": "amount_chf",
+     "type": "float",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "D7 : utilisé seulement si devise≠CHF ; absent + devise≠CHF → fx_status=pending, exclu du total CHF",
+     "do_not_migrate": false
+    },
+    {
+     "name": "fx_rate",
+     "type": "float",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "fx_rate_date",
+     "type": "date",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "fx_source",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "mileage",
+     "type": "int",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "→ tx.kilometrage ; JAMAIS écrit sur vehicle.kilometrage",
+     "do_not_migrate": false
+    },
+    {
+     "name": "vehicle_hint",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "contexte — jamais résolution auto",
+     "do_not_migrate": false
+    },
+    {
+     "name": "driver_hint",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "contexte — jamais résolution auto",
+     "do_not_migrate": false
+    },
+    {
+     "name": "legacy_vehicle_id",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": "vehicles.legacy_vehicle_id",
+     "enum": null,
+     "note": "→ vehicle_id via legacy_vehicle_map CONFIRMÉ ; non résolu → quarantaine (REVIEW_REQUIRED)",
+     "do_not_migrate": false
+    },
+    {
+     "name": "legacy_driver_id",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": "drivers.legacy_driver_id",
+     "enum": null,
+     "note": "→ driver_id via drivers.legacy_id",
+     "do_not_migrate": false
+    },
+    {
+     "name": "trip_id",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "DO NOT MIGRATE (pas de trajets)",
+     "do_not_migrate": true
+    },
+    {
+     "name": "classification",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "conservée, non exploitée",
+     "do_not_migrate": false
+    },
+    {
+     "name": "match_status",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "RECALCULATE (D8) — jamais migré tel quel",
+     "do_not_migrate": true
+    },
+    {
+     "name": "match_score",
+     "type": "float",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "RECALCULATE (D8)",
+     "do_not_migrate": true
+    },
+    {
+     "name": "anomaly_decision",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "D8 : réimporté UNIQUEMENT si anomalie re-détectée (même tx, même type, donnée réelle)",
+     "do_not_migrate": false
+    },
+    {
+     "name": "source",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": [
+      "manual",
+      "import"
+     ],
+     "note": "→ tx.created_from + doc.source=legacy_import",
+     "do_not_migrate": false
+    },
+    {
+     "name": "commentaire",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "D8 : issues[] NON migrées ; commentaire métier réel → tx.commentaire",
+     "do_not_migrate": false
+    }
+   ],
+   "projection_readonly": [
+    "legacy_transaction_id",
+    "legacy_tenant_id",
+    "external_transaction_id",
+    "provider",
+    "legacy_card_id",
+    "card_last4",
+    "tx_datetime",
+    "accounting_date",
+    "station_name",
+    "station_address",
+    "station_country",
+    "product_type",
+    "quantity",
+    "unit",
+    "unit_price",
+    "amount_net",
+    "vat_amount",
+    "vat_rate",
+    "amount_total",
+    "currency",
+    "amount_chf",
+    "fx_rate",
+    "fx_rate_date",
+    "fx_source",
+    "mileage",
+    "vehicle_hint",
+    "driver_hint",
+    "legacy_vehicle_id",
+    "legacy_driver_id",
+    "classification",
+    "anomaly_decision",
+    "source",
+    "commentaire"
+   ]
+  },
+  {
+   "filename": "fines.json",
+   "entity": "fine",
+   "required": true,
+   "legacy_id_field": "legacy_fine_id",
+   "decision": "Lot D + D4 + D9 — vehicle_id obligatoire ; plaque seule → REVIEW_REQUIRED (quarantaine) ; annulee conservée hors coûts/délais ; 10 statuts ; type_infraction enum.",
+   "fields": [
+    {
+     "name": "legacy_fine_id",
+     "type": "string",
+     "required": true,
+     "legacy_id": true,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "legacy_tenant_id",
+     "type": "string",
+     "required": true,
+     "legacy_id": false,
+     "relation": "tenants.legacy_tenant_id",
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "legacy_vehicle_id",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": "vehicles.legacy_vehicle_id",
+     "enum": null,
+     "note": "D4 : via legacy_vehicle_map CONFIRMÉ ; absent → voir plaque_mentionnee",
+     "do_not_migrate": false
+    },
+    {
+     "name": "plaque_mentionnee",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "D4 : plaque seule → manual_review → REVIEW_REQUIRED (quarantaine), jamais jointure auto",
+     "do_not_migrate": false
+    },
+    {
+     "name": "legacy_driver_id",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": "drivers.legacy_driver_id",
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "numero_amende",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "→ numero",
+     "do_not_migrate": false
+    },
+    {
+     "name": "autorite",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "date_infraction",
+     "type": "date",
+     "required": true,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "D5 Europe/Zurich",
+     "do_not_migrate": false
+    },
+    {
+     "name": "montant",
+     "type": "float",
+     "required": true,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "devise",
+     "type": "string",
+     "required": true,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "D7 identique aux pleins",
+     "do_not_migrate": false
+    },
+    {
+     "name": "amount_chf",
+     "type": "float",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "D7",
+     "do_not_migrate": false
+    },
+    {
+     "name": "delai_paiement",
+     "type": "date",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "échéance ; D9 : inactive si annulee/payee/refacturee/cloturee",
+     "do_not_migrate": false
+    },
+    {
+     "name": "motif",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "type_infraction",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": [
+      "speeding",
+      "parking",
+      "red_light",
+      "toll",
+      "forbidden_zone",
+      "phone",
+      "seatbelt",
+      "other"
+     ],
+     "note": "enum 8 valeurs ; inconnu → REVIEW_REQUIRED",
+     "do_not_migrate": false
+    },
+    {
+     "name": "fine_status",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": [
+      "recue",
+      "a_analyser",
+      "conducteur_a_identifier",
+      "en_attente_conducteur",
+      "contestee",
+      "a_payer",
+      "payee",
+      "refacturee",
+      "cloturee",
+      "annulee"
+     ],
+     "note": "10 statuts (ou alias EN) ; absent → a_payer (lecture) ; annulee exclue coûts+délais (D9)",
+     "do_not_migrate": false
+    },
+    {
+     "name": "lieu_infraction",
+     "type": "object",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "{lieu, ville, canton} — jamais texte brut",
+     "do_not_migrate": false
+    },
+    {
+     "name": "notes_internes",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "D6.3 : masquées read_only/driver (RBAC serveur) — conservées, jamais exposées au driver",
+     "do_not_migrate": false
+    },
+    {
+     "name": "dossier_number",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "→ dossier_interne (référence humaine, NON clé)",
+     "do_not_migrate": false
+    }
+   ],
+   "projection_readonly": [
+    "legacy_fine_id",
+    "legacy_tenant_id",
+    "legacy_vehicle_id",
+    "plaque_mentionnee",
+    "legacy_driver_id",
+    "numero_amende",
+    "autorite",
+    "date_infraction",
+    "montant",
+    "devise",
+    "amount_chf",
+    "delai_paiement",
+    "motif",
+    "type_infraction",
+    "fine_status",
+    "lieu_infraction",
+    "notes_internes",
+    "dossier_number"
+   ]
+  },
+  {
+   "filename": "documents_costs.json",
+   "entity": "document_cost",
+   "required": false,
+   "legacy_id_field": "legacy_document_id",
+   "decision": "Documents/coûts associés éventuels — document = source canonique du coût ; compté une fois.",
+   "fields": [
+    {
+     "name": "legacy_document_id",
+     "type": "string",
+     "required": true,
+     "legacy_id": true,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "legacy_tenant_id",
+     "type": "string",
+     "required": true,
+     "legacy_id": false,
+     "relation": "tenants.legacy_tenant_id",
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "legacy_vehicle_id",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": "vehicles.legacy_vehicle_id",
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "type",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "montant",
+     "type": "float",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "devise",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "amount_chf",
+     "type": "float",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "date",
+     "type": "date",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    },
+    {
+     "name": "categorie",
+     "type": "string",
+     "required": false,
+     "legacy_id": false,
+     "relation": null,
+     "enum": null,
+     "note": "",
+     "do_not_migrate": false
+    }
+   ],
+   "projection_readonly": [
+    "legacy_document_id",
+    "legacy_tenant_id",
+    "legacy_vehicle_id",
+    "type",
+    "montant",
+    "devise",
+    "amount_chf",
+    "date",
+    "categorie"
+   ]
+  }
+ ]
+}

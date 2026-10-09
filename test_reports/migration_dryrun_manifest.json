@@ -1,0 +1,24 @@
+{
+ "generated_at": "2026-10-09T09:14:14.647470+00:00",
+ "legacy_source": "journal",
+ "input_dir": "/tmp/tmpmjq_x00n",
+ "validated": true,
+ "documents_unchanged": true,
+ "fp_diff": {
+  "counts": [],
+  "hashes": []
+ },
+ "totals": {
+  "READY": 0,
+  "ALREADY_PRESENT": 0,
+  "REVIEW_REQUIRED": 0,
+  "BLOCKED": 0,
+  "DUPLICATE": 0,
+  "IGNORED": 0
+ },
+ "by_type": {},
+ "pending_fx": [],
+ "tenant_mapping": [],
+ "vehicle_mapping": [],
+ "plan": []
+}
