@@ -1,0 +1,23 @@
+{
+ "export_status": "NOT_RUN",
+ "verdict": "FAIL",
+ "reason_code": "SOURCE_JOURNAL_INACCESSIBLE",
+ "reason_text": "Aucune source Journal dans cet espace de travail : aucune variable JOURNAL_MONGO_URL/JOURNAL_DB_NAME, aucune base Journal sur le serveur Mongo (seule 'test_database' = Documents), aucun fichier d'export deposé dans migration_input/. Extraction impossible ; aucune donnée fabriquée.",
+ "extraction_timestamp": "2026-10-09T09:15:00Z",
+ "journal_source_read": null,
+ "read_only_control": "PASS (journal_export_readonly.py : aucune op insert/update/delete/replace/drop/bulk_write ; find() uniquement)",
+ "documents_untouched": true,
+ "files": [
+  {"filename": "tenants.json", "entity": "tenant", "required": true, "source_collection": "(attendue) tenants", "projection": ["legacy_tenant_id", "navixy_master_user_id", "name"], "row_count": null, "sha256": null, "size_bytes": null, "status": "NOT_AVAILABLE"},
+  {"filename": "vehicles.json", "entity": "vehicle", "required": true, "source_collection": "(attendue) vehicles", "projection": ["legacy_vehicle_id", "legacy_tenant_id", "plate", "vin", "navixy_vehicle_id", "navixy_tracker_id", "navixy_tracker_id_archived", "model"], "row_count": null, "sha256": null, "size_bytes": null, "status": "NOT_AVAILABLE"},
+  {"filename": "fuel_transactions.json", "entity": "fuel_transaction", "required": true, "source_collection": "(attendue) fuel_transactions", "projection": "voir migration_journal_export_schema.json", "row_count": null, "sha256": null, "size_bytes": null, "status": "NOT_AVAILABLE"},
+  {"filename": "fines.json", "entity": "fine", "required": true, "source_collection": "(attendue) fines", "projection": "voir migration_journal_export_schema.json", "row_count": null, "sha256": null, "size_bytes": null, "status": "NOT_AVAILABLE"},
+  {"filename": "drivers.json", "entity": "driver", "required": false, "source_collection": "(attendue) drivers", "projection": "voir schema", "row_count": null, "sha256": null, "size_bytes": null, "status": "NOT_AVAILABLE"},
+  {"filename": "vehicle_assignments.json", "entity": "vehicle_assignment", "required": false, "source_collection": "(attendue) vehicle_assignments", "projection": "voir schema", "row_count": null, "sha256": null, "size_bytes": null, "status": "NOT_AVAILABLE"},
+  {"filename": "fuel_cards.json", "entity": "fuel_card", "required": false, "source_collection": "(attendue) fuel_cards", "projection": "voir schema", "row_count": null, "sha256": null, "size_bytes": null, "status": "NOT_AVAILABLE"},
+  {"filename": "fuel_card_assignments.json", "entity": "fuel_card_assignment", "required": false, "source_collection": "(attendue) fuel_card_assignments", "projection": "voir schema", "row_count": null, "sha256": null, "size_bytes": null, "status": "NOT_AVAILABLE"},
+  {"filename": "documents_costs.json", "entity": "document_cost", "required": false, "source_collection": "(attendue) documents", "projection": "voir schema", "row_count": null, "sha256": null, "size_bytes": null, "status": "NOT_AVAILABLE"}
+ ],
+ "EXPORT_SET_SHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+ "EXPORT_SET_SHA256_note": "Ensemble vide (0 fichier produit) → sha256 de la chaîne vide. Déterministe : identique à chaque relecture tant qu'aucun fichier n'est produit."
+}

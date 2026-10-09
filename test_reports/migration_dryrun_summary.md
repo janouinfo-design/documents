@@ -1,7 +1,7 @@
 # Dry-run migration Journal → Documents — SYNTHÈSE
 
-- Généré : 2026-10-09T09:14:14.647470+00:00 · `legacy_source = journal`
-- Entrée : `/tmp/tmpmjq_x00n`
+- Généré : 2026-10-09T09:45:52.754285+00:00 · `legacy_source = journal`
+- Entrée : `/tmp/tmpozwiqqqy`
 - DOCUMENTS_UNCHANGED : PASS
 
 ## Totaux par catégorie

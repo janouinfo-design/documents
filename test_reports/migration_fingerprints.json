@@ -196,7 +196,7 @@
    "fuel_reconciliations|pytest-lh-a-9a3f2e4a": "e4da05b8483b139437cfddbb9792acfe6b317c75a73f965d4fa5ea69e909b843",
    "fuel_reconciliations|pytest-lh-a-f6914464": "5951b8634732e7596562b52cdd09539591c96f58229a9a7b6d2d0d887a296d5d",
    "vehicles|client-test-e2e": "89c29ef1ab4b04aabdf19225a5f268466efebb2e7621b1955544b1f67876c241",
-   "vehicles|default": "3838760feaff20551ce09677e4961fe12a899848c24e88ebf57c4e19686b25f2",
+   "vehicles|default": "7c4ed40fb8a131ae19fb299c1d0bab2b3de3cad48c9e08d4e89e669b09ffe017",
    "vehicles|pytest-cost-a-5abb48d1": "37b84cc9d37f35582bc855182ae5d236ec2e1556ee69640f550f74879869398e",
    "vehicles|pytest-cost-b-5abb48d1": "3037d71114f458a04ca7c3f1485b2c1d0f4d3669511e481bfe641d5a7993c622",
    "vehicles|pytest-dl4a-971d41ab": "55f002f8cbadbb0469256f46540ff1d0b5f6b4a6637dea7bf0e2f79078f8bff1",
@@ -219,7 +219,7 @@
    "vehicles|pytest-lh-b-9a3f2e4a": "eef7df75a94b286bafa8170213a61e93391595e6dae9131f35555b98aee55997",
    "vehicles|pytest-lh-b-f6914464": "272d0361c0f7eab11455701c92b740714179bc0aa5e2e12b06d964bf43f459ad",
    "tenant_integrations|client-test-e2e": "40538ceb082510b5c55ad5f3cc26f55f8118ca38a433c48c666a59d409595945",
-   "tenant_integrations|default": "626c751ae452e601f64566a3761659ece8a75e6726ae61627381667f8e3623cb",
+   "tenant_integrations|default": "26e2c85ec8643e279701451cd1e3c292f3a7bd548c53b6fa73b2499680da21f3",
    "tenants|client-test-e2e": "3825aa097757a2ad9d96903b1abe74dc44cbb963dd5539f5bf4b3d4656765701",
    "tenants|default": "734c7ac381fb17cddb984c44cb3d7858dabcf42047770bf756638ba26d3dea5b",
    "tenants|pytest-cost-a-5abb48d1": "c1c13fa03d2dc05a9d3ca1f171ff5a30954ce6d32cdfe0ade89320846968dcb6",
@@ -257,5 +257,5 @@
    "vehicles_archive|pytest-4b-f6f65cf0": "2a9ac247121a8a8331f1394d14fcb3721dc6b29d358ee4f0749896928d1c4314"
   }
  },
- "captured_at": "2026-10-09T09:14:15.376259+00:00"
+ "captured_at": "2026-10-09T09:46:20.385373+00:00"
 }
