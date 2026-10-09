@@ -13,7 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install --no-cache-dir \
     "fastapi" "uvicorn[standard]" "motor" "pymongo" \
     "pydantic>=2" "python-dotenv" "requests" "python-multipart" "apscheduler" \
-    "pymupdf" "pillow" "fpdf2" "bcrypt" "PyJWT" "openpyxl"
+    "pymupdf" "pillow" "fpdf2" "bcrypt" "PyJWT" "openpyxl" \
+    "google-genai==2.7.0"
 
 # Optional OCR support (GPT-4o via Emergent integrations). Best-effort:
 # only needed if EMERGENT_LLM_KEY is configured. Build never fails if unavailable.
@@ -21,7 +22,7 @@ RUN pip install --no-cache-dir emergentintegrations \
     --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/ \
     || echo "emergentintegrations non installé (OCR désactivé jusqu'à configuration)"
 
-COPY server.py storage.py extraction.py technical_data.py astra_data.py reports.py auth.py legacy_identity.py nofile.py drivers.py fines.py fuel_cards.py fuel_import.py fuel_matching.py fuel_anomalies.py fuel_statements.py ./
+COPY server.py storage.py extraction.py technical_data.py astra_data.py reports.py auth.py legacy_identity.py nofile.py drivers.py fines.py fuel_cards.py fuel_import.py fuel_matching.py fuel_anomalies.py fuel_statements.py ai_assistant.py ./
 
 EXPOSE 8001
 

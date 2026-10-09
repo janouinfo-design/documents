@@ -24,8 +24,8 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - Backend: FastAPI + Motor (MongoDB). Tous les endpoints préfixés /api. Multi-tenant strict (`tenant_id` résolu depuis l'utilisateur authentifié, jamais du client).
 - Stockage: Emergent object storage (EMERGENT_LLM_KEY) ou local (`STORAGE_BACKEND`), références en base (collections files/documents).
 - Drawer véhicule partagé via VehicleDrawerContext (ouvrable depuis toutes les pages).
-- Modules backend : `server.py` (routes), `auth.py`, `storage.py`, `extraction.py` (OCR), `astra_data.py`, `legacy_identity.py` (Lot A), `nofile.py` (Lot B), `drivers.py` (Lot C), `fines.py` (Lot D), `fuel_cards.py` (Lot E), `fuel_import.py` / `fuel_matching.py` / `fuel_anomalies.py` (Lot F), `fuel_statements.py` (Lot G : rapprochements, blockers, décomptes, declared/deltas, exports), `reports.py`.
-- Production : VPS Docker Compose + Nginx (`deploy/`) — déploiement UNIQUEMENT sur GO explicite utilisateur.
+- Modules backend : `server.py` (routes), `auth.py`, `storage.py`, `extraction.py` (OCR), `astra_data.py`, `legacy_identity.py` (Lot A), `nofile.py` (Lot B), `drivers.py` (Lot C), `fines.py` (Lot D), `fuel_cards.py` (Lot E), `fuel_import.py` / `fuel_matching.py` / `fuel_anomalies.py` (Lot F), `fuel_statements.py` (Lot G), `ai_assistant.py` (IA Gemini), `reports.py`.
+- Production : VPS Docker Compose + Nginx (`deploy/`) — déploiement UNIQUEMENT sur GO explicite utilisateur. **IMPORTANT : `backend/Dockerfile` ne lit PAS `requirements.txt` ; tout nouveau module `.py` doit être ajouté à sa ligne `COPY` et toute nouvelle dépendance pip à sa ligne `pip install`, sinon le backend plante au rebuild VPS.**
 
 ## User Personas
 - Gestionnaire de flotte (admin): suit échéances, coûts, conformité, documents.
