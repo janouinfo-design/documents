@@ -1,0 +1,26 @@
+{
+  "summary": "Frontend-only E2E testing of the new Gemini AI integration on LogiTrak. All 4 AI use-cases were exercised end-to-end against the real Gemini backend using admin@demo-logitrak.ch on tenant demo-logitrak. (1) Login OK, (2) Nav entry 'nav-ai' visible after /api/ai/status resolves and opens 'ai-assistant-page', (3) 4 'ai-suggestion' chips rendered, clicking one creates 'ai-msg-user', 'ai-chat-loading' indicator shows, and 'ai-msg-ai' bubble arrives with 410 chars of grounded content (mentions EXPIRE statuses). (4) Vehicles -> row click opens 'vehicle-drawer', 'vehicle-ai-compliance-btn' present, click opens 'ai-result-dialog', 'ai-result-text' returned ~1773 chars French compliance summary with 'ai-copy-btn' and 'ai-download-btn'. (5) Amendes (route /amendes) -> row click opens 'fine-drawer', 'fine-ai-letter-btn' click opens dialog and returns a 1328-char French contestation letter. (6) Documents -> 33 'doc-ai-summary-<id>' icon buttons, clicking the first (expertise-bmw-2024.pdf) returned a 758-char structured French summary. All 4 Gemini flows succeed with real calls within 10-30s each.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard", "issues": ["Recharts console warnings: 'width(-1) and height(-1) of chart should be greater than 0' — not blocking, but a container min-width/height should be set to avoid noisy warnings."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Non-blocking: fix the Recharts container sizing warnings on the dashboard (set minWidth/minHeight on ResponsiveContainer parents)."
+  ],
+  "critical_code_review_comments": [
+    "AI integration wiring (AiActionButton + useAiAvailable + AiAssistantPage) is clean and consistent across the 4 flows; all required data-testid are present (nav-ai, ai-assistant-page, ai-suggestion, ai-input, ai-send-btn, ai-msg-user, ai-msg-ai, ai-chat-loading, ai-result-dialog, ai-result-text, ai-copy-btn, ai-download-btn, vehicle-ai-compliance-btn, fine-ai-letter-btn, doc-ai-summary-<id>).",
+    "Gemini responses are properly grounded in tenant data (vehicle plate GE 142 880, fine n°VD-2026-090877, document EXP-ZH-2024-5521) — prompt + context passing works correctly."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100% (6/6 scenarios)"},
+  "test_credentials": "admin@demo-logitrak.ch / DemoPreview2026! (role=admin, tenant=demo-logitrak)",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The Fines list is at route /amendes (not /fines — /fines redirects to dashboard). Gemini calls are real and take 10-30s; use timeouts >=40s on 'ai-result-text' and 'ai-msg-ai'. The doc-ai-summary buttons are disabled for documents without an attached file; iterate query_selector_all and pick the first enabled one."
+}

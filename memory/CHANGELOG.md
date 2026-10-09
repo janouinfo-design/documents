@@ -2,6 +2,13 @@
 
 Historique append-only de tout ce qui a été implémenté/déployé/clos (extrait de PRD.md le 2026-06 ; PRD.md ne conserve que le statique + statut courant).
 
+## 2026-06 — Intégration IA Gemini (assistant flotte + 3 actions)
+- **Intégration** : Google Gemini `gemini-3.5-flash` via SDK natif `google-genai` (ajouté à `requirements.txt`). Clé **propre du client** lue côté serveur uniquement (`GEMINI_API_KEY` dans `backend/.env`), jamais exposée au frontend. La clé universelle Emergent ne couvre pas Gemini texte + app auto-hébergée → clé Google du client = bon choix. Nouveau module `backend/ai_assistant.py`.
+- **Endpoints** (`server.py`, RBAC admin/manager/superadmin, scope tenant + manager) : `GET /api/ai/status`, `POST /api/ai/assistant` (Q&R flotte, contexte = dashboard + véhicules + échéances + amendes), `POST /api/ai/vehicles/{id}/compliance` (synthèse conformité), `POST /api/ai/fines/{id}/letter` (courrier amende FR), `POST /api/ai/documents/{id}/summary` (résumé). Appels bloquants déportés en thread (`asyncio.to_thread`).
+- **Frontend** : page `AiAssistantPage` + entrée menu « Assistant IA » (`nav-ai`, cap `ai.use`=writers) ; composant réutilisable `ai/AiActionButton` (hook `useAiAvailable` sur `/api/ai/status`, modale résultat + Copier/Télécharger) branché sur fiche véhicule (`vehicle-ai-compliance-btn`), fiche amende (`fine-ai-letter-btn`) et lignes Documents (`doc-ai-summary-<id>`). Boutons masqués si IA indisponible ou rôle non autorisé.
+- Testé e2e (agent) : **frontend 100% (6/6)** (`iteration_52.json`) ; backend validé par curl (status + 3 générations ancrées sur les données). **À déployer sur le VPS : ajouter `GEMINI_API_KEY` dans `deploy/.env` + Save to GitHub + git pull + rebuild.**
+
+
 ## 2026-06 — VPS : SSO Navixy routé vers la démo + bouton œil (prévisualisation documents)
 - **Correctif collision Navixy (VPS)** : les clients `default` (Compte pilote) et `demo-logitrak` partageaient le même `master_user_id=121349` → SSO non déterministe + synchro de la vraie flotte dans la démo. Résolu en supprimant l'intégration Navixy de la démo, puis en séparant routage SSO (`master_user_id`) et synchro (`api_hash`).
 - **SSO Navixy → démo (choix utilisateur)** : `default` garde sa synchro réelle (`api_hash` + `enabled=true`, `master_user_id` retiré) ; `demo-logitrak` reçoit `master_user_id=121349` (`enabled=false`, sans clé API → aucune synchro) ; `admin@demo-logitrak.ch` pré-lié `navixy_user_id=121349`. Résultat : clic « Documents » dans Navixy → auto-login dans la démo ; vrai parc accessible par login direct. Opérations DB VPS tenant-scopées (aucune modif de code).
