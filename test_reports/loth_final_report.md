@@ -32,7 +32,7 @@
 |---|---|---|
 | Test ciblé KPI driver | **PASS** | `test_rbac_lotH.py::test_driver_fines_kpi_calc_fields_used_server_side_never_exposed` |
 | Suite Lot H dédiée | **21 / 21 PASS** | `test_reports/pytest/loth_full_regression_v2.xml` (`test_rbac_lotH`) ; isolée aussi dans `loth_isolation_rerun.log` |
-| Régression complète A–H (1 seul process) | **704 PASS / 2 FAIL / 2 SKIP** (708 collectés, 739,98 s) | `test_reports/loth_regression_full_v2.log` + `loth_full_regression_v2.xml` |
+| Régression complète A–H (1 seul process) | **704 PASS / 2 FAIL (hors Lot H) / 2 SKIP (documentés)** — 708 tests collectés, durée réelle **739,98 s ≈ 12 min 19 s** | `test_reports/loth_regression_full_v2.log` + `loth_full_regression_v2.xml` |
 | `loth_seed.py verify` — isolation fonctionnelle Lot H | **7/7 familles · 43/43 preuves API PASS** | `test_reports/loth_verify.json` |
 | `loth_seed.py verify` — empreintes globales | **DEFAULT_UNCHANGED = FAIL · OTHER_TENANTS_UNCHANGED = FAIL** (hors Lot H, non bloquant) | `test_reports/loth_verify.json` + `loth_drift_attribution.log` |
 | Curl driver réel `GET /api/me/fines` | **200**, `total=2`, `en_retard=1`, `montant_ouvert_chf=160`, 0 fuite | it.49 + curl ciblé (handoff) |
@@ -41,7 +41,9 @@
 | Dockerfile — contrôle statique packaging | **non copiés = []** (aucun nouveau module `.py` introduit par le correctif) | diff `backend/` = `server.py` + 2 fichiers de test seulement |
 
 ### Détail régression complète A–H (run propre, 1 process)
-708 collectés → **704 passed, 2 failed, 2 skipped** en 739,98 s (`loth_full_regression_v2.xml` : `tests=708 failures=2 errors=0 skipped=2`).
+**Régression A–H : 704 PASS / 2 FAIL hors Lot H non bloquants / 2 SKIP documentés** (708 tests collectés).
+
+> ⚠️ Précision durée : `708` est le **nombre de tests collectés**, *pas* une durée. La **durée réelle d'exécution (horloge)** est **739,98 s ≈ 12 min 19 s** — ligne pytest `2 failed, 704 passed, 2 skipped, 5 warnings in 739.98s (0:12:19)` ; attribut JUnit `testsuite time=739.979`. **Aucune valeur `708,74` (ni en secondes, ni en heures) n'apparaît dans les logs.** (`loth_full_regression_v2.xml` : `tests=708 failures=2 errors=0 skipped=2`.)
 
 Suites liées au Lot H toutes **vertes** dans ce run :
 - `test_rbac_lotH` **21/21**
@@ -142,18 +144,35 @@ OTHER_TENANTS_UNCHANGED fingerprint = FAIL (hors Lot H, non bloquant)
 
 ---
 
-## 4. Régression complète A–H — 2 échecs résiduels (HORS LOT H, non bloquants)
+## 4. Régression complète A–H — détail des 2 FAIL (HORS LOT H) et des 2 SKIP (documentés)
 
-Les 2 seuls échecs du run propre (704/2/2) sont **déterministes** (rejouent à l'identique en isolation, 7,33 s) et **sans lien avec le Lot H** :
+**Formulation retenue :** `Régression A–H : 704 PASS / 2 FAIL hors Lot H non bloquants / 2 SKIP documentés.`
 
-| Test | Cause | Lot H touche le code/test ? | Attribution |
-|---|---|---|---|
-| `test_alerts_ocr.py::test_alerts_list_structure` | Le test attend des types d'alerte ⊆ `{leasing, assurance, controle}`. Or `default` contient aussi `digest` / `document` / `amende` (fonctionnalités produit **antérieures** au Lot H). | **NON** (`git diff --stat 3dc2514..HEAD` = vide sur ce fichier et sur le moteur d'alertes) | Dette de test legacy : tuple de types attendus obsolète. |
-| `test_navixy.py::test_navixy_sync_imports_fleet` | Après sync Navixy, le test exige tous les véhicules `source=navixy` ; or `VD 594 862` est `source=manual`, **créé le 2026-09-01** (script e2e historique), donc antérieur au Lot H (octobre). | **NON** | Donnée résiduelle pré-existante dans `default`. |
+### 4.1 Les 2 FAIL (déterministes, rejouent à l'identique en isolation en 7,33 s)
 
-Preuves : `git diff --stat 3dc2514..HEAD -- backend/tests/test_alerts_ocr.py backend/tests/test_navixy.py` = **vide** ; `db.vehicles` `VD 594 862` → `source=manual, created_at=2026-09-01T12:41:55Z` ; `db.users` manager/driver dans `default` = **0**.
+**FAIL 1 — `tests/test_alerts_ocr.py::test_alerts_list_structure`**
+- **Suite** : `test_alerts_ocr` (alertes / OCR, legacy lots A–B).
+- **Cause exacte** : `AssertionError: assert 'amende' in ('leasing', 'assurance', 'controle')` — le test attend un tuple de types d'alerte figé et incomplet ; le produit émet aussi `amende` / `digest` / `document`.
+- **Preuve hors Lot H** : `git diff --stat 3dc2514..HEAD -- backend/tests/test_alerts_ocr.py` = **vide** (ni le test ni le moteur d'alertes ne sont modifiés par le Lot H) ; le type `amende` est une fonctionnalité produit **antérieure** au Lot H ; `db.users` manager/driver dans `default` = **0**.
+- **Bloquant** : **NON**.
 
-Ces 2 suites n'ont jamais fait partie du jeu de régression de clôture des lots A–G (les clôtures tournaient par suite métier : business_data, energy, fines, drivers, nofile, fuel_cards, statements). Elles sont ici incluses par le run complet `tests/` et échouent sur l'état partagé de `default`, pas sur le code Lot H.
+**FAIL 2 — `tests/test_navixy.py::test_navixy_sync_imports_fleet`**
+- **Suite** : `test_navixy` (télématique Navixy, legacy).
+- **Cause exacte** : `AssertionError: Found non-navixy vehicles after sync: ['VD 594 862']` (`assert 1 == 0`) — après sync, le test exige que tous les véhicules soient `source=navixy` ; or `VD 594 862` est `source=manual`.
+- **Preuve hors Lot H** : `git diff --stat 3dc2514..HEAD -- backend/tests/test_navixy.py` = **vide** ; `db.vehicles` `VD 594 862` → `source=manual, created_at=2026-09-01T12:41:55Z`, donc **antérieur** au Lot H (octobre), issu d'un script e2e historique (`e2e_vd594862.py`).
+- **Bloquant** : **NON**.
+
+> Ces 2 suites n'ont jamais fait partie du jeu de régression de clôture des lots A–G (les clôtures tournaient par suite métier : business_data, energy, fines, drivers, nofile, fuel_cards, statements). Incluses ici par le run complet `tests/`, elles échouent sur l'**état partagé de `default`**, pas sur le code Lot H.
+
+### 4.2 Les 2 SKIP (préexistants / attendus, sans lien avec le Lot H)
+
+**SKIP 1 — `tests/test_alerts_ocr.py::test_ocr_carte_grise_extracts_plate_and_vin`**
+- **Raison (message pytest)** : « Endpoint `/carte-grise/ocr` remplacé par `/documents/scan` — couvert par `test_docscan.py` ».
+- **Statut** : **préexistant / attendu** — skip permanent par décision produit (endpoint déprécié), **antérieur** au Lot H ; la couverture fonctionnelle est assurée par `test_docscan.py`.
+
+**SKIP 2 — `tests/test_sync_integrity.py::TestRealNavixyPushReversible::test_push_color_and_restore`**
+- **Raison (message pytest)** : « écriture Navixy réelle — exécuter avec `NAVIXY_WRITE_TEST=1` ».
+- **Statut** : **préexistant / attendu** — skip conditionnel : l'écriture Navixy réelle reste désactivée tant que la variable d'environnement `NAVIXY_WRITE_TEST=1` n'est pas posée (protection contre des appels mutatifs réels) ; **antérieur** au Lot H.
 
 ---
 
@@ -193,7 +212,14 @@ Ces 2 suites n'ont jamais fait partie du jeu de régression de clôture des lots
    - Bloquante : **NON**.
    - Action future : actualiser le tuple de types d'alerte attendus (`digest`/`document`/`amende`) et isoler les suites `test_navixy` / `test_alerts_ocr` dans des tenants dédiés (ne pas les faire dépendre de l'état partagé de `default`).
 
-3. **Validation Docker runtime Lot H = NON EXÉCUTÉE en preview** (docker absent). Contrôle **statique** PASS. À exécuter sur le VPS si une preuve runtime est souhaitée (comme Lots F/G).
+3. **2 SKIP de régression documentés (`test_alerts_ocr::test_ocr_carte_grise_extracts_plate_and_vin`, `test_sync_integrity::TestRealNavixyPushReversible::test_push_color_and_restore`).**
+   - Sévérité : nulle / informatif (skips intentionnels).
+   - Impact Lot H : **aucun** — skips **préexistants / attendus**, antérieurs au Lot H (endpoint `/carte-grise/ocr` déprécié et couvert par `test_docscan.py` ; écriture Navixy réelle conditionnée à `NAVIXY_WRITE_TEST=1`).
+   - Attribution : décisions produit/sécurité legacy, sans rapport avec le RBAC Lot H.
+   - Bloquante : **NON**.
+
+4. **Validation Docker runtime Lot H = NON EXÉCUTÉE en preview** (docker absent). Contrôle **statique** PASS. À exécuter sur le VPS si une preuve runtime est souhaitée (comme Lots F/G).
+   - Sévérité : faible. Impact Lot H : aucun module `.py` nouveau → packaging inchangé. Attribution : limite d'outillage preview. Bloquante : **NON**.
 
 **Divergences BLOQUANTES = 0.**
 
@@ -205,7 +231,9 @@ Ces 2 suites n'ont jamais fait partie du jeu de régression de clôture des lots
 LOT H FULL-FLOW = PASS
   · Correctif KPI /api/me/fines = PASS (document_type + business_category calc-only, jamais exposés)
   · Test ciblé KPI = PASS · Suite Lot H dédiée = 21/21 PASS
-  · Régression complète A–H (mono-process) = 704 PASS / 2 FAIL / 2 SKIP (708) — 2 FAIL hors Lot H, non bloquants
+  · Régression A–H (mono-process) = 704 PASS / 2 FAIL hors Lot H non bloquants / 2 SKIP documentés (708 tests collectés, durée réelle 739,98 s ≈ 12 min 19 s)
+      - FAIL : test_alerts_ocr::test_alerts_list_structure · test_navixy::test_navixy_sync_imports_fleet (déterministes, code/test non touchés par Lot H)
+      - SKIP : test_alerts_ocr::test_ocr_carte_grise_extracts_plate_and_vin · test_sync_integrity::TestRealNavixyPushReversible::test_push_color_and_restore (préexistants/attendus)
   · loth_seed.py verify : LOT H isolation invariants = PASS (7/7 familles · 43/43 preuves API)
   · DEFAULT_UNCHANGED fingerprint = FAIL (hors Lot H, non bloquant)
   · OTHER_TENANTS_UNCHANGED fingerprint = FAIL (hors Lot H, non bloquant)
