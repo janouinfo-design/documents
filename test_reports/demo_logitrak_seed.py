@@ -24,8 +24,27 @@ import requests
 from dotenv import dotenv_values
 from pymongo import MongoClient
 
-BASE = dotenv_values("/app/frontend/.env")["REACT_APP_BACKEND_URL"].rstrip("/")
-ENV = dotenv_values("/app/backend/.env")
+# Config portable : variables d'environnement d'abord (ex. conteneur backend VPS), sinon fichiers .env (preview).
+_BACK_ENV = dotenv_values("/app/backend/.env") if os.path.exists("/app/backend/.env") else {}
+_FRONT_ENV = dotenv_values("/app/frontend/.env") if os.path.exists("/app/frontend/.env") else {}
+
+
+def _cfg(*keys, default=None):
+    for k in keys:
+        if os.environ.get(k):
+            return os.environ[k]
+    for k in keys:
+        if _BACK_ENV.get(k) or _FRONT_ENV.get(k):
+            return _BACK_ENV.get(k) or _FRONT_ENV.get(k)
+    return default
+
+
+BASE = (_cfg("REACT_APP_BACKEND_URL", default="http://localhost:8001")).rstrip("/")
+MONGO_URL = _cfg("MONGO_URL")
+DB_NAME = _cfg("DB_NAME")
+# superadmin PLATEFORME (création de tenant) : SUPERADMIN_* en preview ; sur le VPS, renseigner SUPERADMIN_* dans deploy/.env
+SA_EMAIL = _cfg("SUPERADMIN_EMAIL")
+SA_PASSWORD = _cfg("SUPERADMIN_PASSWORD")
 T = "demo-logitrak"
 TENANT_NAME = "Démo LogiTrak"
 MARKERS = {"demo_seed": True, "demo_seed_version": "2026-10", "demo_seed_group": "commercial-demo"}
@@ -33,8 +52,10 @@ MARK_COLLECTIONS = ("users", "vehicles", "drivers", "driver_assignments", "fuel_
                     "fuel_card_assignments", "fuel_transactions", "documents", "inspections",
                     "fuel_anomalies", "tenant_settings", "doc_categories", "doc_requirements")
 
-REP = Path("/app/test_reports")
-MEM = Path("/app/memory")
+REP = Path(os.environ.get("DEMO_ARTIFACT_DIR", "/app/test_reports"))
+MEM = Path(os.environ.get("DEMO_MEMORY_DIR", "/app/memory"))
+REP.mkdir(parents=True, exist_ok=True)
+MEM.mkdir(parents=True, exist_ok=True)
 BASELINE = REP / "demo_logitrak_baseline.json"
 RESULT = REP / "demo_logitrak_result.json"
 INVENTORY = REP / "demo_logitrak_inventory.json"
@@ -47,7 +68,7 @@ ACCOUNTS = {"ADMIN": ("admin@demo-logitrak.ch", "admin", "Administration Démo")
             "DRIVER": ("driver@demo-logitrak.ch", "driver", "Marc Rochat"),
             "READONLY": ("readonly@demo-logitrak.ch", "read_only", "Consultation Démo")}
 
-db = MongoClient(ENV["MONGO_URL"])[ENV["DB_NAME"]]
+db = MongoClient(MONGO_URL)[DB_NAME]
 TODAY = date.today()
 D = lambda n: (TODAY + timedelta(days=n)).isoformat()  # noqa: E731
 
@@ -73,6 +94,10 @@ VOLATILE = {"vehicles": ("updated_at", "kilometrage", "conso_moyenne_l_100km", "
 # — exclues du fingerprint d'ISOLATION : le code démo n'y écrit JAMAIS pour un tenant étranger (scope backend + guard T).
 # Toutes les collections de données métier (vehicles hors sous-doc `integrations`, documents, drivers, fuel_*, …) restent comparées.
 ISO_SKIP = {"login_attempts", "tenant_integrations", "alerts", "fuel_snapshots", "audit_logs"}
+# Champs volatils (horodatages / auth / sync) mutés sur un tenant LIVE par le démarrage, les logins et le scheduler —
+# retirés de TOUTES les collections du fingerprint d'isolation (sans rapport avec un éventuel écrit cross-tenant de la démo).
+GLOBAL_VOLATILE = {"updated_at", "password_hash", "token_version", "last_login", "last_login_at", "last_seen",
+                   "password_changed_in_app", "last_sync_at", "sync_status", "integrations"}
 PNG = (b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
        b"\x00\x00\x00\rIDATx\x9cc\xf8\xff\xff?\x00\x05\xfe\x02\xfe\xa7V\xbd\xfa\x00\x00\x00\x00IEND\xaeB`\x82")
 PDF = (b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
@@ -97,7 +122,10 @@ def login(email, pwd):
 
 
 def sa_headers():
-    return login(ENV["SUPERADMIN_EMAIL"], ENV["SUPERADMIN_PASSWORD"])
+    if not (SA_EMAIL and SA_PASSWORD):
+        die("SUPERADMIN_EMAIL / SUPERADMIN_PASSWORD manquants — requis pour créer le tenant démo "
+            "(sur le VPS : renseigner SUPERADMIN_* dans deploy/.env puis `docker compose up -d backend`).")
+    return login(SA_EMAIL, SA_PASSWORD)
 
 
 def api(h, method, path, body=None, **kw):
@@ -165,7 +193,8 @@ def fingerprint():
             h, n = hashlib.sha256(), 0
             for d in db[c].find({key: t}, {"_id": 0}).sort("id", 1):
                 n += 1
-                d = {k: v for k, v in d.items() if k not in VOLATILE.get(c, ()) and not k.startswith("navixy_")}
+                d = {k: v for k, v in d.items()
+                     if k not in VOLATILE.get(c, ()) and k not in GLOBAL_VOLATILE and not k.startswith("navixy_")}
                 h.update(json.dumps(d, sort_keys=True, default=str).encode())
             fp["counts"][f"{c}|{t}"], fp["hashes"][f"{c}|{t}"] = n, h.hexdigest()
     fp["tenants_ids"] = sorted(t["id"] for t in db.tenants.find({"id": {"$ne": T}}, {"_id": 0, "id": 1}))
