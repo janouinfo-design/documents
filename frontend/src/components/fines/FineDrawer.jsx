@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Undo2, Truck, Loader2 } from "lucide-react";
+import { CheckCircle2, Undo2, Truck, Loader2, Eye } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -16,7 +16,8 @@ import FineUnpayDialog from "@/components/fines/FineUnpayDialog";
 import FineInfoForm from "@/components/fines/FineInfoForm";
 import FineAttachments from "@/components/fines/FineAttachments";
 import FineHistory from "@/components/fines/FineHistory";
-import { NoFileBadge, AttachFileButton } from "@/components/documents/NoFileBadge";
+import { NoFileBadge, AttachFileButton, hasNoFile } from "@/components/documents/NoFileBadge";
+import FilePreview from "@/components/FilePreview";
 import { PAID_STATUSES } from "@/lib/fines";
 
 function PaymentCard({ doc, canEdit }) {
@@ -63,6 +64,7 @@ export default function FineDrawer({ fineId, onOpenChange }) {
   const { user } = useAuth();
   const { openVehicle } = useVehicleDrawer();
   const isAdmin = can(user, "fines.write");
+  const [filePreview, setFilePreview] = useState(false);
   const { data: doc } = useQuery({ queryKey: ["fines", "one", fineId], queryFn: () => getFine(fineId), enabled: !!fineId });
   const canEdit = isAdmin && !!doc && doc.fine_status !== "annulee";
   return (
@@ -98,6 +100,11 @@ export default function FineDrawer({ fineId, onOpenChange }) {
             <div className="flex flex-wrap items-center gap-3">
               <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Statut</span>
               <FineStatusControl doc={doc} disabled={!isAdmin} />
+              {!hasNoFile(doc) && (
+                <Button size="sm" variant="outline" onClick={() => setFilePreview(true)} data-testid="fine-file-preview-btn" className="gap-1.5">
+                  <Eye className="h-4 w-4" /> Aperçu du fichier
+                </Button>
+              )}
               {isAdmin && <AttachFileButton doc={doc} />}
             </div>
 
@@ -108,6 +115,8 @@ export default function FineDrawer({ fineId, onOpenChange }) {
             <FineAttachments docId={doc.id} canEdit={isAdmin} canDelete={can(user, "fines.attachments.delete")} />
             <Separator />
             <FineHistory docId={doc.id} />
+            <FilePreview open={filePreview} onOpenChange={setFilePreview}
+              file={!hasNoFile(doc) ? { path: doc.storage_path, content_type: doc.content_type, original_filename: doc.original_filename } : null} />
           </div>
         )}
       </SheetContent>

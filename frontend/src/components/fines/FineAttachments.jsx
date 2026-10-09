@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { getFineAttachments, addFineAttachment, removeFineAttachment, attachDocumentFile, fileUrl } from "@/lib/api";
 import { PIECE_TYPES, errDetail } from "@/lib/fines";
 import { dateFr } from "@/lib/format";
+import FilePreview from "@/components/FilePreview";
 
 const invalidate = (qc, docId) => { qc.invalidateQueries({ queryKey: ["fine-attachments", docId] }); qc.invalidateQueries({ queryKey: ["fine-history", docId] }); qc.invalidateQueries({ queryKey: ["fines"] }); };
 
@@ -65,7 +66,7 @@ function AddPieceDialog({ docId, open, onOpenChange }) {
   );
 }
 
-function PieceRow({ a, docId, canEdit, canDelete }) {
+function PieceRow({ a, docId, canEdit, canDelete, onPreview }) {
   const qc = useQueryClient();
   const inputRef = useRef(null);
   const [busy, setBusy] = useState(false);
@@ -90,7 +91,7 @@ function PieceRow({ a, docId, canEdit, canDelete }) {
         </span>
       ) : (
         <span className="flex items-center gap-1">
-          <a href={fileUrl(a.storage_path)} target="_blank" rel="noreferrer" title="Aperçu" data-testid={`fine-attachment-preview-${a.id}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Eye className="h-4 w-4" /></a>
+          <button type="button" onClick={() => onPreview(a)} title="Aperçu" data-testid={`fine-attachment-preview-${a.id}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Eye className="h-4 w-4" /></button>
           <a href={fileUrl(a.storage_path, { download: true, filename: a.original_filename })} title="Télécharger" data-testid={`fine-attachment-download-${a.id}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Download className="h-4 w-4" /></a>
         </span>
       )}
@@ -114,6 +115,7 @@ function PieceRow({ a, docId, canEdit, canDelete }) {
 
 export default function FineAttachments({ docId, canEdit, canDelete = canEdit }) {
   const [addOpen, setAddOpen] = useState(false);
+  const [previewAtt, setPreviewAtt] = useState(null);
   const { data: rows = [], isLoading } = useQuery({ queryKey: ["fine-attachments", docId], queryFn: () => getFineAttachments(docId), enabled: !!docId });
   return (
     <section className="space-y-2" data-testid="fine-attachments">
@@ -122,8 +124,10 @@ export default function FineAttachments({ docId, canEdit, canDelete = canEdit })
         {canEdit && <Button size="sm" variant="outline" onClick={() => setAddOpen(true)} className="h-8 gap-1 text-xs" data-testid="fine-attachment-add-btn"><Plus className="h-3.5 w-3.5" /> Ajouter une pièce</Button>}
       </div>
       {!isLoading && rows.length === 0 && <p className="text-xs text-slate-400" data-testid="fine-attachments-empty">Aucune pièce liée.</p>}
-      <ul className="space-y-1.5">{rows.map((a) => <PieceRow key={a.id} a={a} docId={docId} canEdit={canEdit} canDelete={canDelete} />)}</ul>
+      <ul className="space-y-1.5">{rows.map((a) => <PieceRow key={a.id} a={a} docId={docId} canEdit={canEdit} canDelete={canDelete} onPreview={setPreviewAtt} />)}</ul>
       <AddPieceDialog docId={docId} open={addOpen} onOpenChange={setAddOpen} />
+      <FilePreview open={!!previewAtt} onOpenChange={(o) => !o && setPreviewAtt(null)}
+        file={previewAtt ? { path: previewAtt.storage_path, content_type: previewAtt.content_type, original_filename: previewAtt.original_filename } : null} />
     </section>
   );
 }
