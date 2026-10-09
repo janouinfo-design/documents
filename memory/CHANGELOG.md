@@ -2,6 +2,13 @@
 
 Historique append-only de tout ce qui a été implémenté/déployé/clos (extrait de PRD.md le 2026-06 ; PRD.md ne conserve que le statique + statut courant).
 
+## 2026-10-09 — Tenant démo commercial `demo-logitrak` (DEMO TENANT = READY)
+- Création d'un tenant dédié « Démo LogiTrak » (`demo-logitrak`) via console superadmin, enrichi d'un jeu réaliste et cohérent (véhicule ↔ conducteur ↔ affectation ↔ carte ↔ transaction ↔ document ↔ facture ↔ amende). Toutes les écritures via l'API du compte admin du tenant ; seule écriture DB directe = marquage `demo_seed`/version/group strictement filtré `tenant_id="demo-logitrak"`.
+- Contenu : 10 véhicules (4 thermiques, 3 EV, 2 PHEV, 1 utilitaire), 6 conducteurs, 4 cartes (Tamoil expirée, Avia suspendue), 16 transactions (8 carburant + 8 recharges EV multi-mois), 33 documents, 4 amendes (ouverte/payée/en retard/contestée), factures entretien/pneus/réparation/assurance/leasing/énergie. Cas visibles : véhicule sans conducteur, ancienne affectation terminée, conducteur sans véhicule, transaction sans carte, document expiré, échéance <30j, document à vérifier, document requis manquant.
+- Comptes : `admin@demo-logitrak.ch`, `driver@demo-logitrak.ch` (lié conducteur actif Marc Rochat/Tesla), `readonly@demo-logitrak.ch` ; mots de passe uniquement dans `memory/test_credentials.md` §6 (gitignored) + `memory/demo_logitrak_credentials.json` (gitignored).
+- Preuves : `test_reports/demo_logitrak_seed.py` (idempotent) + `demo_logitrak_{baseline,result,inventory,verify}.json` + `demo_logitrak_report.md`. **Verify API = 17/17 PASS** ; isolation `DEFAULT_UNCHANGED=PASS` + `OTHER_TENANTS_UNCHANGED=PASS` (26 tenants). Aucun déploiement, aucune migration. Smoke UI confirmé (dashboard + énergie).
+
+
 ## Implemented (2026-06-04)
 - [x] Backend complet: vehicles CRUD, dashboard KPIs, timeline, documents, inspections, upload/serve.
 - [x] compute_metrics (niveaux d'alerte expired/critical/warning/ok) + auto-seed 6 véhicules + 2 états des lieux.

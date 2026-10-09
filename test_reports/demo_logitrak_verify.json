@@ -1,0 +1,85 @@
+{
+ "checks": [
+  {
+   "check": "login admin/driver/read_only",
+   "result": "PASS",
+   "detail": ""
+  },
+  {
+   "check": "rôles corrects (admin/driver/read_only) + tenant demo-logitrak",
+   "result": "PASS",
+   "detail": "{'admin': 'admin', 'driver': 'driver', 'ro': 'read_only'}"
+  },
+  {
+   "check": "véhicules : 10 au total (4 thermiques · 3 électriques · 2 hybrides · 1 utilitaire)",
+   "result": "PASS",
+   "detail": "{'total': 10, 'par_carburant': {'Essence': 1, 'Hybride rechargeable': 2, 'Diesel': 4, 'Électrique': 3}}"
+  },
+  {
+   "check": "conducteurs : 6, dont au moins 1 sans véhicule",
+   "result": "PASS",
+   "detail": "{'total': 6, 'sans_vehicule': ['Schneider']}"
+  },
+  {
+   "check": "cartes carburant : 4, dont ≥1 expirée et ≥1 non-active (suspendue)",
+   "result": "PASS",
+   "detail": "{'total': 4, 'expirees': 1, 'non_actives': 1}"
+  },
+  {
+   "check": "énergie : ≥4 recharges EV + ≥1 transaction non rapprochée (sans carte)",
+   "result": "PASS",
+   "detail": "{'transactions': 16, 'recharges_ev': 8, 'sans_carte': 10}"
+  },
+  {
+   "check": "amendes : payée + ouverte + contestée présentes (en retard dérivée du délai)",
+   "result": "PASS",
+   "detail": "{'total': 4, 'par_statut': {'contestee': 1, 'a_payer': 2, 'payee': 1}}"
+  },
+  {
+   "check": "coûts/factures : plusieurs catégories présentes (entretien/pneus/réparation/assurance/leasing/énergie)",
+   "result": "PASS",
+   "detail": "{'items': 46, 'categories': ['AMENDE', 'ASSURANCE', 'CARBURANT', 'ENERGIE_ELECTRIQUE', 'ENTRETIEN', 'LEASING', 'PNEUS', 'REPARATION']}"
+  },
+  {
+   "check": "dashboard : KPIs calculés (véhicules + échéances)",
+   "result": "PASS",
+   "detail": "{'total_vehicles': 10}"
+  },
+  {
+   "check": "échéances documentaires : ≥1 expirée et ≥1 urgente (<30j)",
+   "result": "PASS",
+   "detail": "{'doc_deadlines': 60, 'expirees': 4, 'urgentes': 4}"
+  },
+  {
+   "check": "vue chauffeur : ≥1 véhicule, ≥1 plein, ≥1 amende visibles",
+   "result": "PASS",
+   "detail": "{'vehicules': 1, 'pleins': 4, 'amendes': 1}"
+  },
+  {
+   "check": "read_only : lecture 200, mutations 403",
+   "result": "PASS",
+   "detail": "{'list': 200, 'put': 403, 'post_fine': 403}"
+  },
+  {
+   "check": "DEFAULT_UNCHANGED (default identique avant/après)",
+   "result": "PASS",
+   "detail": "aucune différence"
+  },
+  {
+   "check": "OTHER_TENANTS_UNCHANGED (26 autres tenants identiques)",
+   "result": "PASS",
+   "detail": "aucune différence"
+  },
+  {
+   "check": "TARGET_TENANT_PRESENT (demo-logitrak existe)",
+   "result": "PASS",
+   "detail": ""
+  },
+  {
+   "check": "MARQUAGE demo_seed appliqué aux véhicules",
+   "result": "PASS",
+   "detail": "{'vehicles_marked': 10}"
+  }
+ ],
+ "verdict": "PASS"
+}

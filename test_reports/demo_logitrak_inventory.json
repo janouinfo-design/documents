@@ -1,0 +1,80 @@
+{
+ "tenant": {
+  "id": "demo-logitrak",
+  "name": "Démo LogiTrak",
+  "markers": {
+   "demo_seed": true,
+   "demo_seed_version": "2026-10",
+   "demo_seed_group": "commercial-demo"
+  }
+ },
+ "counts": {
+  "audit_logs": 88,
+  "documents": 33,
+  "driver_assignments": 7,
+  "drivers": 6,
+  "fuel_anomalies": 2,
+  "fuel_card_assignments": 4,
+  "fuel_cards": 4,
+  "fuel_transaction_matches": 16,
+  "fuel_transactions": 16,
+  "inspections": 1,
+  "users": 3,
+  "vehicle_field_meta": 2,
+  "vehicles": 10
+ },
+ "users": [
+  {
+   "email": "admin@demo-logitrak.ch",
+   "role": "admin",
+   "driver_id": null
+  },
+  {
+   "email": "driver@demo-logitrak.ch",
+   "role": "driver",
+   "driver_id": "1bdea7d3-309c-4593-adf9-02b1693ee4d3"
+  },
+  {
+   "email": "readonly@demo-logitrak.ch",
+   "role": "read_only",
+   "driver_id": null
+  }
+ ],
+ "vehicles_by_fuel": {
+  "Diesel": 4,
+  "Essence": 1,
+  "Électrique": 3,
+  "Hybride rechargeable": 2
+ },
+ "fuel_cards": [
+  {
+   "fournisseur": "Avia",
+   "last4": "3651",
+   "statut": "suspendue",
+   "expire_le": "2027-08-05"
+  },
+  {
+   "fournisseur": "Tamoil",
+   "last4": "7290",
+   "statut": "active",
+   "expire_le": "2026-09-19"
+  },
+  {
+   "fournisseur": "Migrol",
+   "last4": "1182",
+   "statut": "active",
+   "expire_le": "2028-03-12"
+  },
+  {
+   "fournisseur": "Shell",
+   "last4": "4473",
+   "statut": "active",
+   "expire_le": "2028-06-10"
+  }
+ ],
+ "fines_by_status": {
+  "a_payer": 2,
+  "contestee": 1,
+  "payee": 1
+ }
+}
