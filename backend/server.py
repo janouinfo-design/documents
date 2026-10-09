@@ -6059,7 +6059,9 @@ _ME_TX_PROJ = {"_id": 0, "id": 1, "vehicle_id": 1, "date": 1, "heure": 1, "date_
 _ME_FINE_PROJ = {"_id": 0, "id": 1, "vehicle_id": 1, "label": 1, "fournisseur": 1, "numero": 1, "montant": 1, "devise": 1, "montant_chf": 1,
                  "date_debut": 1, "date_expiration": 1, "fine_status": 1, "payee": 1, "paid_on": 1, "paid_at": 1, "type_infraction": 1,
                  "lieu_infraction": 1, "heure_infraction": 1, "date_reception": 1, "montant_amende": 1, "frais_admin": 1,
-                 "storage_path": 1, "original_filename": 1, "content_type": 1, "justificatif_absent": 1, "created_at": 1}
+                 "storage_path": 1, "original_filename": 1, "content_type": 1, "justificatif_absent": 1, "created_at": 1,
+                 "document_type": 1, "business_category": 1}
+_ME_FINE_CALC_ONLY = ("document_type", "business_category")  # requis par _is_fine/with_statut (deadline_active) — jamais renvoyés au chauffeur
 
 
 async def _me_driver(request: Request) -> dict:
@@ -6174,6 +6176,9 @@ async def me_fines(request: Request):
                   "type_infraction_label": fin.INFRACTION_LABELS.get(x.get("type_infraction"), x.get("type_infraction") or fin.DEFAULT_INFRACTION_TYPE)})
     docs.sort(key=lambda x: (x.get("date_debut") or "", x.get("created_at") or ""), reverse=True)
     open_ = [x for x in docs if x.get("deadline_active")]
+    for x in docs:
+        for k in _ME_FINE_CALC_ONLY:
+            x.pop(k, None)
     return {"items": docs, "total": len(docs),
             "totals": {"ouvertes": len(open_), "en_retard": sum(1 for x in open_ if (x.get("days_remaining") or 0) < 0),
                        "montant_ouvert_chf": round(sum((nofile.cost_amount_chf(x)[0] or 0) for x in open_ if x.get("montant") is not None), 2)}}

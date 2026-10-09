@@ -1,0 +1,494 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="3" skipped="0" tests="358" time="400.418" timestamp="2026-10-09T06:16:02.424894+00:00" hostname="agent-env-a68eb2d7-48bd-4684-ae28-833c883f925b"><testcase classname="tests.test_legacy_identity_phase4c.TestIdempotence" name="test_1_replay_same_key_creates_single_record" time="0.026" /><testcase classname="tests.test_legacy_identity_phase4c.TestIdempotence" name="test_2_duplicate_legacy_id_same_tenant_refused_by_index" time="0.032" /><testcase classname="tests.test_legacy_identity_phase4c.TestIdempotence" name="test_3_same_legacy_id_other_tenant_isolated" time="0.009" /><testcase classname="tests.test_legacy_identity_phase4c.TestIdempotence" name="test_payload_tenant_mismatch_refused" time="0.001" /><testcase classname="tests.test_legacy_identity_phase4c.TestTenantMap" name="test_4_unconfirmed_map_unusable_and_candidates_read_only" time="3.258" /><testcase classname="tests.test_legacy_identity_phase4c.TestTenantMap" name="test_5_mapping_by_name_forbidden" time="0.127" /><testcase classname="tests.test_legacy_identity_phase4c.TestTenantMap" name="test_6_default_fallback_forbidden" time="0.255" /><testcase classname="tests.test_legacy_identity_phase4c.TestTenantMap" name="test_confirm_then_resolve_idempotent_and_conflict" time="0.534" /><testcase classname="tests.test_legacy_identity_phase4c.TestTenantMap" name="test_tenant_map_superadmin_only" time="0.512" /><testcase classname="tests.test_legacy_identity_phase4c.TestTenantMap" name="test_revoke_audited" time="0.380" /><testcase classname="tests.test_legacy_identity_phase4c.TestVehicleMap" name="test_7_8_candidates_read_only_plate_manual_tracker_warning" time="0.149" /><testcase classname="tests.test_legacy_identity_phase4c.TestVehicleMap" name="test_stage_then_list" time="0.550" /><testcase classname="tests.test_legacy_identity_phase4c.TestVehicleMap" name="test_confirm_methods_and_audit" time="0.676" /><testcase classname="tests.test_legacy_identity_phase4c.TestVehicleMap" name="test_9_conflict_no_silent_overwrite" time="0.380" /><testcase classname="tests.test_legacy_identity_phase4c.TestVehicleMap" name="test_reject_requires_reason_and_audited" time="0.366" /><testcase classname="tests.test_legacy_identity_phase4c.TestVehicleMap" name="test_10_read_only_writes_403" time="0.612" /><testcase classname="tests.test_legacy_identity_phase4c.TestVehicleMap" name="test_11_cross_tenant_fail_closed" time="0.781" /><testcase classname="tests.test_legacy_identity_phase4c.TestVehicleMap" name="test_no_real_legacy_data_migrated" time="0.009" /><testcase classname="tests.test_legacy_identity_phase4c.TestRequireRoles" name="test_resolver_unchanged_422_without_criteria" time="0.126" /><testcase classname="tests.test_legacy_identity_phase4c.TestRequireRoles" name="test_superadmin_acting_tenant_passes_require_roles" time="0.138" /><testcase classname="tests.test_nofile_phase4c.TestDocumentSansFichierManual" name="test_01_plein_manual_cree_document_sans_fichier_et_une_transaction" time="3.182" /><testcase classname="tests.test_nofile_phase4c.TestDocumentSansFichierManual" name="test_02_convention_d5_zurich_sur_la_transaction" time="0.003" /><testcase classname="tests.test_nofile_phase4c.TestDocumentSansFichierManual" name="test_03_motif_obligatoire_et_validations" time="0.925" /><testcase classname="tests.test_nofile_phase4c.TestDocumentSansFichierManual" name="test_04_doublon_transaction_409_puis_override" time="0.599" /><testcase classname="tests.test_nofile_phase4c.TestDocumentSansFichierManual" name="test_05_endpoints_fichier_sans_binaire_reponse_propre_jamais_500" time="0.736" /><testcase classname="tests.test_nofile_phase4c.TestDocumentSansFichierManual" name="test_06_attacher_fichier_plus_tard_meme_document_pas_de_deuxieme_cout" time="1.072" /><testcase classname="tests.test_nofile_phase4c.TestDocumentSansFichierManual" name="test_07_attach_sha256_dedup_avertissement" time="0.269" /><testcase classname="tests.test_nofile_phase4c.TestDocumentSansFichierManual" name="test_08_amende_manuelle_cout_echeance_statut_a_payer" time="0.911" /><testcase classname="tests.test_nofile_phase4c.TestLegacyImport" name="test_10_legacy_import_sans_fichier_idempotent" time="0.659" /><testcase classname="tests.test_nofile_phase4c.TestLegacyImport" name="test_11_legacy_replay_est_une_mise_a_jour_pas_un_doublon" time="0.149" /><testcase classname="tests.test_nofile_phase4c.TestLegacyImport" name="test_12_isolation_meme_legacy_id_autre_tenant" time="0.137" /><testcase classname="tests.test_nofile_phase4c.TestLegacyImport" name="test_13_index_legacy_lot_a_toujours_present" time="0.004" /><testcase classname="tests.test_nofile_phase4c.TestD7CollectCosts" name="test_20_chf_lit_montant" time="0.115" /><testcase classname="tests.test_nofile_phase4c.TestD7CollectCosts" name="test_21_non_chf_avec_montant_chf" time="0.490" /><testcase classname="tests.test_nofile_phase4c.TestD7CollectCosts" name="test_22_non_chf_sans_montant_chf_pending_fx_exclu_du_total" time="1.086" /><testcase classname="tests.test_nofile_phase4c.TestD7CollectCosts" name="test_23_patch_montant_chf_sort_de_pending_fx_et_audit_avant_apres" time="0.600" /><testcase classname="tests.test_nofile_phase4c.TestD7CollectCosts" name="test_24_montant_chf_ignore_si_devise_chf" time="0.491" /><testcase classname="tests.test_nofile_phase4c.TestD7CollectCosts" name="test_25_collect_costs_ne_lit_jamais_fuel_transactions" time="0.002" /><testcase classname="tests.test_nofile_phase4c.TestSecurite" name="test_30_read_only_toutes_ecritures_403_base_inchangee" time="1.030" /><testcase classname="tests.test_nofile_phase4c.TestSecurite" name="test_31_cross_tenant_fail_closed" time="0.708" /><testcase classname="tests.test_nofile_phase4c.TestSecurite" name="test_32_audit_creation_modification_attach" time="0.024" /><testcase classname="tests.test_nofile_phase4c.TestSecurite" name="test_33_aucune_donnee_journal_reelle_migree" time="0.023" /><testcase classname="tests.test_drivers_phase4c.TestReferentielConducteurs" name="test_01_creation_conducteur_tenant_a" time="2.799" /><testcase classname="tests.test_drivers_phase4c.TestReferentielConducteurs" name="test_02_lecture_conducteur_tenant_a" time="0.480" /><testcase classname="tests.test_drivers_phase4c.TestReferentielConducteurs" name="test_03_modification_conducteur_audit_avant_apres" time="0.372" /><testcase classname="tests.test_drivers_phase4c.TestReferentielConducteurs" name="test_04_aucune_unicite_sur_le_nom_mais_email_unique" time="0.525" /><testcase classname="tests.test_drivers_phase4c.TestReferentielConducteurs" name="test_05_desactivation_puis_reactivation" time="0.482" /><testcase classname="tests.test_drivers_phase4c.TestReferentielConducteurs" name="test_06_archive_non_destructif_et_restore" time="0.745" /><testcase classname="tests.test_drivers_phase4c.TestAffectations" name="test_10_affectation_driver_a_vers_vehicle_a" time="0.499" /><testcase classname="tests.test_drivers_phase4c.TestAffectations" name="test_11_affectation_vers_vehicule_autre_tenant_refusee" time="0.267" /><testcase classname="tests.test_drivers_phase4c.TestAffectations" name="test_12_chevauchement_409_puis_remplacement_explicite_audite" time="0.759" /><testcase classname="tests.test_drivers_phase4c.TestAffectations" name="test_13_historique_valid_from_valid_to_conserve" time="0.244" /><testcase classname="tests.test_drivers_phase4c.TestAffectations" name="test_14_fermeture_explicite_auditee" time="1.205" /><testcase classname="tests.test_drivers_phase4c.TestAffectations" name="test_15_aucun_mapping_automatique_par_nom" time="0.421" /><testcase classname="tests.test_drivers_phase4c.TestDriverIdEntites" name="test_20_driver_id_accepte_sur_plein_amende_et_fiche" time="0.696" /><testcase classname="tests.test_drivers_phase4c.TestDriverIdEntites" name="test_21_filtres_et_enrichissement_energy_documents" time="0.728" /><testcase classname="tests.test_drivers_phase4c.TestDriverIdEntites" name="test_22_driver_id_autre_tenant_refuse" time="1.576" /><testcase classname="tests.test_drivers_phase4c.TestLegacyEtSecurite" name="test_30_legacy_idempotence_conducteur_et_affectation" time="0.980" /><testcase classname="tests.test_drivers_phase4c.TestLegacyEtSecurite" name="test_31_read_only_toutes_ecritures_403_base_inchangee" time="1.577" /><testcase classname="tests.test_drivers_phase4c.TestLegacyEtSecurite" name="test_32_audit_conducteur_et_affectations_complet" time="0.029" /><testcase classname="tests.test_drivers_phase4c.TestLegacyEtSecurite" name="test_33_aucune_donnee_journal_reelle" time="0.021"><failure message="AssertionError: assert 62 == 0&#10; +  where 62 = count_documents({'role': {'$in': ['driver', 'manager']}})&#10; +    where count_documents = Collection(Database(MongoClient(host=['localhost:27017'], document_class=dict, tz_aware=False, connect=True), 'test_database'), 'users').count_documents&#10; +      where Collection(Database(MongoClient(host=['localhost:27017'], document_class=dict, tz_aware=False, connect=True), 'test_database'), 'users') = Database(MongoClient(host=['localhost:27017'], document_class=dict, tz_aware=False, connect=True), 'test_database').users">self = &lt;test_drivers_phase4c.TestLegacyEtSecurite object at 0xfc7840d72c50&gt;
+
+    def test_33_aucune_donnee_journal_reelle(self):
+        db = _mongo()
+        q = {"tenant_id": {"$nin": [TENANT_A, TENANT_B]}, "legacy_id": {"$exists": True}}
+        assert db.drivers.count_documents(q) == 0 and db.driver_assignments.count_documents(q) == 0
+        assert db.drivers.count_documents({"tenant_id": "default"}) == 0 and db.driver_assignments.count_documents({"tenant_id": "default"}) == 0
+&gt;       assert db.users.count_documents({"role": {"$in": ["driver", "manager"]}}) == 0  # rôles lot H non créés
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: assert 62 == 0
+E        +  where 62 = count_documents({'role': {'$in': ['driver', 'manager']}})
+E        +    where count_documents = Collection(Database(MongoClient(host=['localhost:27017'], document_class=dict, tz_aware=False, connect=True), 'test_database'), 'users').count_documents
+E        +      where Collection(Database(MongoClient(host=['localhost:27017'], document_class=dict, tz_aware=False, connect=True), 'test_database'), 'users') = Database(MongoClient(host=['localhost:27017'], document_class=dict, tz_aware=False, connect=True), 'test_database').users
+
+tests/test_drivers_phase4c.py:359: AssertionError</failure></testcase><testcase classname="tests.test_fines_phase4c.TestStatutsParite" name="test_01_dix_statuts_exacts_exposes" time="2.955" /><testcase classname="tests.test_fines_phase4c.TestStatutsParite" name="test_02_creation_defaut_a_payer_non_payee" time="0.464" /><testcase classname="tests.test_fines_phase4c.TestStatutsParite" name="test_03_mapping_journal_1_pour_1_sans_perte" time="3.041" /><testcase classname="tests.test_fines_phase4c.TestStatutsParite" name="test_03b_creation_directe_etat_terminal_ou_paiement_interdite" time="6.509" /><testcase classname="tests.test_fines_phase4c.TestStatutsParite" name="test_04_compat_lecture_phase3_sans_fine_status_aucune_ecriture" time="5.899" /><testcase classname="tests.test_fines_phase4c.TestPaiement" name="test_05_marquer_payee_paid_on_metier_paid_at_technique" time="0.691" /><testcase classname="tests.test_fines_phase4c.TestPaiement" name="test_06_payment_ref_optionnelle_jamais_inventee" time="20.394" /><testcase classname="tests.test_fines_phase4c.TestPaiement" name="test_07_de_paiement_motif_obligatoire_audit_explicite" time="0.512" /><testcase classname="tests.test_fines_phase4c.TestPaiement" name="test_08_transition_quitte_payee_motif_et_audit" time="0.253" /><testcase classname="tests.test_fines_phase4c.TestPaiement" name="test_09_paid_on_jamais_derive_et_refuse_hors_statut_paye" time="0.507" /><testcase classname="tests.test_fines_phase4c.TestPaiement" name="test_10_cloture_conserve_les_faits_de_paiement" time="0.732" /><testcase classname="tests.test_fines_phase4c.TestD9EtMatrices" name="test_11_annulee_motif_obligatoire_hors_couts_hors_echeances_montant_conserve" time="0.834" /><testcase classname="tests.test_fines_phase4c.TestD9EtMatrices" name="test_12_matrice_echeance_et_couts_centralisee_pour_les_10_statuts" time="3.945" /><testcase classname="tests.test_fines_phase4c.TestD9EtMatrices" name="test_13_stats_memes_regles_que_la_liste" time="0.244" /><testcase classname="tests.test_fines_phase4c.TestConducteur" name="test_14_driver_fk_tenant_scopee_non_identifie_cross_tenant_404" time="0.857" /><testcase classname="tests.test_fines_phase4c.TestPiecesLiees" name="test_15_piece_sans_fichier_puis_fichier_meme_piece_jamais_un_cout" time="2.109" /><testcase classname="tests.test_fines_phase4c.TestPiecesLiees" name="test_16_piece_avec_fichier_validations_et_soft_delete" time="1.320" /><testcase classname="tests.test_fines_phase4c.TestHistoriqueEtNotesInternes" name="test_17_historique_chronologique_par_entite" time="0.804" /><testcase classname="tests.test_fines_phase4c.TestHistoriqueEtNotesInternes" name="test_18_notes_internes_filtrees_cote_api_pour_read_only" time="1.083" /><testcase classname="tests.test_fines_phase4c.TestRbacExportsIsolation" name="test_19_read_only_mutations_403_lectures_200" time="1.191" /><testcase classname="tests.test_fines_phase4c.TestRbacExportsIsolation" name="test_20_exports_csv_xlsx_pdf_read_only_audites_sans_notes_internes" time="1.048" /><testcase classname="tests.test_fines_phase4c.TestRbacExportsIsolation" name="test_21_isolation_tenant_fail_closed" time="2.407" /><testcase classname="tests.test_fines_phase4c.TestFiltresEtCompat" name="test_22_filtres_liste_pagination_recherche" time="2.126" /><testcase classname="tests.test_fines_phase4c.TestFiltresEtCompat" name="test_23_type_infraction_enum_8_codes_hors_enum_refuse_historique_conserve" time="16.913" /><testcase classname="tests.test_fines_phase4c.TestFiltresEtCompat" name="test_24_rejeu_legacy_idempotent_ne_reclasse_pas_le_statut" time="0.373" /><testcase classname="tests.test_fines_phase4c.TestFiltresEtCompat" name="test_25_d7_devise_etrangere_pending_fx_hors_totaux" time="1.031" /><testcase classname="tests.test_fines_phase4c.TestFiltresEtCompat" name="test_26_statique_regle_unique_et_aucune_donnee_journal" time="0.019" /><testcase classname="tests.test_fuel_cards_phase4c.TestReferentiel" name="test_01_creation_identite_humaine_aucun_fingerprint" time="3.867" /><testcase classname="tests.test_fuel_cards_phase4c.TestReferentiel" name="test_02_fingerprint_refuse_et_validations" time="1.196" /><testcase classname="tests.test_fuel_cards_phase4c.TestReferentiel" name="test_03_meme_fournisseur_last4_autorise_apres_confirmation_aucune_fusion" time="0.267" /><testcase classname="tests.test_fuel_cards_phase4c.TestReferentiel" name="test_04_legacy_idempotence_tenant_scopee" time="0.608" /><testcase classname="tests.test_fuel_cards_phase4c.TestReferentiel" name="test_05_lecture_liste_filtres_et_referentiels" time="1.400" /><testcase classname="tests.test_fuel_cards_phase4c.TestReferentiel" name="test_06_modification_auditee_avant_apres_et_collision_en_edition" time="0.819" /><testcase classname="tests.test_fuel_cards_phase4c.TestStatutEtExpiration" name="test_07_statut_declare_motif_obligatoire_audit_avant_apres" time="1.386" /><testcase classname="tests.test_fuel_cards_phase4c.TestStatutEtExpiration" name="test_08_expiration_derivee_sans_changement_automatique_de_statut" time="1.939" /><testcase classname="tests.test_fuel_cards_phase4c.TestStatutEtExpiration" name="test_09_echeance_expiration_dans_deadlines_memes_seuils" time="0.741" /><testcase classname="tests.test_fuel_cards_phase4c.TestArchivage" name="test_10_archivage_soft_delete_motif_masque_restauration" time="2.465" /><testcase classname="tests.test_fuel_cards_phase4c.TestAffectations" name="test_11_affectation_vehicule_valide" time="0.408" /><testcase classname="tests.test_fuel_cards_phase4c.TestAffectations" name="test_12_affectation_conducteur_valide_coexiste_avec_vehicule" time="1.659" /><testcase classname="tests.test_fuel_cards_phase4c.TestAffectations" name="test_13_validations_et_refus_cross_tenant_fail_closed" time="2.443" /><testcase classname="tests.test_fuel_cards_phase4c.TestAffectations" name="test_14_conflit_meme_type_409_puis_replace_motif_regle_lot_c" time="0.634" /><testcase classname="tests.test_fuel_cards_phase4c.TestAffectations" name="test_15_remplacement_le_meme_jour_une_seule_affectation_courante" time="1.097" /><testcase classname="tests.test_fuel_cards_phase4c.TestAffectations" name="test_16_fermeture_affectation_historique_conserve" time="0.847" /><testcase classname="tests.test_fuel_cards_phase4c.TestAffectations" name="test_17_legacy_assignment_valid_from_null_et_rejeu" time="0.708" /><testcase classname="tests.test_fuel_cards_phase4c.TestAffectations" name="test_18_affectation_incoherente_conducteur_archive" time="0.725" /><testcase classname="tests.test_fuel_cards_phase4c.TestResolveRbacIsolation" name="test_19_resolve_lecture_seule_found_ambiguous_not_found" time="1.161" /><testcase classname="tests.test_fuel_cards_phase4c.TestResolveRbacIsolation" name="test_20_read_only_lecture_200_mutations_403" time="1.665" /><testcase classname="tests.test_fuel_cards_phase4c.TestResolveRbacIsolation" name="test_21_historique_complet_carte" time="0.253" /><testcase classname="tests.test_fuel_cards_phase4c.TestResolveRbacIsolation" name="test_22_aucun_effet_fuel_transactions_couts_amendes_lots_a_d" time="1.163" /><testcase classname="tests.test_business_data.TestFactureToCosts" name="test_facture_validee_alimente_le_moteur_couts" time="2.944" /><testcase classname="tests.test_business_data.TestFactureToCosts" name="test_couts_vehicule_et_csv" time="0.235" /><testcase classname="tests.test_business_data.TestFactureToCosts" name="test_kilometrage_releve_jamais_ecrit_sur_le_vehicule" time="0.003" /><testcase classname="tests.test_business_data.TestFactureToCosts" name="test_sans_categorie_confirmee_le_cout_apparait_non_classe" time="0.250" /><testcase classname="tests.test_business_data.TestFactureToCosts" name="test_ancien_document_sans_cle_retombe_sur_le_dossier" time="30.080"><failure message="requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='fleet-admin-hub-7.preview.emergentagent.com', port=443): Read timed out. (read timeout=30)">self = &lt;urllib3.connectionpool.HTTPSConnectionPool object at 0xfc78144426d0&gt;
+conn = &lt;HTTPSConnection(host='fleet-admin-hub-7.preview.emergentagent.com', port=443) at 0xfc7814441bd0&gt;
+method = 'POST'
+url = '/api/vehicles/def81260-a11d-454d-a74d-be88df1a21cd/documents'
+body = b'--bba8cdf79a71ae98f935e4ce837cad40\r\nContent-Disposition: form-data; name="folder"\r\n\r\nDivers\r\n--bba8cdf79a71a...0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00L\r\n--bba8cdf79a71ae98f935e4ce837cad40--\r\n'
+headers = {'User-Agent': 'python-requests/2.34.2', 'Accept-Encoding': 'gzip, deflate', 'Accept': '*/*', 'Connection': 'keep-aliv...3hYFgOBgKc', 'Content-Length': '353', 'Content-Type': 'multipart/form-data; boundary=bba8cdf79a71ae98f935e4ce837cad40'}
+retries = Retry(total=0, connect=None, read=False, redirect=None, status=None)
+timeout = Timeout(connect=30, read=30, total=None), chunked = False
+response_conn = &lt;HTTPSConnection(host='fleet-admin-hub-7.preview.emergentagent.com', port=443) at 0xfc7814441bd0&gt;
+preload_content = False, decode_content = False, enforce_content_length = True
+
+    def _make_request(
+        self,
+        conn: BaseHTTPConnection,
+        method: str,
+        url: str,
+        body: _TYPE_BODY | None = None,
+        headers: typing.Mapping[str, str] | None = None,
+        retries: Retry | None = None,
+        timeout: _TYPE_TIMEOUT = _DEFAULT_TIMEOUT,
+        chunked: bool = False,
+        response_conn: BaseHTTPConnection | None = None,
+        preload_content: bool = True,
+        decode_content: bool = True,
+        enforce_content_length: bool = True,
+    ) -&gt; BaseHTTPResponse:
+        """
+        Perform a request on a given urllib connection object taken from our
+        pool.
+    
+        :param conn:
+            a connection from one of our connection pools
+    
+        :param method:
+            HTTP request method (such as GET, POST, PUT, etc.)
+    
+        :param url:
+            The URL to perform the request on.
+    
+        :param body:
+            Data to send in the request body, either :class:`str`, :class:`bytes`,
+            an iterable of :class:`str`/:class:`bytes`, or a file-like object.
+    
+        :param headers:
+            Dictionary of custom headers to send, such as User-Agent,
+            If-None-Match, etc. If None, pool headers are used. If provided,
+            these headers completely replace any pool-specific headers.
+    
+        :param retries:
+            Configure the number of retries to allow before raising a
+            :class:`~urllib3.exceptions.MaxRetryError` exception.
+    
+            Pass ``None`` to retry until you receive a response. Pass a
+            :class:`~urllib3.util.retry.Retry` object for fine-grained control
+            over different types of retries.
+            Pass an integer number to retry connection errors that many times,
+            but no other types of errors. Pass zero to never retry.
+    
+            If ``False``, then retries are disabled and any exception is raised
+            immediately. Also, instead of raising a MaxRetryError on redirects,
+            the redirect response will be returned.
+    
+        :type retries: :class:`~urllib3.util.retry.Retry`, False, or an int.
+    
+        :param timeout:
+            If specified, overrides the default timeout for this one
+            request. It may be a float (in seconds) or an instance of
+            :class:`urllib3.util.Timeout`.
+    
+        :param chunked:
+            If True, urllib3 will send the body using chunked transfer
+            encoding. Otherwise, urllib3 will send the body using the standard
+            content-length form. Defaults to False.
+    
+        :param response_conn:
+            Set this to ``None`` if you will handle releasing the connection or
+            set the connection to have the response release it.
+    
+        :param preload_content:
+          If True, the response's body will be preloaded during construction.
+    
+        :param decode_content:
+            If True, will attempt to decode the body based on the
+            'content-encoding' header.
+    
+        :param enforce_content_length:
+            Enforce content length checking. Body returned by server must match
+            value of Content-Length header, if present. Otherwise, raise error.
+        """
+        self.num_requests += 1
+    
+        timeout_obj = self._get_timeout(timeout)
+        timeout_obj.start_connect()
+        conn.timeout = Timeout.resolve_default_timeout(timeout_obj.connect_timeout)
+    
+        try:
+            # Trigger any extra validation we need to do.
+            try:
+                self._validate_conn(conn)
+            except (SocketTimeout, BaseSSLError) as e:
+                self._raise_timeout(err=e, url=url, timeout_value=conn.timeout)
+                raise
+    
+        # _validate_conn() starts the connection to an HTTPS proxy
+        # so we need to wrap errors with 'ProxyError' here too.
+        except (
+            OSError,
+            NewConnectionError,
+            TimeoutError,
+            BaseSSLError,
+            CertificateError,
+            SSLError,
+        ) as e:
+            new_e: Exception = e
+            if isinstance(e, (BaseSSLError, CertificateError)):
+                new_e = SSLError(e)
+            # If the connection didn't successfully connect to it's proxy
+            # then there
+            if isinstance(
+                new_e, (OSError, NewConnectionError, TimeoutError, SSLError)
+            ) and (conn and conn.proxy and not conn.has_connected_to_proxy):
+                new_e = _wrap_proxy_error(new_e, conn.proxy.scheme)
+            raise new_e
+    
+        # conn.request() calls http.client.*.request, not the method in
+        # urllib3.request. It also calls makefile (recv) on the socket.
+        try:
+            conn.request(
+                method,
+                url,
+                body=body,
+                headers=headers,
+                chunked=chunked,
+                preload_content=preload_content,
+                decode_content=decode_content,
+                enforce_content_length=enforce_content_length,
+            )
+    
+        # We are swallowing BrokenPipeError (errno.EPIPE) since the server is
+        # legitimately able to close the connection after sending a valid response.
+        # With this behaviour, the received response is still readable.
+        except BrokenPipeError:
+            pass
+        except OSError as e:
+            # MacOS/Linux
+            # EPROTOTYPE and ECONNRESET are needed on macOS
+            # https://erickt.github.io/blog/2014/11/19/adventures-in-debugging-a-potential-osx-kernel-bug/
+            # Condition changed later to emit ECONNRESET instead of only EPROTOTYPE.
+            if e.errno != errno.EPROTOTYPE and e.errno != errno.ECONNRESET:
+                raise
+    
+        # Reset the timeout for the recv() on the socket
+        read_timeout = timeout_obj.read_timeout
+    
+        if not conn.is_closed:
+            # In Python 3 socket.py will catch EAGAIN and return None when you
+            # try and read into the file pointer created by http.client, which
+            # instead raises a BadStatusLine exception. Instead of catching
+            # the exception and assuming all BadStatusLine exceptions are read
+            # timeouts, check for a zero timeout before making the request.
+            if read_timeout == 0:
+                raise ReadTimeoutError(
+                    self, url, f"Read timed out. (read timeout={read_timeout})"
+                )
+            conn.timeout = read_timeout
+    
+        # Receive the response from the server
+        try:
+&gt;           response = conn.getresponse()
+                       ^^^^^^^^^^^^^^^^^^
+
+/root/.venv/lib/python3.11/site-packages/urllib3/connectionpool.py:534: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/.venv/lib/python3.11/site-packages/urllib3/connection.py:571: in getresponse
+    httplib_response = super().getresponse()
+                       ^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/http/client.py:1443: in getresponse
+    response.begin()
+/usr/local/lib/python3.11/http/client.py:337: in begin
+    version, status, reason = self._read_status()
+                              ^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/http/client.py:298: in _read_status
+    line = str(self.fp.readline(_MAXLINE + 1), "iso-8859-1")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/socket.py:718: in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/ssl.py:1327: in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;ssl.SSLSocket [closed] fd=-1, family=2, type=1, proto=6&gt;, len = 8192
+buffer = &lt;memory at 0xfc7840f02a40&gt;
+
+    def read(self, len=1024, buffer=None):
+        """Read up to LEN bytes and return them.
+        Return zero-length string on EOF."""
+    
+        self._checkClosed()
+        if self._sslobj is None:
+            raise ValueError("Read on closed or unwrapped SSL socket.")
+        try:
+            if buffer is not None:
+&gt;               return self._sslobj.read(len, buffer)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               TimeoutError: The read operation timed out
+
+/usr/local/lib/python3.11/ssl.py:1179: TimeoutError
+
+The above exception was the direct cause of the following exception:
+
+self = &lt;requests.adapters.HTTPAdapter object at 0xfc781444b810&gt;
+request = &lt;PreparedRequest [POST]&gt;, stream = False, timeout = 30, verify = True
+cert = None, proxies = OrderedDict()
+
+    def send(
+        self,
+        request: PreparedRequest,
+        stream: bool = False,
+        timeout: _t.TimeoutType = None,
+        verify: _t.VerifyType = True,
+        cert: _t.CertType = None,
+        proxies: dict[str, str] | None = None,
+    ) -&gt; Response:
+        """Sends PreparedRequest object. Returns Response object.
+    
+        :param request: The :class:`PreparedRequest &lt;PreparedRequest&gt;` being sent.
+        :param stream: (optional) Whether to stream the request content.
+        :param timeout: (optional) How long to wait for the server to send
+            data before giving up, as a float, or a :ref:`(connect timeout,
+            read timeout) &lt;timeouts&gt;` tuple.
+        :type timeout: float or tuple or urllib3 Timeout object
+        :param verify: (optional) Either a boolean, in which case it controls whether
+            we verify the server's TLS certificate, or a string, in which case it
+            must be a path to a CA bundle to use
+        :param cert: (optional) Any user-provided SSL certificate to be trusted.
+        :param proxies: (optional) The proxies dictionary to apply to the request.
+        :rtype: requests.Response
+        """
+    
+        assert _is_prepared(request)
+    
+        try:
+            conn = self.get_connection_with_tls_context(
+                request, verify, proxies=proxies, cert=cert
+            )
+        except LocationValueError as e:
+            raise InvalidURL(e, request=request)
+    
+        self.cert_verify(conn, request.url, verify, cert)
+        url = self.request_url(request, proxies)
+        self.add_headers(
+            request,
+            stream=stream,
+            timeout=timeout,
+            verify=verify,
+            cert=cert,
+            proxies=proxies,
+        )
+    
+        chunked = not (request.body is None or "Content-Length" in request.headers)
+    
+        if isinstance(timeout, tuple):
+            try:
+                connect, read = timeout
+                resolved_timeout = TimeoutSauce(connect=connect, read=read)
+            except ValueError:
+                raise ValueError(
+                    f"Invalid timeout {timeout}. Pass a (connect, read) timeout tuple, "
+                    f"or a single float to set both timeouts to the same value."
+                )
+        elif isinstance(timeout, TimeoutSauce):
+            resolved_timeout = timeout
+        else:
+            resolved_timeout = TimeoutSauce(connect=timeout, read=timeout)
+    
+        try:
+&gt;           resp = conn.urlopen(
+                method=request.method,
+                url=url,
+                body=request.body,  # type: ignore[arg-type]  # urllib3 stubs don't accept Iterable[bytes | str]
+                headers=request.headers,  # type: ignore[arg-type]  # urllib3#3072
+                redirect=False,
+                assert_same_host=False,
+                preload_content=False,
+                decode_content=False,
+                retries=self.max_retries,
+                timeout=resolved_timeout,
+                chunked=chunked,
+            )
+
+/root/.venv/lib/python3.11/site-packages/requests/adapters.py:696: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/root/.venv/lib/python3.11/site-packages/urllib3/connectionpool.py:842: in urlopen
+    retries = retries.increment(
+/root/.venv/lib/python3.11/site-packages/urllib3/util/retry.py:498: in increment
+    raise reraise(type(error), error, _stacktrace)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/urllib3/util/util.py:39: in reraise
+    raise value
+/root/.venv/lib/python3.11/site-packages/urllib3/connectionpool.py:788: in urlopen
+    response = self._make_request(
+/root/.venv/lib/python3.11/site-packages/urllib3/connectionpool.py:536: in _make_request
+    self._raise_timeout(err=e, url=url, timeout_value=read_timeout)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;urllib3.connectionpool.HTTPSConnectionPool object at 0xfc78144426d0&gt;
+err = TimeoutError('The read operation timed out')
+url = '/api/vehicles/def81260-a11d-454d-a74d-be88df1a21cd/documents'
+timeout_value = 30
+
+    def _raise_timeout(
+        self,
+        err: BaseSSLError | OSError | SocketTimeout,
+        url: str,
+        timeout_value: _TYPE_TIMEOUT | None,
+    ) -&gt; None:
+        """Is the error actually a timeout? Will raise a ReadTimeout or pass"""
+    
+        if isinstance(err, SocketTimeout):
+&gt;           raise ReadTimeoutError(
+                self, url, f"Read timed out. (read timeout={timeout_value})"
+            ) from err
+E           urllib3.exceptions.ReadTimeoutError: HTTPSConnectionPool(host='fleet-admin-hub-7.preview.emergentagent.com', port=443): Read timed out. (read timeout=30)
+
+/root/.venv/lib/python3.11/site-packages/urllib3/connectionpool.py:367: ReadTimeoutError
+
+During handling of the above exception, another exception occurred:
+
+self = &lt;test_business_data.TestFactureToCosts object at 0xfc78403d5a10&gt;
+
+    def test_ancien_document_sans_cle_retombe_sur_le_dossier(self):
+&gt;       d = _upload(_S["veh_a"], "legacy.png", data=PNG + b"L")
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_business_data.py:162: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_business_data.py:81: in _upload
+    r = requests.post(f"{_BASE}/api/vehicles/{vehicle_id}/documents", headers=_h(creds),
+/root/.venv/lib/python3.11/site-packages/requests/api.py:134: in post
+    return request("post", url, data=data, json=json, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/api.py:71: in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/conftest.py:33: in _patched_request
+    return _orig_request(self, method, url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:651: in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:784: in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = &lt;requests.adapters.HTTPAdapter object at 0xfc781444b810&gt;
+request = &lt;PreparedRequest [POST]&gt;, stream = False, timeout = 30, verify = True
+cert = None, proxies = OrderedDict()
+
+    def send(
+        self,
+        request: PreparedRequest,
+        stream: bool = False,
+        timeout: _t.TimeoutType = None,
+        verify: _t.VerifyType = True,
+        cert: _t.CertType = None,
+        proxies: dict[str, str] | None = None,
+    ) -&gt; Response:
+        """Sends PreparedRequest object. Returns Response object.
+    
+        :param request: The :class:`PreparedRequest &lt;PreparedRequest&gt;` being sent.
+        :param stream: (optional) Whether to stream the request content.
+        :param timeout: (optional) How long to wait for the server to send
+            data before giving up, as a float, or a :ref:`(connect timeout,
+            read timeout) &lt;timeouts&gt;` tuple.
+        :type timeout: float or tuple or urllib3 Timeout object
+        :param verify: (optional) Either a boolean, in which case it controls whether
+            we verify the server's TLS certificate, or a string, in which case it
+            must be a path to a CA bundle to use
+        :param cert: (optional) Any user-provided SSL certificate to be trusted.
+        :param proxies: (optional) The proxies dictionary to apply to the request.
+        :rtype: requests.Response
+        """
+    
+        assert _is_prepared(request)
+    
+        try:
+            conn = self.get_connection_with_tls_context(
+                request, verify, proxies=proxies, cert=cert
+            )
+        except LocationValueError as e:
+            raise InvalidURL(e, request=request)
+    
+        self.cert_verify(conn, request.url, verify, cert)
+        url = self.request_url(request, proxies)
+        self.add_headers(
+            request,
+            stream=stream,
+            timeout=timeout,
+            verify=verify,
+            cert=cert,
+            proxies=proxies,
+        )
+    
+        chunked = not (request.body is None or "Content-Length" in request.headers)
+    
+        if isinstance(timeout, tuple):
+            try:
+                connect, read = timeout
+                resolved_timeout = TimeoutSauce(connect=connect, read=read)
+            except ValueError:
+                raise ValueError(
+                    f"Invalid timeout {timeout}. Pass a (connect, read) timeout tuple, "
+                    f"or a single float to set both timeouts to the same value."
+                )
+        elif isinstance(timeout, TimeoutSauce):
+            resolved_timeout = timeout
+        else:
+            resolved_timeout = TimeoutSauce(connect=timeout, read=timeout)
+    
+        try:
+            resp = conn.urlopen(
+                method=request.method,
+                url=url,
+                body=request.body,  # type: ignore[arg-type]  # urllib3 stubs don't accept Iterable[bytes | str]
+                headers=request.headers,  # type: ignore[arg-type]  # urllib3#3072
+                redirect=False,
+                assert_same_host=False,
+                preload_content=False,
+                decode_content=False,
+                retries=self.max_retries,
+                timeout=resolved_timeout,
+                chunked=chunked,
+            )
+    
+        except (ProtocolError, OSError) as err:
+            raise ConnectionError(err, request=request)
+    
+        except MaxRetryError as e:
+            if isinstance(e.reason, ConnectTimeoutError):
+                # TODO: Remove this in 3.0.0: see #2811
+                if not isinstance(e.reason, NewConnectionError):
+                    raise ConnectTimeout(e, request=request)
+    
+            if isinstance(e.reason, ResponseError):
+                raise RetryError(e, request=request)
+    
+            if isinstance(e.reason, _ProxyError):
+                raise ProxyError(e, request=request)
+    
+            if isinstance(e.reason, _SSLError):
+                # This branch is for urllib3 v1.22 and later.
+                raise SSLError(e, request=request)
+    
+            raise ConnectionError(e, request=request)
+    
+        except ClosedPoolError as e:
+            raise ConnectionError(e, request=request)
+    
+        except _ProxyError as e:
+            raise ProxyError(e)
+    
+        except (_SSLError, _HTTPError) as e:
+            if isinstance(e, _SSLError):
+                # This branch is for urllib3 versions earlier than v1.22
+                raise SSLError(e, request=request)
+            elif isinstance(e, ReadTimeoutError):
+&gt;               raise ReadTimeout(e, request=request)
+E               requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='fleet-admin-hub-7.preview.emergentagent.com', port=443): Read timed out. (read timeout=30)
+
+/root/.venv/lib/python3.11/site-packages/requests/adapters.py:742: ReadTimeout</failure></testcase><testcase classname="tests.test_business_data.TestFactureToCosts" name="test_patch_categorie_metier" time="0.000"><failure message="KeyError: 'doc_legacy'">self = &lt;test_business_data.TestFactureToCosts object at 0xfc7840dd8810&gt;
+
+    def test_patch_categorie_metier(self):
+&gt;       did = _S["doc_legacy"]
+              ^^^^^^^^^^^^^^^^
+E       KeyError: 'doc_legacy'
+
+tests/test_business_data.py:171: KeyError</failure></testcase><testcase classname="tests.test_business_data.TestFactureToCosts" name="test_devise_eur_conservee_et_chf_par_defaut" time="1.108" /><testcase classname="tests.test_business_data.TestFactureToCosts" name="test_categorie_inconnue_422" time="0.124" /><testcase classname="tests.test_business_data.TestFactureToCosts" name="test_type_autre_inchange" time="0.130" /><testcase classname="tests.test_business_data.TestDeduplication" name="test_doublon_metier_409_puis_confirmation_explicite" time="0.487" /><testcase classname="tests.test_business_data.TestDeduplication" name="test_variation_montant_ou_numero_n_est_pas_un_doublon" time="0.248" /><testcase classname="tests.test_business_data.TestDeduplication" name="test_sha256_fichier_identique_avertit_sans_bloquer" time="1.088" /><testcase classname="tests.test_business_data.TestPlaqueDocument" name="test_plaque_differente_avertit_sans_reaffecter" time="0.264" /><testcase classname="tests.test_business_data.TestPlaqueDocument" name="test_plaque_identique_sans_avertissement" time="0.125" /><testcase classname="tests.test_business_data.TestSecurity" name="test_read_only_403" time="0.698" /><testcase classname="tests.test_business_data.TestSecurity" name="test_isolation_tenant" time="0.474" /><testcase classname="tests.test_business_data.TestSecurity" name="test_business_categories_endpoint" time="0.255" /><testcase classname="tests.test_energy_phase2.TestTicketComplet" name="test_ticket_complet_cree_une_transaction_et_un_seul_cout" time="3.459" /><testcase classname="tests.test_energy_phase2.TestTicketComplet" name="test_collect_costs_ne_lit_jamais_fuel_transactions" time="0.002" /><testcase classname="tests.test_energy_phase2.TestTicketComplet" name="test_kilometrage_ticket_jamais_ecrit_sur_le_vehicule" time="0.003" /><testcase classname="tests.test_energy_phase2.TestTicketComplet" name="test_revalidation_idempotente" time="0.496" /><testcase classname="tests.test_energy_phase2.TestTicketComplet" name="test_index_unique_source_document" time="0.004" /><testcase classname="tests.test_energy_phase2.TestTicketComplet" name="test_energie_endpoints" time="0.340" /><testcase classname="tests.test_energy_phase2.TestTicketIncompletEtCoherence" name="test_ticket_incomplet_sans_litres" time="0.136" /><testcase classname="tests.test_energy_phase2.TestTicketIncompletEtCoherence" name="test_ticket_sans_montant_ni_quantite_aucune_transaction" time="0.131" /><testcase classname="tests.test_energy_phase2.TestTicketIncompletEtCoherence" name="test_incoherence_litres_prix_avertissement_non_bloquant" time="0.251" /><testcase classname="tests.test_energy_phase2.TestTicketIncompletEtCoherence" name="test_kilometrage_ticket_superieur_odometre_avertissement" time="0.139" /><testcase classname="tests.test_energy_phase2.TestElectrique" name="test_recharge_ev_sans_litres" time="0.634" /><testcase classname="tests.test_energy_phase2.TestElectrique" name="test_conso_kwh_par_recharges_et_jamais_en_litres" time="0.246" /><testcase classname="tests.test_energy_phase2.TestPlaqueDoublons" name="test_plaque_differente_avertissement_sans_reaffectation" time="0.143" /><testcase classname="tests.test_energy_phase2.TestPlaqueDoublons" name="test_doublon_fichier_sha256_signale" time="0.531" /><testcase classname="tests.test_energy_phase2.TestPlaqueDoublons" name="test_doublon_transaction_409_puis_confirmation_explicite" time="0.263" /><testcase classname="tests.test_energy_phase2.TestSecurite" name="test_read_only_validate_403_et_base_inchangee" time="0.479" /><testcase classname="tests.test_energy_phase2.TestSecurite" name="test_read_only_lecture_ok_ecritures_403" time="0.480" /><testcase classname="tests.test_energy_phase2.TestSecurite" name="test_cross_tenant_404_et_isolation" time="1.751" /><testcase classname="tests.test_energy_phase2.TestSecurite" name="test_admin_temoin_meme_document_valide" time="0.254" /><testcase classname="tests.test_energy_phase2.TestSecurite" name="test_suppression_document_source_bloquee_409" time="0.243" /><testcase classname="tests.test_energy_phase2.TestSecurite" name="test_suppression_document_sans_transaction_ok" time="0.122" /><testcase classname="tests.test_energy_phase2.TestConsoPriorite" name="test_can_prioritaire_jamais_remplace_par_tickets" time="0.405" /><testcase classname="tests.test_energy_phase2.TestConsoPriorite" name="test_sans_can_tickets_alimentent_la_conso_reelle" time="0.470" /><testcase classname="tests.test_fines_phase3.TestAmendeComplete" name="test_amende_validee_cout_et_echeance" time="3.348" /><testcase classname="tests.test_fines_phase3.TestAmendeComplete" name="test_montant_centimes_conserve" time="0.255" /><testcase classname="tests.test_fines_phase3.TestAmendeComplete" name="test_revalidation_idempotente" time="0.642" /><testcase classname="tests.test_fines_phase3.TestAmendeComplete" name="test_amende_incomplete_sans_montant_ni_delai" time="0.526" /><testcase classname="tests.test_fines_phase3.TestPaiementEtRetard" name="test_echeance_passee_en_retard_reste_active" time="0.465" /><testcase classname="tests.test_fines_phase3.TestPaiementEtRetard" name="test_marquer_payee" time="0.733" /><testcase classname="tests.test_fines_phase3.TestPaiementEtRetard" name="test_revalidation_conserve_le_statut_payee" time="0.355" /><testcase classname="tests.test_fines_phase3.TestPaiementEtRetard" name="test_annuler_paiement" time="0.470" /><testcase classname="tests.test_fines_phase3.TestPaiementEtRetard" name="test_paid_sur_non_amende_422" time="0.124" /><testcase classname="tests.test_fines_phase3.TestPaiementEtRetard" name="test_filtre_echeance_ignore_les_amendes_payees" time="0.704" /><testcase classname="tests.test_fines_phase3.TestPlaqueEtDoublons" name="test_plaque_differente_avertissement_sans_reaffectation" time="0.134" /><testcase classname="tests.test_fines_phase3.TestPlaqueEtDoublons" name="test_doublon_fichier_sha256_signale" time="0.569" /><testcase classname="tests.test_fines_phase3.TestPlaqueEtDoublons" name="test_doublon_metier_par_numero_409_puis_override" time="0.509" /><testcase classname="tests.test_fines_phase3.TestPlaqueEtDoublons" name="test_doublon_metier_sans_numero_autorite_date_montant" time="0.362" /><testcase classname="tests.test_fines_phase3.TestSecurite" name="test_read_only_validate_403_base_inchangee" time="0.681" /><testcase classname="tests.test_fines_phase3.TestSecurite" name="test_read_only_mark_paid_delete_patch_403" time="0.602" /><testcase classname="tests.test_fines_phase3.TestSecurite" name="test_cross_tenant_404" time="0.818" /><testcase classname="tests.test_fines_phase3.TestSecurite" name="test_admin_temoin_valide_le_document_refuse_au_read_only" time="0.125" /><testcase classname="tests.test_fines_phase3.TestSecurite" name="test_suppression_amende_validee_409" time="0.362" /><testcase classname="tests.test_fines_phase3.TestSecurite" name="test_suppression_amende_non_validee_ok" time="0.146" /><testcase classname="tests.test_fuel_import_phase4c.TestUploadMappingPreview" name="test_01_fields_and_upload_csv_creates_job_only" time="7.306" /><testcase classname="tests.test_fuel_import_phase4c.TestUploadMappingPreview" name="test_02_mapping_missing_required_422" time="0.342" /><testcase classname="tests.test_fuel_import_phase4c.TestUploadMappingPreview" name="test_03_preview_statuses_zero_business_writes" time="0.194" /><testcase classname="tests.test_fuel_import_phase4c.TestUploadMappingPreview" name="test_04_xlsx_preview_zero_business_writes" time="0.385" /><testcase classname="tests.test_fuel_import_phase4c.TestUploadMappingPreview" name="test_05_csv_comma_and_tab_delimiters" time="0.248" /><testcase classname="tests.test_fuel_import_phase4c.TestUploadMappingPreview" name="test_06_read_only_can_view_but_not_mutate" time="0.999" /><testcase classname="tests.test_fuel_import_phase4c.TestUploadMappingPreview" name="test_07_cross_tenant_fail_closed" time="0.604" /><testcase classname="tests.test_fuel_import_phase4c.TestManualResolution" name="test_10_plate_candidate_stays_unknown_until_human" time="0.000" /><testcase classname="tests.test_fuel_import_phase4c.TestManualResolution" name="test_11_resolve_row_requires_reason" time="0.235" /><testcase classname="tests.test_fuel_import_phase4c.TestManualResolution" name="test_12_resolve_row_manual_vehicle" time="0.505" /><testcase classname="tests.test_fuel_import_phase4c.TestManualResolution" name="test_13_bulk_accept_unique_eligibility_and_audit" time="0.382" /><testcase classname="tests.test_fuel_import_phase4c.TestManualResolution" name="test_14_bulk_fail_closed_if_candidate_vanished" time="0.611" /><testcase classname="tests.test_fuel_import_phase4c.TestConfirm" name="test_20_confirm_imports_and_sets_aside" time="0.559" /><testcase classname="tests.test_fuel_import_phase4c.TestConfirm" name="test_21_confirm_is_idempotent" time="0.245" /><testcase classname="tests.test_fuel_import_phase4c.TestConfirm" name="test_22_reimport_same_file_all_duplicates" time="0.428" /><testcase classname="tests.test_fuel_import_phase4c.TestConfirm" name="test_23_dedup_key_without_external_id" time="0.698" /><testcase classname="tests.test_fuel_import_phase4c.TestConfirm" name="test_24_force_duplicate_with_reason" time="0.496" /><testcase classname="tests.test_fuel_import_phase4c.TestConfirm" name="test_25_confirm_requires_mapping" time="0.233" /><testcase classname="tests.test_fuel_import_phase4c.TestResultingData" name="test_30_card_id_only_when_found" time="0.493" /><testcase classname="tests.test_fuel_import_phase4c.TestResultingData" name="test_31_vehicle_matching_results" time="0.021" /><testcase classname="tests.test_fuel_import_phase4c.TestResultingData" name="test_32_card_warnings_and_anomalies" time="0.035" /><testcase classname="tests.test_fuel_import_phase4c.TestResultingData" name="test_33_nofile_document_one_tx_and_d7_costs" time="0.868" /><testcase classname="tests.test_fuel_import_phase4c.TestResultingData" name="test_34_energy_and_detail_endpoints" time="0.456" /><testcase classname="tests.test_fuel_import_phase4c.TestResultingData" name="test_35_no_impact_fines_and_other_lots" time="0.380" /><testcase classname="tests.test_fuel_matching_phase4c.TestScoringPure" name="test_01_direct_vehicle_id_100_auto" time="3.777" /><testcase classname="tests.test_fuel_matching_phase4c.TestScoringPure" name="test_02_card_unique_assigned_usable_90_auto" time="0.000" /><testcase classname="tests.test_fuel_matching_phase4c.TestScoringPure" name="test_03_card_inactive_never_auto_minus_50" time="0.000" /><testcase classname="tests.test_fuel_matching_phase4c.TestScoringPure" name="test_04_card_ambiguous_review" time="0.000" /><testcase classname="tests.test_fuel_matching_phase4c.TestScoringPure" name="test_05_two_assignments_same_date_review" time="0.000" /><testcase classname="tests.test_fuel_matching_phase4c.TestScoringPure" name="test_06_plate_alone_zero_never_auto" time="0.000" /><testcase classname="tests.test_fuel_matching_phase4c.TestScoringPure" name="test_07_driver_alone_no_auto" time="0.000" /><testcase classname="tests.test_fuel_matching_phase4c.TestScoringPure" name="test_08_fuel_penalty_and_bonus" time="0.000" /><testcase classname="tests.test_fuel_matching_phase4c.TestScoringPure" name="test_09_no_candidate_unmatched_and_thresholds" time="0.000" /><testcase classname="tests.test_fuel_matching_phase4c.TestScoringPure" name="test_10_card_inactive_eval_rule" time="0.000" /><testcase classname="tests.test_fuel_matching_phase4c.TestApi" name="test_20_manual_fuel_hook_resolves_card_and_match" time="0.007" /><testcase classname="tests.test_fuel_matching_phase4c.TestApi" name="test_21_manual_match_requires_reason_and_tenant" time="2.611" /><testcase classname="tests.test_fuel_matching_phase4c.TestApi" name="test_22_manual_match_moves_tx_and_document_with_audit" time="0.247" /><testcase classname="tests.test_fuel_matching_phase4c.TestApi" name="test_23_manual_card_choice" time="0.662" /><testcase classname="tests.test_fuel_matching_phase4c.TestApi" name="test_24_match_run_never_changes_vehicle" time="0.250" /><testcase classname="tests.test_fuel_matching_phase4c.TestApi" name="test_25_settings_tenant" time="0.754" /><testcase classname="tests.test_fuel_anomalies_phase4c.TestCardInactiveRule" name="test_01_matrix" time="4.177" /><testcase classname="tests.test_fuel_anomalies_phase4c.TestCardInactiveRule" name="test_02_detect_pure_card_rules" time="0.000" /><testcase classname="tests.test_fuel_anomalies_phase4c.TestCardInactiveRule" name="test_03_detect_pure_other_rules" time="0.000" /><testcase classname="tests.test_fuel_anomalies_phase4c.TestD8Pure" name="test_10_justified_reimported_only_if_redetected" time="0.000" /><testcase classname="tests.test_fuel_anomalies_phase4c.TestD8Pure" name="test_11_issues_never_become_anomalies" time="0.000" /><testcase classname="tests.test_fuel_anomalies_phase4c.TestApi" name="test_20_manual_fuel_creates_card_inactive_anomalies" time="0.436" /><testcase classname="tests.test_fuel_anomalies_phase4c.TestApi" name="test_21_card_vehicle_mismatch_no_auto_correction" time="0.133" /><testcase classname="tests.test_fuel_anomalies_phase4c.TestApi" name="test_22_list_filters_and_stats" time="0.592" /><testcase classname="tests.test_fuel_anomalies_phase4c.TestApi" name="test_23_decide_requires_reason_rbac_tenant" time="0.598" /><testcase classname="tests.test_fuel_anomalies_phase4c.TestApi" name="test_24_decide_justify_with_audit_and_history" time="0.494" /><testcase classname="tests.test_fuel_anomalies_phase4c.TestApi" name="test_25_scan_never_recreates_decided" time="0.266" /><testcase classname="tests.test_fuel_anomalies_phase4c.TestApi" name="test_26_correct_and_reject_decisions" time="0.426" /><testcase classname="tests.test_fuel_anomalies_phase4c.TestApi" name="test_27_no_impact_fines_costs_lots" time="0.320" /><testcase classname="tests.test_fuel_guardrails_phase4c.TestGuardrails" name="test_01_preview_zero_final_business_writes" time="5.476" /><testcase classname="tests.test_fuel_guardrails_phase4c.TestGuardrails" name="test_02_card_id_matrix_preview" time="0.000" /><testcase classname="tests.test_fuel_guardrails_phase4c.TestGuardrails" name="test_03_scoring_rules" time="0.000" /><testcase classname="tests.test_fuel_guardrails_phase4c.TestGuardrails" name="test_04_plate_unique_never_auto" time="0.000" /><testcase classname="tests.test_fuel_guardrails_phase4c.TestGuardrails" name="test_05_bulk_accept_n_rows_n_audits" time="0.524" /><testcase classname="tests.test_fuel_guardrails_phase4c.TestGuardrails" name="test_06_card_inactive_matrix" time="0.000" /><testcase classname="tests.test_fuel_guardrails_phase4c.TestGuardrails" name="test_07_confirm_idempotent" time="1.114" /><testcase classname="tests.test_fuel_guardrails_phase4c.TestGuardrails" name="test_08_card_id_matrix_final" time="0.009" /><testcase classname="tests.test_fuel_guardrails_phase4c.TestGuardrails" name="test_09_mismatch_and_inactive_anomalies_no_correction" time="0.005" /><testcase classname="tests.test_fuel_guardrails_phase4c.TestGuardrails" name="test_10_read_only_403_matrix" time="2.278" /><testcase classname="tests.test_fuel_guardrails_phase4c.TestGuardrails" name="test_11_cross_tenant_fail_closed_matrix" time="1.914" /><testcase classname="tests.test_fuel_guardrails_phase4c.TestGuardrails" name="test_12_justify_keeps_history_and_d7_costs" time="0.488" /><testcase classname="tests.test_fuel_statements_phase4c" name="test_pure_threshold_rule_single_or_both" time="4.355" /><testcase classname="tests.test_fuel_statements_phase4c" name="test_pure_blockers_and_deltas" time="0.000" /><testcase classname="tests.test_fuel_statements_phase4c" name="test_reconciliation_settings_default_null_and_rbac" time="1.493" /><testcase classname="tests.test_fuel_statements_phase4c" name="test_reconciliation_can_priority_astra_reference_no_threshold" time="0.470" /><testcase classname="tests.test_fuel_statements_phase4c" name="test_reconciliation_tickets_only_and_can_only" time="0.484" /><testcase classname="tests.test_fuel_statements_phase4c" name="test_reconciliation_thresholds_single_and_both" time="1.464" /><testcase classname="tests.test_fuel_statements_phase4c" name="test_reconciliation_filters_and_tenant_isolation" time="0.720" /><testcase classname="tests.test_fuel_statements_phase4c" name="test_reconciliation_justify_rbac_reason_audit_no_source_change" time="1.314" /><testcase classname="tests.test_fuel_statements_phase4c" name="test_statement_create_snapshot_unique_no_lock_in_draft" time="0.987" /><testcase classname="tests.test_fuel_statements_phase4c" name="test_statement_scope_fournisseur_and_list_filters" time="2.187" /><testcase classname="tests.test_fuel_statements_phase4c" name="test_statement_declared_deltas_na_currency_rbac_audit" time="0.849" /><testcase classname="tests.test_fuel_statements_phase4c" name="test_statement_blockers_all_types_and_close_blocked" time="1.594" /><testcase classname="tests.test_fuel_statements_phase4c" name="test_statement_recalculate_removes_ineligible_and_detects_stale_snapshot" time="0.382" /><testcase classname="tests.test_fuel_statements_phase4c" name="test_statement_close_clean_locks_transactions_idempotent" time="0.978" /><testcase classname="tests.test_fuel_statements_phase4c" name="test_lock_blocks_match_card_vehicle_delete_and_match_run_ignores" time="0.613" /><testcase classname="tests.test_fuel_statements_phase4c" name="test_lock_document_granular_patch_delete_validate_manual" time="3.042" /><testcase classname="tests.test_fuel_statements_phase4c" name="test_statement_close_exception_requires_reason_confirm_admin_and_locks" time="1.880" /><testcase classname="tests.test_fuel_statements_phase4c" name="test_anomaly_decision_allowed_after_lock_without_source_change" time="0.313" /><testcase classname="tests.test_fuel_statements_phase4c" name="test_no_reopen_endpoint_or_equivalent" time="0.697" /><testcase classname="tests.test_fuel_statements_phase4c" name="test_corrective_statement_only_unlocked_transactions_parent_unchanged" time="2.761" /><testcase classname="tests.test_fuel_statements_phase4c" name="test_exports_statement_reconciliations_transactions_sha256_audited" time="2.549" /><testcase classname="tests.test_fuel_statements_phase4c" name="test_cross_tenant_fail_closed_everywhere" time="1.374" /><testcase classname="tests.test_fuel_statements_phase4c" name="test_read_only_all_mutations_403" time="2.590" /><testcase classname="tests.test_fuel_statements_phase4c" name="test_d7_d8_and_energy_overview_unaffected" time="0.782" /><testcase classname="tests.test_rbac_lotH" name="test_console_roles_enum_and_links_same_tenant_only" time="9.735" /><testcase classname="tests.test_rbac_lotH" name="test_console_update_role_change_clears_links_and_audits" time="0.976" /><testcase classname="tests.test_rbac_lotH" name="test_tenant_isolation_manager_and_driver" time="2.046" /><testcase classname="tests.test_rbac_lotH" name="test_manager_vehicles_scope_and_mutations" time="1.876" /><testcase classname="tests.test_rbac_lotH" name="test_manager_documents_fines_energy_scope" time="2.509" /><testcase classname="tests.test_rbac_lotH" name="test_manager_anomalies_reconciliations_kpi_scope" time="1.822" /><testcase classname="tests.test_rbac_lotH" name="test_manager_exports_same_server_scope" time="1.128" /><testcase classname="tests.test_rbac_lotH" name="test_manager_fuel_cards_visibility_rules" time="2.237" /><testcase classname="tests.test_rbac_lotH" name="test_manager_drivers_minimal_and_assignments" time="37.168" /><testcase classname="tests.test_rbac_lotH" name="test_manager_forbidden_tenant_global_functions" time="3.234" /><testcase classname="tests.test_rbac_lotH" name="test_manager_empty_scope_sees_nothing" time="1.639" /><testcase classname="tests.test_rbac_lotH" name="test_manager_scope_revocation_same_token" time="0.783" /><testcase classname="tests.test_rbac_lotH" name="test_manager_files_scoped" time="0.656" /><testcase classname="tests.test_rbac_lotH" name="test_driver_fail_closed_outside_me" time="2.291" /><testcase classname="tests.test_rbac_lotH" name="test_driver_profile_vehicles_active_only" time="0.236" /><testcase classname="tests.test_rbac_lotH" name="test_driver_fuel_and_fines_self_scope_no_internal_notes" time="1.076" /><testcase classname="tests.test_rbac_lotH" name="test_driver_fines_kpi_calc_fields_used_server_side_never_exposed" time="0.559" /><testcase classname="tests.test_rbac_lotH" name="test_driver_files_only_own" time="1.318" /><testcase classname="tests.test_rbac_lotH" name="test_driver_link_states_and_no_assignment" time="1.898" /><testcase classname="tests.test_rbac_lotH" name="test_driver_revocation_same_token_unlink_inactive_assignment_end" time="1.704" /><testcase classname="tests.test_rbac_lotH" name="test_admin_and_read_only_unchanged" time="1.080" /><testcase classname="tests.test_admin_console.TestRoles" name="test_superadmin_login_role_and_tenant" time="0.450" /><testcase classname="tests.test_admin_console.TestRoles" name="test_legacy_admin_demoted_to_client_admin" time="0.448" /><testcase classname="tests.test_admin_console.TestRoles" name="test_client_admin_forbidden_on_console" time="0.454" /><testcase classname="tests.test_admin_console.TestRoles" name="test_invalid_token_rejected_on_console" time="0.121" /><testcase classname="tests.test_admin_console.TestRoles" name="test_business_api_still_works_for_client_admin" time="0.467" /><testcase classname="tests.test_admin_console.TestTenants" name="test_create_tenant" time="0.121" /><testcase classname="tests.test_admin_console.TestTenants" name="test_duplicate_tenant_409" time="0.117" /><testcase classname="tests.test_admin_console.TestTenants" name="test_platform_id_reserved" time="0.126" /><testcase classname="tests.test_admin_console.TestTenants" name="test_empty_name_422" time="0.118" /><testcase classname="tests.test_admin_console.TestTenants" name="test_overview_lists_default_and_new" time="0.157" /><testcase classname="tests.test_admin_console.TestUsers" name="test_create_user" time="0.347" /><testcase classname="tests.test_admin_console.TestUsers" name="test_duplicate_email_409" time="0.118" /><testcase classname="tests.test_admin_console.TestUsers" name="test_short_password_422" time="0.131" /><testcase classname="tests.test_admin_console.TestUsers" name="test_superadmin_role_refused" time="0.120" /><testcase classname="tests.test_admin_console.TestUsers" name="test_new_user_sees_only_its_empty_tenant" time="1.089" /><testcase classname="tests.test_admin_console.TestUsers" name="test_client_user_cannot_access_console" time="0.462" /><testcase classname="tests.test_admin_console.TestUsers" name="test_password_reset_revokes_sessions" time="1.594" /><testcase classname="tests.test_admin_console.TestUsers" name="test_disable_user_blocks_login_and_tokens" time="1.503" /><testcase classname="tests.test_admin_console.TestUsers" name="test_superadmin_account_not_modifiable" time="0.240" /><testcase classname="tests.test_admin_console.TestIntegration" name="test_set_api_hash_never_returned" time="0.758" /><testcase classname="tests.test_admin_console.TestIntegration" name="test_empty_update_422" time="0.125" /><testcase classname="tests.test_admin_console.TestIntegration" name="test_unknown_tenant_404" time="0.115" /><testcase classname="tests.test_admin_console.TestModulesAndDisable" name="test_module_documents_disable_blocks_business_api" time="0.974" /><testcase classname="tests.test_admin_console.TestModulesAndDisable" name="test_tenant_disable_blocks_everything" time="1.401" /><testcase classname="tests.test_admin_console.TestModulesAndDisable" name="test_default_tenant_unaffected" time="0.470" /><testcase classname="tests.test_multitenant.TestTenantIsolation" name="test_tenant_b_starts_empty_then_isolated" time="3.389" /><testcase classname="tests.test_multitenant.TestTenantIsolation" name="test_resolver_never_crosses_tenants" time="0.335" /><testcase classname="tests.test_multitenant.TestTenantIsolation" name="test_pilot_vehicles_not_visible_from_tenant_b" time="0.237" /><testcase classname="tests.test_multitenant.TestTenantWithoutTelematics" name="test_tenant_c_documents_and_dashboard_work_without_navixy" time="0.946" /><testcase classname="tests.test_multitenant.TestTenantWithoutTelematics" name="test_link_and_create_are_tenant_guarded" time="0.355" /><testcase classname="tests.test_multitenant.TestGenericStatuses" name="test_integrity_statuses_on_pilot" time="0.524" /><testcase classname="tests.test_multitenant.TestGenericStatuses" name="test_integrity_filters" time="1.077" /><testcase classname="tests.test_multitenant.TestGenericStatuses" name="test_vin_check_generic_no_autocorrection" time="0.485" /><testcase classname="tests.test_multitenant.TestGenericStatuses" name="test_demo_data_forbidden_in_production" time="0.178" /><testcase classname="tests.test_multitenant.TestVolume" name="test_no_assumption_on_fleet_size" time="0.583" /><testcase classname="tests.test_security_lot2.TestSec001FileToken" name="test_session_token_ok_on_business_api" time="0.121" /><testcase classname="tests.test_security_lot2.TestSec001FileToken" name="test_session_token_in_query_refused_on_files" time="0.449" /><testcase classname="tests.test_security_lot2.TestSec001FileToken" name="test_file_token_ok_on_files" time="0.773" /><testcase classname="tests.test_security_lot2.TestSec001FileToken" name="test_file_token_ok_on_reports" time="0.297" /><testcase classname="tests.test_security_lot2.TestSec001FileToken" name="test_file_token_refused_on_business_api_header" time="0.585" /><testcase classname="tests.test_security_lot2.TestSec001FileToken" name="test_file_token_refused_on_business_api_query" time="0.220" /><testcase classname="tests.test_security_lot2.TestSec001FileToken" name="test_file_token_tampered_refused" time="0.225" /><testcase classname="tests.test_security_lot2.TestSec001FileToken" name="test_file_token_expired_refused" time="0.224" /><testcase classname="tests.test_security_lot2.TestSec001FileToken" name="test_file_token_wrong_tenant_claim_refused" time="0.228" /><testcase classname="tests.test_security_lot2.TestSec001FileToken" name="test_logout_revokes_session_and_file_tokens" time="1.133" /><testcase classname="tests.test_security_lot2.TestSec002Uploads" name="test_html_rejected" time="0.511" /><testcase classname="tests.test_security_lot2.TestSec002Uploads" name="test_exe_rejected_on_generic_upload" time="0.115" /><testcase classname="tests.test_security_lot2.TestSec002Uploads" name="test_oversize_rejected" time="0.999" /><testcase classname="tests.test_security_lot2.TestSec002Uploads" name="test_allowed_formats_accepted" time="1.116" /><testcase classname="tests.test_security_lot2.TestSec002Uploads" name="test_lying_content_type_neutralized" time="0.714" /><testcase classname="tests.test_security_lot2.TestSec002Uploads" name="test_non_inline_type_forced_attachment" time="0.828" /><testcase classname="tests.test_security_lot2.TestSec002Uploads" name="test_pdf_inline_preserved" time="0.349" /><testcase classname="tests.test_security_lot2.TestSec002Uploads" name="test_malicious_filename_sanitized" time="0.355" /><testcase classname="tests.test_security_lot2.TestSec002Uploads" name="test_upload_to_unknown_vehicle_refused" time="0.269" /><testcase classname="tests.test_readonly_extraction_rbac" name="test_admin_can_read_extraction" time="0.484" /><testcase classname="tests.test_readonly_extraction_rbac" name="test_readonly_cannot_read_other_tenant_extraction" time="0.453" /><testcase classname="tests.test_readonly_extraction_rbac" name="test_readonly_cannot_validate" time="0.477" /><testcase classname="tests.test_readonly_extraction_rbac" name="test_readonly_cannot_create_vehicle" time="0.465" /><testcase classname="tests.test_documents_security.TestAuditTrail" name="test_upload_creates_audit_event" time="2.414" /><testcase classname="tests.test_documents_security.TestAuditTrail" name="test_download_creates_audit_event_and_secure_headers" time="0.354" /><testcase classname="tests.test_documents_security.TestAuditTrail" name="test_delete_soft_deletes_and_creates_audit_event" time="0.418" /><testcase classname="tests.test_documents_security.TestReadOnlyRbac" name="test_read_only_can_download" time="0.723" /><testcase classname="tests.test_documents_security.TestReadOnlyRbac" name="test_read_only_cannot_upload" time="0.117" /><testcase classname="tests.test_documents_security.TestReadOnlyRbac" name="test_read_only_cannot_delete" time="0.119" /><testcase classname="tests.test_documents_security.TestTenantIsolationFiles" name="test_b_cannot_list_documents_of_a" time="0.450" /><testcase classname="tests.test_documents_security.TestTenantIsolationFiles" name="test_b_cannot_download_file_of_a" time="0.239" /><testcase classname="tests.test_documents_security.TestTenantIsolationFiles" name="test_b_cannot_delete_doc_of_a" time="0.118" /><testcase classname="tests.test_documents_security.TestTenantIsolationFiles" name="test_file_without_any_token_refused" time="0.115" /><testcase classname="tests.test_documents_security.TestTenantIsolationFiles" name="test_access_token_in_query_refused_on_files" time="0.130" /><testcase classname="tests.test_documents_security.TestFileEdgeCases" name="test_db_record_without_physical_file_returns_clean_404" time="0.708" /><testcase classname="tests.test_documents_security.TestFileEdgeCases" name="test_path_traversal_rejected" time="0.257" /><testcase classname="tests.test_documents_security.TestFileEdgeCases" name="test_upload_disallowed_extension_rejected" time="1.072" /><testcase classname="tests.test_documents_security.TestLocalStorageUnit" name="test_local_path_traversal_guard" time="0.007" /><testcase classname="tests.test_documents_security.TestLocalStorageUnit" name="test_local_put_get_roundtrip_persists_on_disk" time="0.006" /><testcase classname="tests.test_scan_v2_readonly" name="test_readonly_scan_forbidden" time="0.633" /><testcase classname="tests.test_scan_v2_readonly" name="test_cross_tenant_scan_returns_404" time="0.976" /><testcase classname="tests.test_scan_v2_readonly" name="test_scan_invalid_extension_rejected" time="0.582" /><testcase classname="tests.test_scan_v2_readonly" name="test_scan_max_pages_exceeded" time="0.688" /></testsuite></testsuites>

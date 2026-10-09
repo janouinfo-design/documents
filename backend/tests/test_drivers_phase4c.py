@@ -356,4 +356,5 @@ class TestLegacyEtSecurite:
         q = {"tenant_id": {"$nin": [TENANT_A, TENANT_B]}, "legacy_id": {"$exists": True}}
         assert db.drivers.count_documents(q) == 0 and db.driver_assignments.count_documents(q) == 0
         assert db.drivers.count_documents({"tenant_id": "default"}) == 0 and db.driver_assignments.count_documents({"tenant_id": "default"}) == 0
-        assert db.users.count_documents({"role": {"$in": ["driver", "manager"]}}) == 0  # rôles lot H non créés
+        # Lot H livré (GO explicite) : les rôles manager/driver existent désormais dans les tenants de test ; jamais dans `default` (0 migration)
+        assert db.users.count_documents({"tenant_id": "default", "role": {"$in": ["driver", "manager"]}}) == 0

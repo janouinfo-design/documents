@@ -90,9 +90,9 @@ def _plein(vehicle, driver, station, litres=40, montant=80.0, creds=ADMIN_A, day
     return r.json()["fuel_transaction"]["id"], r.json()["document_id"]
 
 
-def _fine(vehicle, driver, numero, notes, creds=ADMIN_A):
+def _fine(vehicle, driver, numero, notes, creds=ADMIN_A, delai=20):
     r = req("POST", f"/vehicles/{vehicle}/fines", {"autorite": "Police LotH", "numero_amende": numero, "date_infraction": D(-5), "montant": 120.0,
-                                                   "delai_paiement": D(20), "motif": "Amende Lot H", "driver_id": driver,
+                                                   "delai_paiement": D(delai), "motif": "Amende Lot H", "driver_id": driver,
                                                    "notes_internes": notes, "dossier_interne": f"DOSSIER-{numero}"}, creds)
     assert r.status_code == 200, r.text
     return r.json()["document_id"]
@@ -155,6 +155,18 @@ def setup_module():
     _admin_user(TA, DRV_INACT, "driver", driver_id=S["D_INACT"])
     assert req("PATCH", f"/drivers/{S['D_INACT']}", {"actif": False}).status_code == 200
     _admin_user(TB, MGR_B, "manager", vehicle_scope=[S["VB1"]])
+
+
+def teardown_module():
+    db = _mongo()
+    for tenant in (TA, TB):
+        for coll in ("users", "vehicles", "documents", "files", "audit_logs", "alerts", "vehicle_field_meta", "tenant_integrations", "doc_categories",
+                     "doc_requirements", "tenant_settings", "inspections", "fuel_transactions", "drivers", "driver_assignments", "fuel_cards",
+                     "fuel_card_assignments", "fuel_import_jobs", "fuel_import_rows", "fuel_import_mappings", "fuel_transaction_matches",
+                     "fuel_anomalies", "fuel_snapshots", "fuel_statements", "fuel_statement_lines", "fuel_reconciliations"):
+            db[coll].delete_many({"tenant_id": tenant})
+        db.tenants.delete_one({"id": tenant})
+    db.login_attempts.delete_many({"identifier": {"$regex": f"lh-.*{_RUN}"}})
 
 
 def _user_id(email):
@@ -457,6 +469,33 @@ def test_driver_fuel_and_fines_self_scope_no_internal_notes():
     S["TX3_PATH"] = just["path"]
     tx3 = next(x for x in req("GET", "/me/fuel-transactions", creds=DRV_A).json()["items"] if x["id"] == S["TX3"])
     assert tx3["justificatif"]["present"] is True
+
+
+def test_driver_fines_kpi_calc_fields_used_server_side_never_exposed():
+    """Bug it.48 : `_ME_FINE_PROJ` omettait `document_type` / `business_category` → `_is_fine` faux → `deadline_active` jamais posé → KPI à 0."""
+    import fines as fin
+    S["FINE_LATE"] = _fine(S["V1"], S["D1"], f"F3-{_RUN}", "SECRET-NOTE-3", delai=-3)                # échéance dépassée depuis 3 jours
+    S["FINE_NODRIVER"] = _fine(S["V1"], None, f"F4-{_RUN}", "SECRET-NOTE-4")                        # véhicule de D1, sans driver_id
+    # A. les 2 champs de calcul existent dans la source (documents)
+    src = {d["id"]: d for d in _mongo().documents.find({"tenant_id": TA, "id": {"$in": [S["FINE1"], S["FINE_LATE"]]}}, {"_id": 0})}
+    assert all(d.get("document_type") == "amende" and d.get("business_category") == "AMENDE" for d in src.values())
+    fines = req("GET", "/me/fines", creds=DRV_A).json()
+    items = {f["id"]: f for f in fines["items"]}
+    # E. self-scope : F1 + F3 (driver D1) uniquement ; F2 (D2/V3) et F4 (V1 sans driver_id) jamais dans liste / total / KPI
+    assert set(items) == {S["FINE1"], S["FINE_LATE"]} and fines["total"] == 2
+    # B. KPI corrects grâce aux champs de calcul (deadline_active posé côté serveur)
+    late = items[S["FINE_LATE"]]
+    assert late["deadline_active"] is True and late["days_remaining"] == -3 and late["fine_status_label"] and late["payee"] is False
+    f1_open = fin.deadline_active(items[S["FINE1"]]["fine_status"])
+    assert items[S["FINE1"]]["deadline_active"] is f1_open
+    assert fines["totals"]["en_retard"] == 1 and fines["totals"]["ouvertes"] == 1 + int(f1_open)
+    assert fines["totals"]["montant_ouvert_chf"] == round(120.0 * (1 + int(f1_open)), 2)
+    # C + D. les champs de calcul et les notes internes ne sont jamais renvoyés au chauffeur
+    for f in fines["items"]:
+        assert "document_type" not in f and "business_category" not in f
+        assert "notes_internes" not in f and "dossier_interne" not in f and "priorite" not in f
+    # admin : F4 existe bien (le filtre driver_id est la seule raison de son absence côté chauffeur)
+    assert S["FINE_NODRIVER"] in {f["id"] for f in req("GET", "/fines", params={"vehicle_id": S["V1"]}).json()["items"]}
 
 
 def test_driver_files_only_own():

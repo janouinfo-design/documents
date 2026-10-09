@@ -2,13 +2,79 @@
  "checks": [
   {
    "check": "DEFAULT_UNCHANGED",
-   "result": "PASS",
-   "detail": "aucune différence"
+   "result": "FAIL",
+   "detail": {
+    "alerts|default": [
+     94,
+     95
+    ],
+    "audit_logs|default": [
+     2546,
+     2567
+    ],
+    "documents|default": [
+     450,
+     456
+    ],
+    "tenant_integrations|default": [
+     1,
+     1
+    ],
+    "users|default": [
+     4,
+     4
+    ],
+    "vehicles_archive|default": [
+     93,
+     94
+    ],
+    "vehicles|default": [
+     16,
+     16
+    ]
+   }
   },
   {
    "check": "OTHER_TENANTS_UNCHANGED",
-   "result": "PASS",
-   "detail": "aucune différence"
+   "result": "FAIL",
+   "detail": {
+    "alerts|pytest-cost-a-5abb48d1": [
+     13,
+     14
+    ],
+    "alerts|pytest-dl4a-971d41ab": [
+     9,
+     10
+    ],
+    "alerts|pytest-lh-a-0e45f79d": [
+     3,
+     4
+    ],
+    "alerts|pytest-lh-a-14b536e6": [
+     3,
+     4
+    ],
+    "alerts|pytest-lh-a-4799eb1e": [
+     null,
+     3
+    ],
+    "alerts|pytest-lh-a-9928cf7d": [
+     3,
+     4
+    ],
+    "alerts|pytest-lh-a-9a3f2e4a": [
+     null,
+     3
+    ],
+    "alerts|pytest-lh-a-f6914464": [
+     3,
+     4
+    ],
+    "audit_logs|pytest-client-f75b2606": [
+     null,
+     10
+    ]
+   }
   },
   {
    "check": "TARGET_TENANT_PRESENT",
@@ -51,7 +117,7 @@
    "detail": "6/6 preuves API"
   }
  ],
- "verdict": "PASS",
+ "verdict": "FAIL",
  "families": {
   "TENANT_ISOLATION": [
    {

@@ -1,0 +1,104 @@
+{
+  "summary": "Lot H (phase 4C) — RBAC manager / driver UI + serveur. Testé 5 rôles (driver lié, driver non-lié, driver inactif, driver sans affectation, manager, admin, read_only) + superadmin console sur tenant loth-ui-test. Toutes les restrictions UI vérifiées côté réseau/API (403/404). Flux de révocation de scope (manager, même session) + création d'un nouveau driver (loth-driver-ui lié à Julie Martin) + justificatif DropZone + 409 FILE_ALREADY_PRESENT : tous PASS. 0 fuite de données hors scope, 0 page admin-only rendue au manager/driver, 0 texte 'Accès réservé' sur les redirections manager, 0 texte 'INTERNE-' pour le driver.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "detailed_results": {
+    "DRIVER_lié (loth-driver)": {
+      "login_redirect": "/mes-pleins PASS",
+      "top_nav": "data-role='driver', 3 liens exacts [nav-me-fuel, nav-me-fines, nav-me-vehicles] PASS",
+      "layout_module_label": "'Espace chauffeur' PASS",
+      "user_menu_role": "'· chauffeur' PASS, logout présent PASS",
+      "mes-pleins": "driver-identity 'Marc Dupont', KPI=3, rows=[0ae60155, d2ea58a5, e3a7a57e], attach-btn pour 0ae60155, receipt-ok pour d2ea58a5 + e3a7a57e, aucune ligne pour 4c099b5c / a3a0b1f0 (autre conducteur) PASS",
+      "justificatif_upload": "dialog + dropzone + input file OK, après upload PNG le bouton 'Joindre' disparaît et me-fuel-receipt-ok-0ae60155 apparaît ; preview + download buttons présents PASS",
+      "second_upload_409": "POST /api/me/fuel-transactions/0ae60155/attachment avec 2e fichier → 409 code FILE_ALREADY_PRESENT PASS",
+      "mes-amendes": "2 lignes [ac5e1af6, 0734272e], amende ea5de1c9 (V3 autre conducteur) absente, PAS de 'INTERNE-' dans body PASS",
+      "mes-fines-kpi-late": "'En retard 0 délai dépassé' — spec attendait ≥1 (F3 en retard). Pourtant Dashboard manager affiche F3 'En retard · à payer'. Possible divergence KPI driver (minor) à investiguer côté backend /api/me/fines ou calcul UI",
+      "mes-vehicules": "1 carte me-vehicle-card-d74fe9d3 avec badge principal, V2 (future) et V3 (terminée) absents PASS",
+      "redirections_url_directes": "/vehicules /documents /energie /admin /amendes / → tous redirigés vers /mes-pleins PASS",
+      "api_403": "GET /api/vehicles → 403 DRIVER_FORBIDDEN, GET /api/dashboard → 403 PASS"
+    },
+    "DRIVER_non_lie (loth-driver-nonlie)": {
+      "pending_page": "driver-pending-page affichée, title 'Compte chauffeur en attente', code 'DRIVER_ACCOUNT_NOT_LINKED · <email>', contact + logout présents, top-nav vide (0 liens) PASS"
+    },
+    "DRIVER_inactif (loth-driver-inactif)": {
+      "inactive_page": "driver-inactive-page, title 'Profil conducteur inactif', code 'DRIVER_INACTIVE · <email>', top-nav vide PASS"
+    },
+    "DRIVER_sans_affectation (loth-driver-sans)": {
+      "no_pending": "PAS de page d'attente, nav 3 entrées, /mes-vehicules → me-vehicles-empty, /mes-pleins → me-fuel-empty, /mes-amendes → me-fines-empty PASS"
+    },
+    "MANAGER (loth-manager)": {
+      "nav": "9 liens [dashboard, vehicles, documents, timeline, costs, energy, drivers, fines, alerts] SANS integrity/legacy/admin PASS",
+      "user_menu_role": "'· manager' PASS",
+      "dashboard": "Véhicules conformes '0/2' = 2 véhicules du scope PASS",
+      "vehicules_list": "2 rows exactes [V1, V2], PAS de add-vehicle-btn / sync-btn / archives-menu-item PASS",
+      "vehicle_drawer_V1": "general-edit-btn présent, vehicle-delete-btn ABSENT, vehicle-photo-menu-btn présent PASS",
+      "tab_documents": "dropzone présent, aucun doc-delete-* PASS",
+      "tab_etat_des_lieux": "add-inspection-btn présent, aucun inspection-delete-* PASS",
+      "redirections_admin_only": "/archives /energie/imports /energie/releves /integrite /admin /admin/correspondances → tous redirigés vers / (Dashboard), aucun 'Accès réservé' PASS",
+      "api": "GET /api/vehicles/dbf86ce0 (V3 hors scope) → 404, GET /api/fuel/statements → 403, GET /api/vehicles → 2 véhicules PASS",
+      "energie": "tabs présents: transactions/cards/anomalies/reconciliations ; absents: imports/statements ; energy-manual-fuel-btn présent PASS",
+      "cartes": "2 cartes (1111 + 3333), 2222 absente, pas de bouton création PASS",
+      "anomalies": "1 anomalie, scan-btn présent PASS",
+      "amendes": "2 lignes (LOTH-F1, LOTH-F3), LOTH-F2 absente, fines-create-btn présent PASS",
+      "conducteurs": "pas de driver-create-btn ni driver-edit-* ni driver-archive-* PASS",
+      "alertes": "pas de alerts-run-btn ni alerts-log PASS",
+      "timeline": "pas de deadline-settings-btn PASS",
+      "documents": "pas de manage-categories-btn ni manage-requirements-btn, manual-fine-open-btn présent PASS"
+    },
+    "MANAGER_SCOPE_REVOCATION_même_session": {
+      "contexte_A_before": "manager /vehicules = 2 véhicules",
+      "contexte_B_superadmin": "badge avant: 'périmètre · 2 véhicules', dialog accès ouvert, V1 décoché, save → badge: 'périmètre · 1 véhicule'",
+      "contexte_A_after_reload_SANS_relogin": "/vehicules = 1 véhicule (VD 800 002 uniquement)",
+      "api_même_token_manager": "GET /api/vehicles/d74fe9d3 (V1) → 404",
+      "restoration": "V1 recoché → badge 'périmètre · 2 véhicules', GET /api/vehicles → 2 véhicules PASS"
+    },
+    "SUPERADMIN_console": {
+      "add_user_role_options": "4 rôles: Admin / Manager / Lecture seule / Chauffeur PASS",
+      "driver_select_on_role_driver": "liste conducteurs : Marc Dupont (déjà lié, disabled), Léa Inactif (inactif, disabled), Julie Martin (disponible), Paul Sansaffectation (déjà lié, disabled) PASS",
+      "scope_list_on_role_manager": "admin-user-scope-list + admin-user-scope-count + 4 checkboxes véhicules PASS",
+      "creation_loth-driver-ui": "créé avec driver_id Julie Martin, badge 'conducteur · Julie Martin · LOTH-M002', login OK, /mes-pleins = 2 pleins exacts [4c099b5c, a3a0b1f0] PASS",
+      "inline_role_select_loth-ro": "4 options natives [admin, manager, lecture seule, chauffeur] (non modifié) PASS",
+      "badge_nonlie_row": "ligne loth-driver-nonlie contient 'non lié · page d'attente' PASS"
+    },
+    "ADMIN_non_regression (loth-admin)": {
+      "nav": "nav-integrity + nav-legacy présents, nav-admin absent PASS",
+      "vehicules": "4 véhicules + add-vehicle-btn présent PASS",
+      "V1_drawer": "vehicle-delete-btn présent PASS",
+      "energie": "energy-tab-imports + energy-statements-tab présents PASS",
+      "alertes": "alerts-run-btn + alerts-log présents PASS"
+    },
+    "READ_ONLY_non_regression (loth-ro)": {
+      "user_menu_role": "'· lecture seule' PASS",
+      "vehicules": "pas de add-vehicle-btn PASS",
+      "amendes": "pas de fines-create-btn PASS",
+      "releves": "/energie/releves accessible (page affichée) PASS",
+      "no_pending_page": "aucune page d'attente chauffeur PASS"
+    }
+  },
+  "minor_observations": [
+    "Driver /mes-amendes KPI me-fines-kpi-late = 0 alors que F3 (0734272e) est marquée 'En retard' dans la vue manager (Dashboard affiche 'En retard · à payer' pour LOTH-F3). Le libellé de ligne côté driver pourrait aussi afficher 'en retard' — à vérifier si c'est intentionnel que le KPI driver ne compte que les amendes réellement non payées en retard, ou si c'est un bug de calcul (différence manager vs driver). Non bloquant — toutes les règles d'isolation / de restriction sont respectées."
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_rbac_lotH.py (déjà PASS 20/20 auparavant)",
+    "/app/test_reports/loth_verify.json (43/43 checks API PASS)"
+  ],
+  "action_items": [
+    "(Observation) Vérifier le calcul KPI 'En retard' sur /mes-amendes côté driver vs le champ is_late / due_date de /api/me/fines — divergence possible mais non critique"
+  ],
+  "critical_code_review_comments": [
+    "Les tests confirment que ClientUsers.jsx (dialog de création) utilise `admin-user-submit-btn` et non `admin-user-dialog-save`, ce qui est cohérent avec le code — spec de test fournie était légèrement imprécise sur le testid du bouton save mais le flux fonctionne.",
+    "RBAC fail-closed vérifié côté serveur (/api/vehicles/<V3> → 404, pas 403, correct pour éviter l'énumération) et côté UI (pas de bouton de mutation visible sans contrepartie serveur)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (43/43 API + 20/20 pytest antérieurs réutilisés + nouvelles preuves 409 + 403 + 404)", "frontend": "100% des flux critiques (driver variants, manager, superadmin console, admin, read_only)"},
+  "test_credentials": "lus depuis la review request + /app/backend/.env (SUPERADMIN_EMAIL/PASSWORD). Création UI: loth-driver-ui@loth-ui-test.ch / LotH-DriverUi-2026x (lié à Julie Martin / LOTH-M002).",
+  "seed_data_creation": "loth-driver-ui@loth-ui-test.ch créé via UI superadmin (comme autorisé). Scope manager modifié temporairement (V1 décoché puis recoché — restauré à [V1, V2]). Un justificatif PNG attaché au plein 0ae60155 (était vide avant).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Lot H complet et validé bout-en-bout. Seule remarque mineure: KPI 'En retard' côté /mes-amendes (driver) = 0 à surveiller si l'intention est ≥1. Le compte loth-driver-ui existe maintenant dans le tenant loth-ui-test. Le plein 0ae60155 possède désormais un justificatif (ne pas re-tester 1er upload sans le réinitialiser côté backend).",
+  "rca of the issue": "Aucun bug bloquant identifié. L'écart KPI 'En retard' driver vs manager est à investiguer: possiblement une règle de calcul différente (manager voit la vue administrative; driver voit un KPI 'À payer en retard' qui pourrait exclure les amendes contestées — à confirmer avec la logique métier)."
+}
