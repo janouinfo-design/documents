@@ -70,6 +70,24 @@ def _fingerprint():
 
 
 class TestDefaults:
+    def test_create_tenant_with_modules_selection(self):
+        tid = f"pytest-mod-c-{_RUN}"
+        r = requests.post(f"{_BASE}/api/admin/tenants", json={"name": f"Création {_RUN}", "id": tid,
+                          "modules": {"fines": False, "ai": False, "vehicles": False}}, headers=sa(), timeout=30)
+        assert r.status_code == 200, r.text
+        mods = r.json()["modules"]
+        assert mods["fines"] is False and mods["ai"] is False
+        assert mods["vehicles"] is True, "socle toujours activé à la création"
+        assert all(mods[k] for k in ALL if k not in ("fines", "ai"))
+        row = _mongo().audit_logs.find_one({"tenant_id": tid, "action": "admin_tenant_create"}, {"_id": 0})
+        assert row and "Amendes" in row["detail"] and "Assistant IA" in row["detail"] and row["modules"] == mods
+        r = requests.post(f"{_BASE}/api/admin/tenants", json={"name": "X", "id": f"pytest-mod-d-{_RUN}",
+                          "modules": {"inconnu": True}}, headers=sa(), timeout=30)
+        assert r.status_code == 422
+        db = _mongo()
+        db.audit_logs.delete_many({"tenant_id": tid})
+        db.tenants.delete_many({"id": tid})
+
     def test_new_tenant_all_modules_on(self):
         ov = _get("/admin/overview", creds=(_ENV["SUPERADMIN_EMAIL"], _ENV["SUPERADMIN_PASSWORD"])).json()
         t = next(x for x in ov["tenants"] if x["id"] == TENANT)

@@ -8530,6 +8530,16 @@ def _slugify(value: str) -> str:
 class TenantCreate(BaseModel):
     name: str
     id: Optional[str] = None
+    modules: Optional[dict] = None  # modules à activer dès la création (clé absente = activé ; socle toujours activé)
+
+
+def _validate_modules_payload(modules: dict) -> dict:
+    if not isinstance(modules, dict) or not all(isinstance(v, bool) for v in modules.values()):
+        raise HTTPException(status_code=422, detail="Format modules invalide")
+    unknown = [k for k in modules if k not in tmod.MODULE_KEYS]
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"Module(s) inconnu(s) : {', '.join(unknown)}")
+    return modules
 
 
 class TenantUpdate(BaseModel):
@@ -8715,11 +8725,16 @@ async def admin_create_tenant(payload: TenantCreate, request: Request):
     if tid == "platform" or await db.tenants.find_one({"id": tid}):
         raise HTTPException(status_code=409, detail="Un client avec cet identifiant existe déjà")
     now = datetime.now(timezone.utc).isoformat()
-    doc = {"id": tid, "name": name, "disabled": False,
-           "modules": {k: True for k in tmod.MODULE_KEYS}, "created_at": now}
+    modules = {k: True for k in tmod.MODULE_KEYS}
+    if payload.modules:
+        modules.update(_validate_modules_payload(payload.modules))
+        modules[tmod.CORE_MODULE] = True  # socle : jamais désactivé à la création (confirmation explicite ensuite)
+    doc = {"id": tid, "name": name, "disabled": False, "modules": modules, "created_at": now}
     await db.tenants.insert_one(dict(doc))
+    off = [tmod.MODULE_LABELS[k] for k in tmod.MODULE_KEYS if not modules[k]]
     await audit("admin_tenant_create", "tenant", request, tid, None,
-                f"Client créé: {name} ({tid})", tenant_id=tid)
+                f"Client créé: {name} ({tid})" + (f" — modules désactivés à la création : {', '.join(off)}" if off else " — tous les modules activés"),
+                tenant_id=tid, extra={"modules": modules})
     return doc
 
 
@@ -8736,12 +8751,9 @@ async def admin_update_tenant(tid: str, payload: TenantUpdate, request: Request)
         updates["disabled"] = bool(payload.disabled)
         notes.append("client désactivé" if payload.disabled else "client réactivé")
     if payload.modules is not None:
-        if (not isinstance(payload.modules, dict) or not payload.modules
-                or not all(isinstance(v, bool) for v in payload.modules.values())):
+        if not payload.modules:
             raise HTTPException(status_code=422, detail="Format modules invalide")
-        unknown = [k for k in payload.modules if k not in tmod.MODULE_KEYS]
-        if unknown:
-            raise HTTPException(status_code=422, detail=f"Module(s) inconnu(s) : {', '.join(unknown)}")
+        _validate_modules_payload(payload.modules)
         before = tmod.resolve_modules(t)
         merged = {**before, **payload.modules}
         updates["modules"] = merged
