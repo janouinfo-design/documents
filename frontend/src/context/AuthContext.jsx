@@ -84,14 +84,22 @@ export function AuthProvider({ children }) {
       });
   }, [exitImpersonation]);
 
+  // Rafraîchissement silencieux du profil (modules activés par le Super Admin, rôle, périmètre) au retour sur l'onglet
+  // et toutes les 5 min : une bascule de module côté console se reflète sans reconnexion (le serveur bloque déjà en 403).
   useEffect(() => {
     if (!user) return undefined;
-    const iv = setInterval(() => refreshFileToken().catch(() => {}), 8 * 60 * 1000);
-    const onFocus = () => refreshFileToken().catch(() => {});
+    const sync = () => authMe().then((u) => setUser((prev) => (JSON.stringify(prev) === JSON.stringify(u) ? prev : u))).catch(() => {});
+    const iv = setInterval(() => { refreshFileToken().catch(() => {}); }, 8 * 60 * 1000);
+    const ivMe = setInterval(sync, 5 * 60 * 1000);
+    const onFocus = () => { refreshFileToken().catch(() => {}); sync(); };
+    const onVisible = () => { if (document.visibilityState === "visible") sync(); };
     window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       clearInterval(iv);
+      clearInterval(ivMe);
       window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [user]);
 

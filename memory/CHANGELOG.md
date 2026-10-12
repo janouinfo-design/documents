@@ -940,3 +940,6 @@ VPS DEPLOYMENT       = NOT AUTHORIZED
 - `NewClientDialog` : sélecteur « Modules activés · n/10 » (10 cases, tout coché par défaut, raccourcis « Tout » / « Socle seul », Véhicules verrouillé ON avec cadenas) ; toast « Client créé — n/10 modules activés ».
 - `POST /api/admin/tenants` accepte `modules` (validation partagée `_validate_modules_payload` : clés connues + booléens → 422 sinon ; socle forcé à `True`) ; audit `admin_tenant_create` liste les modules désactivés à la création + `extra.modules`.
 - Tests : `test_tenant_modules.py` +1 (15/15), `test_admin_console.py` inchangé PASS ; vérif UI preview : création `pytest-ui-modules` avec Amendes + IA OFF → badge 8/10, interrupteurs cohérents (tenant de test supprimé).
+
+## Synchronisation session ↔ modules (2026-06)
+- `AuthContext` : `/auth/me` rafraîchi au retour sur l'onglet (focus / visibilitychange) et toutes les 5 min → une bascule de module en console se reflète dans la nav / le dashboard d'une session client déjà ouverte sans reconnexion (le serveur bloquait déjà en 403 immédiatement). Vérifié en preview : Amendes OFF → onglet + KPI disparaissent au focus ; ON → retour.
