@@ -3,21 +3,40 @@ import axios from "axios";
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
 
+// Stockage résilient : dans une iframe tierce (SSO Navixy), Firefox/Safari peuvent cloisonner ou BLOQUER localStorage.
+// On garde donc une copie en mémoire (survit à la session de l'onglet) et on écrit localStorage en best-effort.
+const _mem = {};
+const safeGet = (k) => {
+  try {
+    const v = localStorage.getItem(k);
+    if (v !== null) return v;
+  } catch { /* storage bloqué (iframe tierce) */ }
+  return _mem[k] ?? null;
+};
+const safeSet = (k, v) => {
+  if (v == null) {
+    delete _mem[k];
+    try { localStorage.removeItem(k); } catch { /* ignore */ }
+  } else {
+    _mem[k] = v;
+    try { localStorage.setItem(k, v); } catch { /* ignore */ }
+  }
+};
+
 const TOKEN_KEY = "lt_token";
-export const getToken = () => localStorage.getItem(TOKEN_KEY);
-export const setToken = (t) => (t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY));
+export const getToken = () => safeGet(TOKEN_KEY);
+export const setToken = (t) => safeSet(TOKEN_KEY, t || null);
 
 // Vue client (superadmin uniquement — le backend vérifie le rôle côté serveur)
 const ACTING_KEY = "lt_acting_tenant";
 export const getActingTenant = () => {
   try {
-    return JSON.parse(localStorage.getItem(ACTING_KEY)) || null;
+    return JSON.parse(safeGet(ACTING_KEY)) || null;
   } catch {
     return null;
   }
 };
-export const setActingTenant = (t) =>
-  t ? localStorage.setItem(ACTING_KEY, JSON.stringify(t)) : localStorage.removeItem(ACTING_KEY);
+export const setActingTenant = (t) => safeSet(ACTING_KEY, t ? JSON.stringify(t) : null);
 
 // Impersonation (superadmin → utilisateur précis d'un client) : le jeton de session devient celui de la cible (droits
 // EXACTS relus côté serveur) ; le jeton superadmin est conservé localement pour être restauré à la sortie.
@@ -25,14 +44,14 @@ const SA_TOKEN_KEY = "lt_sa_token";
 const IMPERSONATION_KEY = "lt_impersonation";
 export const getImpersonation = () => {
   try {
-    return JSON.parse(localStorage.getItem(IMPERSONATION_KEY)) || null;
+    return JSON.parse(safeGet(IMPERSONATION_KEY)) || null;
   } catch {
     return null;
   }
 };
 export const beginImpersonation = (data) => {
-  localStorage.setItem(SA_TOKEN_KEY, getToken() || "");
-  localStorage.setItem(IMPERSONATION_KEY, JSON.stringify({
+  safeSet(SA_TOKEN_KEY, getToken() || "");
+  safeSet(IMPERSONATION_KEY, JSON.stringify({
     session_id: data.session_id, email: data.user?.email, role: data.user?.role,
     tenant_id: data.tenant?.id, tenant_name: data.tenant?.name,
   }));
@@ -41,12 +60,21 @@ export const beginImpersonation = (data) => {
 };
 // Restaure la session superadmin (sans appel réseau) — utilisé après l'appel `/auth/impersonation/end` ou sur 401.
 export const restoreSuperadminSession = () => {
-  const sa = localStorage.getItem(SA_TOKEN_KEY);
-  localStorage.removeItem(IMPERSONATION_KEY);
-  localStorage.removeItem(SA_TOKEN_KEY);
+  const sa = safeGet(SA_TOKEN_KEY);
+  safeSet(IMPERSONATION_KEY, null);
+  safeSet(SA_TOKEN_KEY, null);
   setActingTenant(null);
   setToken(sa || null);
   return !!sa;
+};
+
+// Vrai quand l'app tourne dans une iframe (ouverture via le hub Navixy) → ne jamais rediriger vers /login.
+export const isEmbedded = () => {
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true;
+  }
 };
 
 const http = axios.create({ baseURL: API });
@@ -62,7 +90,8 @@ http.interceptors.response.use(
   (error) => {
     const url = String(error?.config?.url || "");
     if (error?.response?.status === 401 && !url.includes("/auth/login")
-        && !url.includes("/auth/change-password") && !url.includes("/auth/navixy/exchange")) {
+        && !url.includes("/auth/change-password") && !url.includes("/auth/navixy/exchange")
+        && !url.includes("/auth/me")) {
       if (getImpersonation()) {
         // Session d'assistance expirée/révoquée : retour à la console superadmin, jamais à l'écran de connexion
         const restored = restoreSuperadminSession();
@@ -70,7 +99,8 @@ http.interceptors.response.use(
         return Promise.reject(error);
       }
       setToken(null);
-      if (!window.location.pathname.startsWith("/login")) window.location.assign("/login");
+      // Dans l'iframe Navixy, une page /login est inutile : on laisse l'app re-déclencher le SSO via le session_key.
+      if (!isEmbedded() && !window.location.pathname.startsWith("/login")) window.location.assign("/login");
     }
     return Promise.reject(error);
   }

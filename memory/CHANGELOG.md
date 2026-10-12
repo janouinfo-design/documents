@@ -966,3 +966,12 @@ VPS DEPLOYMENT       = NOT AUTHORIZED
 - `deploy/docker-compose.caddy.yml` + `deploy/Caddyfile` : reverse-proxy Caddy (Let's Encrypt auto) devant `web:80`, domaine `demo-documents.logitrak.ch` (A → 83.228.207.198). Additif (override compose), ne modifie pas la stack existante.
 - Démarrage VPS : `docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d caddy` (ports 80/443 ouverts requis).
 - Lien Navixy (app externe) : `https://demo-documents.logitrak.ch/?session_key={session_key}` → SSO master 121349 → demo-logitrak.
+
+## Fix SSO Navixy en iframe — stockage cloisonné (2026-06)
+- Symptôme : ouverture via le hub Navixy (iframe sur login.logitrak.fr) → écran de connexion malgré `POST /api/auth/navixy/exchange → 200`. Cause : Firefox/Safari cloisonnent/bloquent `localStorage` des iframes tierces → le JWT n'était pas renvoyé sur `/api/auth/me` (401) → redirection /login.
+- `frontend/src/lib/api.js` : stockage résilient `safeGet/safeSet` avec **repli mémoire** (`_mem`) pour tous les jetons (session, acting, impersonation, SA). Le jeton part désormais sur les requêtes même quand localStorage est bloqué. `/auth/me` exclu de la redirection 401. `isEmbedded()` : dans une iframe, **jamais** de redirection vers /login (l'app re-déclenche le SSO via le `session_key` que Navixy ré-ajoute à chaque chargement). CSP `frame-ancestors` couvre déjà `*.logitrak.fr`/`*.navixy.com`.
+- Non régressé : login direct preview OK (jeton présent, nav complète). Nécessite rebuild `web` sur le VPS.
+
+## Infra VPS (résolu avec l'utilisateur)
+- HTTPS : nginx hôte (80/443 déjà pris) + certbot → `https://demo-documents.logitrak.ch` → `proxy_pass 127.0.0.1:8090`. `HTTP/2 200` confirmé. (Caddy non utilisé car ports pris ; fichiers `deploy/Caddyfile`+override laissés pour référence.)
+- Navixy : Applications utilisateur (id 14328), URL `https://demo-documents.logitrak.ch`, **Clé de session activée** → Navixy ajoute `?session_key=…`. Affichage « Intégré » OK (login.logitrak.fr autorisé en iframe).
