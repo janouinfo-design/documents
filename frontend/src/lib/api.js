@@ -19,6 +19,36 @@ export const getActingTenant = () => {
 export const setActingTenant = (t) =>
   t ? localStorage.setItem(ACTING_KEY, JSON.stringify(t)) : localStorage.removeItem(ACTING_KEY);
 
+// Impersonation (superadmin → utilisateur précis d'un client) : le jeton de session devient celui de la cible (droits
+// EXACTS relus côté serveur) ; le jeton superadmin est conservé localement pour être restauré à la sortie.
+const SA_TOKEN_KEY = "lt_sa_token";
+const IMPERSONATION_KEY = "lt_impersonation";
+export const getImpersonation = () => {
+  try {
+    return JSON.parse(localStorage.getItem(IMPERSONATION_KEY)) || null;
+  } catch {
+    return null;
+  }
+};
+export const beginImpersonation = (data) => {
+  localStorage.setItem(SA_TOKEN_KEY, getToken() || "");
+  localStorage.setItem(IMPERSONATION_KEY, JSON.stringify({
+    session_id: data.session_id, email: data.user?.email, role: data.user?.role,
+    tenant_id: data.tenant?.id, tenant_name: data.tenant?.name,
+  }));
+  setActingTenant(null);
+  setToken(data.token);
+};
+// Restaure la session superadmin (sans appel réseau) — utilisé après l'appel `/auth/impersonation/end` ou sur 401.
+export const restoreSuperadminSession = () => {
+  const sa = localStorage.getItem(SA_TOKEN_KEY);
+  localStorage.removeItem(IMPERSONATION_KEY);
+  localStorage.removeItem(SA_TOKEN_KEY);
+  setActingTenant(null);
+  setToken(sa || null);
+  return !!sa;
+};
+
 const http = axios.create({ baseURL: API });
 http.interceptors.request.use((config) => {
   const t = getToken();
@@ -33,6 +63,12 @@ http.interceptors.response.use(
     const url = String(error?.config?.url || "");
     if (error?.response?.status === 401 && !url.includes("/auth/login")
         && !url.includes("/auth/change-password") && !url.includes("/auth/navixy/exchange")) {
+      if (getImpersonation()) {
+        // Session d'assistance expirée/révoquée : retour à la console superadmin, jamais à l'écran de connexion
+        const restored = restoreSuperadminSession();
+        window.location.assign(restored ? "/admin?assist=ended" : "/login");
+        return Promise.reject(error);
+      }
       setToken(null);
       if (!window.location.pathname.startsWith("/login")) window.location.assign("/login");
     }
@@ -67,6 +103,8 @@ export const authMe = () => http.get("/auth/me").then((r) => r.data);
 export const exchangeNavixy = (session_key) =>
   http.post("/auth/navixy/exchange", { session_key }).then((r) => r.data);
 export const authLogout = () => http.post("/auth/logout").then((r) => r.data);
+export const adminImpersonate = (tid, user_id) => http.post(`/admin/tenants/${tid}/impersonate`, { user_id }).then((r) => r.data);
+export const endImpersonation = () => http.post("/auth/impersonation/end").then((r) => r.data);
 export const authChangePassword = (current_password, new_password) =>
   http.post("/auth/change-password", { current_password, new_password }).then((r) => r.data);
 

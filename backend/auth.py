@@ -54,6 +54,19 @@ def create_access_token(user_id: str, email: str, token_version: int = 0) -> str
     return jwt.encode(payload, _secret(), algorithm=JWT_ALGORITHM)
 
 
+IMPERSONATION_TTL_MINUTES = int(os.environ.get("IMPERSONATION_TTL_MINUTES", "60"))
+
+
+def create_impersonation_token(target: dict, actor: dict, session_id: str) -> str:
+    """Jeton court (60 min) « agir en tant que » : `sub` = utilisateur cible (ses droits EXACTS sont relus en base à chaque
+    requête), `act` = superadmin acteur (RFC 8693), `imp` = session d'assistance révocable. Aucun secret cible n'est lu."""
+    payload = {"sub": target["id"], "email": target["email"], "type": "access",
+               "act": {"sub": actor["id"], "email": actor["email"], "tv": int(actor.get("token_version", 0) or 0)},
+               "imp": session_id, "tv": int(target.get("token_version", 0) or 0),
+               "exp": datetime.now(timezone.utc) + timedelta(minutes=IMPERSONATION_TTL_MINUTES)}
+    return jwt.encode(payload, _secret(), algorithm=JWT_ALGORITHM)
+
+
 def create_file_token(user: dict, tenant_id: str = None) -> str:
     """Jeton court (10 min) scope=file : uniquement /api/files et /api/reports, jamais l'API métier.
     tenant_id : override réservé au superadmin (vue client)."""
@@ -98,6 +111,19 @@ async def authenticate_request(request: Request, db) -> dict:
         raise HTTPException(status_code=401, detail="Compte désactivé — contactez votre administrateur")
     if int(payload.get("tv", 0) or 0) != int(user.get("token_version", 0) or 0):
         raise HTTPException(status_code=401, detail="Session révoquée — reconnectez-vous")
+    act = payload.get("act")
+    if act:
+        # Impersonation : l'identité effective est la cible ; l'acteur doit rester un superadmin actif et la session ouverte.
+        if user.get("role") == "superadmin":
+            raise HTTPException(status_code=401, detail="Jeton d'assistance invalide")
+        actor = await db.users.find_one({"id": act.get("sub")}, {"_id": 0, "id": 1, "email": 1, "role": 1, "disabled": 1, "token_version": 1})
+        if (not actor or actor.get("role") != "superadmin" or actor.get("disabled")
+                or int(act.get("tv", 0) or 0) != int(actor.get("token_version", 0) or 0)):
+            raise HTTPException(status_code=401, detail="Session d'assistance révoquée")
+        session = await db.impersonation_sessions.find_one({"id": payload.get("imp")}, {"_id": 0, "ended_at": 1, "target_user_id": 1})
+        if not session or session.get("ended_at") or session.get("target_user_id") != user["id"]:
+            raise HTTPException(status_code=401, detail="Session d'assistance terminée")
+        user["_impersonator"] = {"id": actor["id"], "email": actor["email"], "session_id": payload.get("imp")}
     if token_type == "file":
         claim_tenant = payload.get("tenant_id") or "default"
         if claim_tenant != (user.get("tenant_id") or "default") and user.get("role") != "superadmin":

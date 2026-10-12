@@ -30,7 +30,8 @@ from astra_data import AstraLookupError
 from auth import (authenticate_request, check_lockout, clear_failures, create_access_token,
                   create_file_token,
                   hash_password, record_failure, seed_admin, seed_superadmin, verify_password,
-                  create_sso_token, SSO_TOKEN_TTL_MINUTES)
+                  create_sso_token, SSO_TOKEN_TTL_MINUTES,
+                  create_impersonation_token, IMPERSONATION_TTL_MINUTES)
 from storage import get_object, guess_mime, init_storage, put_object
 import legacy_identity
 from legacy_identity import norm_vin as _norm_vin, norm_plate as _norm_plate, identity as _identity
@@ -301,11 +302,46 @@ async def auth_navixy_exchange(payload: NavixyExchangePayload, request: Request)
 @auth_router.get("/me")
 async def auth_me(request: Request, user: dict = Depends(require_auth)):
     acting = request.headers.get("X-Acting-Tenant") if user.get("role") == "superadmin" else None
-    return await _enrich_tenant_demo(dict(user), acting)
+    imp = user.pop("_impersonator", None)
+    out = await _enrich_tenant_demo(dict(user), acting)
+    if imp:
+        session = await db.impersonation_sessions.find_one({"id": imp["session_id"]}, {"_id": 0, "started_at": 1, "expires_at": 1})
+        out["impersonation"] = {"by": imp["email"], "session_id": imp["session_id"],
+                                "started_at": (session or {}).get("started_at"), "expires_at": (session or {}).get("expires_at")}
+    return out
+
+
+async def _end_impersonation(user: dict, request: Request, reason: str) -> dict:
+    imp = user.get("_impersonator") or {}
+    now = datetime.now(timezone.utc)
+    session = await db.impersonation_sessions.find_one({"id": imp.get("session_id")}, {"_id": 0})
+    if not session or session.get("ended_at"):
+        return {"ok": True, "already_ended": True}
+    started = datetime.fromisoformat(session["started_at"])
+    duration = int((now - started).total_seconds())
+    await db.impersonation_sessions.update_one({"id": session["id"]},
+                                               {"$set": {"ended_at": now.isoformat(), "duration_s": duration, "end_reason": reason}})
+    await audit("impersonation_end", "impersonation", request, session["id"], None,
+                f"Fin d'assistance : {imp.get('email')} quitte le compte {user.get('email')} ({session.get('target_role')}) après {duration} s",
+                tenant_id=session["tenant_id"],
+                extra={"superadmin_id": session["superadmin_id"], "superadmin_email": imp.get("email"),
+                       "target_user_id": session["target_user_id"], "target_role": session.get("target_role"),
+                       "duration_s": duration, "session_id": session["id"]})
+    return {"ok": True, "duration_s": duration}
+
+
+@auth_router.post("/impersonation/end")
+async def auth_impersonation_end(request: Request, user: dict = Depends(require_auth)):
+    """Quitter le compte : termine la session d'assistance (le jeton d'impersonation devient immédiatement invalide)."""
+    if not user.get("_impersonator"):
+        raise HTTPException(status_code=400, detail="Aucune session d'assistance en cours")
+    return await _end_impersonation(user, request, "exit")
 
 
 @auth_router.post("/change-password")
 async def auth_change_password(payload: ChangePasswordPayload, user: dict = Depends(require_auth)):
+    if user.get("_impersonator"):
+        raise HTTPException(status_code=403, detail="Mode assistance : le mot de passe du client ne peut pas être modifié")
     if len(payload.new_password) < 8:
         raise HTTPException(status_code=422, detail="Le nouveau mot de passe doit contenir au moins 8 caractères.")
     full = await db.users.find_one({"id": user["id"]})
@@ -319,7 +355,10 @@ async def auth_change_password(payload: ChangePasswordPayload, user: dict = Depe
 
 
 @auth_router.post("/logout")
-async def auth_logout(user: dict = Depends(require_auth)):
+async def auth_logout(request: Request, user: dict = Depends(require_auth)):
+    if user.get("_impersonator"):
+        # Mode assistance : on ferme la session d'assistance SANS toucher aux sessions réelles du client
+        return await _end_impersonation(user, request, "logout")
     # Révocation réelle : incrémente token_version → tous les jetons émis (session + fichiers)
     # de CET utilisateur deviennent invalides. N'affecte aucun autre utilisateur.
     await db.users.update_one({"id": user["id"]}, {"$inc": {"token_version": 1}})
@@ -871,6 +910,9 @@ async def audit(action: str, entity: str, request: Request = None, entity_id: st
         "ip": (request.client.host if request and request.client else None),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+    if (state_user or {}).get("_impersonator"):
+        rec["impersonated_by"] = state_user["_impersonator"].get("email")
+        rec["impersonation_session_id"] = state_user["_impersonator"].get("session_id")
     try:
         await db.audit_logs.insert_one(dict(rec))
     except Exception as e:
@@ -8731,6 +8773,47 @@ async def admin_list_users(tid: str):
     return users
 
 
+class ImpersonatePayload(BaseModel):
+    user_id: str
+
+
+@admin_router.post("/tenants/{tid}/impersonate")
+async def admin_impersonate(tid: str, payload: ImpersonatePayload, request: Request):
+    """Se connecter comme un utilisateur EXISTANT et ACTIF du client : identité résolue côté serveur, droits EXACTS de la
+    cible relus en base à chaque requête (rôle, modules, vehicle_scope, driver_id, read_only). Aucun secret lu/modifié."""
+    tenant = await db.tenants.find_one({"id": tid}, {"_id": 0, "id": 1, "name": 1, "disabled": 1})
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Client introuvable")
+    if tenant.get("disabled"):
+        raise HTTPException(status_code=409, detail="Client désactivé — réactivez-le avant toute assistance")
+    target = await db.users.find_one({"id": payload.user_id, "tenant_id": tid}, {"_id": 0, "password_hash": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable dans ce client")
+    if target.get("disabled"):
+        raise HTTPException(status_code=409, detail="Utilisateur inactif — impossible de se connecter comme lui")
+    if target.get("role") not in TENANT_ROLES:
+        raise HTTPException(status_code=422, detail="Rôle cible non autorisé pour l'assistance")
+    actor = request.state.user
+    now = datetime.now(timezone.utc)
+    session = {"id": str(uuid.uuid4()), "superadmin_id": actor["id"], "superadmin_email": actor["email"],
+               "tenant_id": tid, "target_user_id": target["id"], "target_email": target["email"],
+               "target_role": target["role"], "started_at": now.isoformat(),
+               "expires_at": (now + timedelta(minutes=IMPERSONATION_TTL_MINUTES)).isoformat(),
+               "ended_at": None, "ip": request.client.host if request.client else None}
+    await db.impersonation_sessions.insert_one(dict(session))
+    await audit("impersonation_start", "impersonation", request, session["id"], None,
+                f"Début d'assistance : {actor['email']} se connecte comme {target['email']} ({target['role']}) du client {tid}",
+                tenant_id=tid,
+                extra={"superadmin_id": actor["id"], "superadmin_email": actor["email"],
+                       "target_user_id": target["id"], "target_role": target["role"], "session_id": session["id"]})
+    token = create_impersonation_token(target, actor, session["id"])
+    safe = await _enrich_tenant_demo(dict(target))
+    safe["impersonation"] = {"by": actor["email"], "session_id": session["id"],
+                             "started_at": session["started_at"], "expires_at": session["expires_at"]}
+    return {"token": token, "user": safe, "session_id": session["id"],
+            "expires_in": IMPERSONATION_TTL_MINUTES * 60, "tenant": {"id": tid, "name": tenant.get("name") or tid}}
+
+
 @admin_router.post("/tenants/{tid}/users")
 async def admin_create_user(tid: str, payload: TenantUserCreate, request: Request):
     if not await db.tenants.find_one({"id": tid}):
@@ -9081,6 +9164,7 @@ async def startup():
         await ensure_fuel_import_indexes()
         await ensure_fine_indexes()
         await ensure_fuel_statement_indexes()
+        await db.impersonation_sessions.create_index("id", unique=True, name="uniq_impersonation_id")
         if NAVIXY_HASH:
             await db.tenant_integrations.update_one(
                 {"tenant_id": "default", "provider": "navixy"},

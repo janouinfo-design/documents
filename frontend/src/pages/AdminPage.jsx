@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Loader2, Plus, Building2, ChevronDown, ChevronRight, Truck, FileText, Users, Wifi, WifiOff, LifeBuoy } from "lucide-react";
-import { adminOverview, adminUpdateTenant, setActingTenant } from "@/lib/api";
+import { adminOverview, adminUpdateTenant } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -13,9 +13,11 @@ import NewClientDialog from "@/components/admin/NewClientDialog";
 import ClientUsers from "@/components/admin/ClientUsers";
 import ClientIntegration from "@/components/admin/ClientIntegration";
 import ClientModules, { ModulesBadge } from "@/components/admin/ClientModules";
+import ImpersonateDialog from "@/components/admin/ImpersonateDialog";
 
 function ClientCard({ tenant, expanded, onToggle }) {
   const qc = useQueryClient();
+  const [impOpen, setImpOpen] = useState(false);
   const update = async (patch, okMsg) => {
     try {
       await adminUpdateTenant(tenant.id, patch);
@@ -56,12 +58,13 @@ function ClientCard({ tenant, expanded, onToggle }) {
           {tenant.disabled && <Badge className="bg-red-100 text-red-700 hover:bg-red-100">Désactivé</Badge>}
         </button>
         <Button size="sm" variant="outline" data-testid={`admin-view-client-btn-${tenant.id}`}
-          className="shrink-0 gap-1.5"
-          title="Ouvrir l'application de ce client en mode assistance (modules actifs du client, droits administrateur)"
-          onClick={() => { setActingTenant({ id: tenant.id, name: tenant.name }); window.location.assign("/"); }}>
+          className="shrink-0 gap-1.5" disabled={tenant.disabled}
+          title={tenant.disabled ? "Client désactivé" : "Se connecter comme un utilisateur de ce client (mode assistance, droits exacts de l'utilisateur)"}
+          onClick={() => setImpOpen(true)}>
           <LifeBuoy className="h-3.5 w-3.5" /> Se connecter
         </Button>
       </div>
+      <ImpersonateDialog tenant={tenant} open={impOpen} onOpenChange={setImpOpen} />
       {expanded && (
         <div className="space-y-6 border-t border-slate-100 px-5 py-5">
           <label className="flex items-center gap-3 text-sm font-medium text-slate-700">
@@ -82,6 +85,12 @@ export default function AdminPage() {
   const { user } = useAuth();
   const [newOpen, setNewOpen] = useState(false);
   const [expanded, setExpanded] = useState(null);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("assist") === "ended") {
+      toast.info("Session d'assistance terminée — droits Super Admin restaurés");
+      window.history.replaceState({}, document.title, "/admin");
+    }
+  }, []);
   const { data, isLoading } = useQuery({
     queryKey: ["admin-overview"],
     queryFn: adminOverview,

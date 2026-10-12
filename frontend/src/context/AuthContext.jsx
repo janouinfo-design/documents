@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { authLogin, authLogout, authMe, clearFileToken, exchangeNavixy, getToken, refreshFileToken, setActingTenant, setToken } from "@/lib/api";
+import { authLogin, authLogout, authMe, clearFileToken, endImpersonation, exchangeNavixy, getImpersonation, getToken, refreshFileToken, restoreSuperadminSession, setActingTenant, setToken } from "@/lib/api";
 
 const AuthContext = createContext(null);
 
@@ -59,7 +59,19 @@ export function AuthProvider({ children }) {
       });
   }, []);
 
+  // Quitter le compte : termine la session côté serveur (jeton d'assistance révoqué), restaure le superadmin, retour /admin.
+  const exitImpersonation = useCallback(async () => {
+    await endImpersonation().catch(() => {});
+    clearFileToken();
+    restoreSuperadminSession();
+    window.location.assign("/admin");
+  }, []);
+
   const logout = useCallback(() => {
+    if (getImpersonation()) {
+      exitImpersonation();
+      return;
+    }
     ssoSessionKey = null;
     authLogout()
       .catch(() => {})
@@ -70,7 +82,7 @@ export function AuthProvider({ children }) {
         setUser(null);
         window.location.assign("/login");
       });
-  }, []);
+  }, [exitImpersonation]);
 
   useEffect(() => {
     if (!user) return undefined;
@@ -108,7 +120,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, ssoPending, ssoError, ssoUnconfigured }}>
+    <AuthContext.Provider value={{ user, login, logout, exitImpersonation, ssoPending, ssoError, ssoUnconfigured }}>
       {children}
     </AuthContext.Provider>
   );

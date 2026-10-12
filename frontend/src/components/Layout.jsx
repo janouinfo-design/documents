@@ -139,11 +139,13 @@ function UserMenu() {
             )}
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem data-testid="user-menu-change-password" onSelect={() => setPwdOpen(true)}>
-            <KeyRound className="mr-2 h-4 w-4 text-slate-400" /> Changer le mot de passe
-          </DropdownMenuItem>
+          {!user?.impersonation && (
+            <DropdownMenuItem data-testid="user-menu-change-password" onSelect={() => setPwdOpen(true)}>
+              <KeyRound className="mr-2 h-4 w-4 text-slate-400" /> Changer le mot de passe
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem data-testid="user-menu-logout" onSelect={logout} className="text-red-600 focus:text-red-600">
-            <LogOut className="mr-2 h-4 w-4" /> Se déconnecter
+            <LogOut className="mr-2 h-4 w-4" /> {user?.impersonation ? "Quitter le compte" : "Se déconnecter"}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -160,6 +162,29 @@ function DemoBanner() {
       className="flex items-center justify-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-center text-xs font-medium text-amber-800 sm:px-6 lg:px-8">
       <FlaskConical className="h-3.5 w-3.5 shrink-0 text-amber-600" />
       <span>Données de démonstration{user?.tenant_name ? ` · ${user.tenant_name}` : ""} — environnement de présentation</span>
+    </div>
+  );
+}
+
+function ImpersonationBanner() {
+  const { user, exitImpersonation } = useAuth();
+  const [leaving, setLeaving] = useState(false);
+  if (!user?.impersonation) return null;
+  const roleLabel = ROLE_LABELS[user.role] || user.role;
+  return (
+    <div data-testid="impersonation-banner"
+      className="flex flex-wrap items-center justify-between gap-2 bg-indigo-700 px-4 py-2 text-sm text-white sm:px-6 lg:px-8">
+      <span className="flex flex-wrap items-center gap-x-3 gap-y-1 font-medium">
+        <span className="flex items-center gap-2"><LifeBuoy className="h-4 w-4" /> Mode assistance</span>
+        <span className="text-indigo-100">Connecté en tant que : <strong className="text-white" data-testid="impersonation-user">{user.email}</strong></span>
+        <span className="text-indigo-100">Rôle : <strong className="text-white capitalize" data-testid="impersonation-role">{roleLabel}</strong></span>
+        {user.tenant_name && <span className="text-indigo-200">· {user.tenant_name}</span>}
+      </span>
+      <button data-testid="impersonation-exit-btn" disabled={leaving}
+        onClick={() => { setLeaving(true); exitImpersonation(); }}
+        className="flex items-center gap-1.5 rounded-md bg-white/15 px-3 py-1 text-xs font-semibold transition-colors hover:bg-white/25 disabled:opacity-60">
+        <LogOut className="h-3.5 w-3.5" /> Quitter le compte
+      </button>
     </div>
   );
 }
@@ -192,7 +217,7 @@ function ActingTenantBanner() {
 function moduleLabel(user) {
   if (isDriver(user)) return "Espace chauffeur";
   if (isConsoleMode(user)) return "Console Super Admin";
-  if (isAssistMode(user)) return "Mode assistance";
+  if (isAssistMode(user) || user?.impersonation) return "Mode assistance";
   return "Gestion administrative de flotte";
 }
 
@@ -202,6 +227,7 @@ export default function Layout({ children }) {
     <div className="min-h-screen bg-slate-50">
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/85 backdrop-blur-md">
         <DemoBanner />
+        <ImpersonationBanner />
         <ActingTenantBanner />
         <div className="mx-auto flex h-16 max-w-[1400px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
           <Brand />
