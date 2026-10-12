@@ -27,5 +27,4 @@ Backlog priorisé. Rien ici n'est autorisé sans GO explicite de l'utilisateur (
 ## P3
 - Refactor `server.py` (8 100 lignes) en routers par module ; upload async.
 - Overlay dev CRA « ResizeObserver loop » (cosmétique, dev only).
-- **P1 — Impersonation par utilisateur** (superadmin « se connecter en tant que » un compte précis : rôle cible, `vehicle_scope` manager, driver) — nécessite `integration_expert` (auth) ; aujourd'hui le mode assistance = droits admin du client.
 - P2 — Déploiement VPS du lot « console + modules » sur GO explicite (Dockerfile déjà mis à jour : `tenant_modules.py`).

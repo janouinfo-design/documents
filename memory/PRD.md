@@ -96,7 +96,7 @@ Jeu de démonstration réaliste et cohérent, créé via l'API du compte admin d
 
 ## Modules par client (2026-06) — invariants
 - Registre unique `backend/tenant_modules.py` (10 modules, `vehicles` = socle) ; clé absente = activé ; OFF = 403 `MODULE_DISABLED` + onglet/route masqués + échéances/alertes/KPI du module masqués ; jamais de suppression de données ; chaque bascule auditée (`admin_module_toggle`). Tout nouveau module backend `.py` → ligne `COPY` du Dockerfile.
-- Mode assistance superadmin (`X-Acting-Tenant`) : mêmes règles modules que le client ; sortie via « Quitter le compte ». Impersonation par UTILISATEUR (rôle/vehicle_scope d'un compte précis) = non livrée (backlog).
+- **Impersonation utilisateur précis (livrée 2026-06)** : « Se connecter » → choisir un utilisateur ACTIF du client → jeton court `act`/`imp` ; droits EXACTS de la cible relus en base (rôle, modules, `vehicle_scope`, `driver_id`, read_only), superadmin suspendu pendant l'assistance, session révocable (`/api/auth/impersonation/end`), audit `impersonation_start`/`impersonation_end` + `impersonated_by` sur les mutations. Mot de passe jamais lu/modifié. L'en-tête `X-Acting-Tenant` (vue client sans utilisateur) reste supporté côté serveur mais n'a plus d'entrée UI.
 
 ## Dette acceptée (hors lots)
 - Overlay dev CRA « ResizeObserver loop » (dev only, build PASS, 0 bug fonctionnel).
