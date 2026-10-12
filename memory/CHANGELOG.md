@@ -943,3 +943,9 @@ VPS DEPLOYMENT       = NOT AUTHORIZED
 
 ## Synchronisation session ↔ modules (2026-06)
 - `AuthContext` : `/auth/me` rafraîchi au retour sur l'onglet (focus / visibilitychange) et toutes les 5 min → une bascule de module en console se reflète dans la nav / le dashboard d'une session client déjà ouverte sans reconnexion (le serveur bloquait déjà en 403 immédiatement). Vérifié en preview : Amendes OFF → onglet + KPI disparaissent au focus ; ON → retour.
+
+## Démo LogiTrak — tous les modules remplis (2026-06) — DEMO RESET = PASS · DEFAULT UNCHANGED = PASS
+- Seed `test_reports/demo_logitrak_seed.py` étendu : **Énergie → Imports** (relevé Migrol CSV via upload → mapping → confirm : 4 lignes importées, 1 doublon intra-fichier, 1 véhicule non résolu, 1 écart montant → anomalie), **Relevés / Décomptes** (mois précédent clôturé, mois courant brouillon), **3 états des lieux** (Sprinter, Tesla, Passat). Résultat preview : 21 transactions, 4 anomalies, 2 décomptes, 51 coûts, 9 alertes, 65 échéances documentaires. `verify` : +5 contrôles (imports, anomalies, décomptes, inspections, alertes).
+- Marquage `demo_seed` étendu aux collections import/décompte. Mots de passe : fail-safe — comptes existants sans fichier credentials ⇒ `DEMO_PW_ADMIN/DRIVER/READONLY` obligatoires (jamais d'écrasement silencieux). Preview : 3 comptes démo = `DemoPreview2026!` (test_credentials §6).
+- Intégrité : reste « INTEGRATION_ABSENTE » (démo sans clé Navixy, invariant conservé) — simulation télématique = backlog. Diff `default` observé pendant un reset = sync Navixy de démarrage (hot reload), pas le seed (re-baseline → PASS).
+- Walkthrough §5/§5bis mis à jour. Procédure VPS : `docker compose cp` du script dans `backend` puis `baseline` + `reset` avec `-e DEMO_PW_*`.

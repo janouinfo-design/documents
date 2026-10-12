@@ -61,7 +61,12 @@ Onglet **Énergie → Transactions**.
 - Montrer une **recharge EV** (ex. Ionity Nyon, Tesla) en kWh.
 - Filtrer **« Tout rattachement »** → pointer une **transaction sans carte** (Coop Pronto Berne, Toyota Corolla) et les **anomalies ouvertes**.
 - Onglet **Rapprochements** : achats ↔ consommation (CAN prioritaire).
-> Message : *« Dépenses énergie suivies et rapprochées automatiquement, thermique comme électrique. »*
+- Onglet **Imports** : relevé fournisseur **`migrol_releve_carburant.csv`** (confirmé) — 6 lignes : 4 importées, **1 doublon** mis de côté, **1 véhicule non résolu** (carte ••9999 inconnue), **1 écart montant** (anomalie). Montrer le flux *upload → mapping → preview → confirmation*.
+- Onglet **Relevés / Décomptes** : **`DEC-<mois précédent>-001` clôturé** (verrouillé) et **`DEC-<mois courant>-001` brouillon** (blockers = anomalies ouvertes).
+> Message : *« Dépenses énergie suivies et rapprochées automatiquement, thermique comme électrique ; les relevés fournisseurs s'importent et se décomptent sans ressaisie. »*
+
+## 5bis. États des lieux (≈ 15 s)
+Fiche véhicule **GE 771 902 Tesla**, **Passat** ou **Sprinter** → onglet *Contrôles / États des lieux* : 3 inspections datées avec kilométrage et remarques.
 
 ## 6. Documents (≈ 45 s) — les 4 cas clés
 Onglet **Documents** (ou via la fiche véhicule).

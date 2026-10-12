@@ -28,7 +28,32 @@
   {
    "check": "énergie : ≥4 recharges EV + ≥1 transaction non rapprochée (sans carte)",
    "result": "PASS",
-   "detail": "{'transactions': 16, 'recharges_ev': 8, 'sans_carte': 10}"
+   "detail": "{'transactions': 20, 'recharges_ev': 8, 'sans_carte': 10}"
+  },
+  {
+   "check": "énergie → imports : ≥1 relevé fournisseur importé (confirmé, ≥4 lignes importées, doublon + véhicule non résolu mis de côté)",
+   "result": "PASS",
+   "detail": "{'jobs': 1, 'confirmes': 1, 'counts': {'pending': 0, 'ok': 3, 'invalid': 0, 'duplicate': 1, 'unknown_card': 0, 'amount_mismatch': 1, 'unknown_vehicle': 1, 'total': 6, 'imported': 4}}"
+  },
+  {
+   "check": "énergie → anomalies : ≥2 anomalies ouvertes (écart montant / non rapproché)",
+   "result": "PASS",
+   "detail": "{'total': 3}"
+  },
+  {
+   "check": "énergie → relevés / décomptes : ≥2 décomptes (mois précédent + mois courant)",
+   "result": "PASS",
+   "detail": "{'total': 2, 'statuts': ['brouillon', 'cloture']}"
+  },
+  {
+   "check": "états des lieux : ≥3 véhicules inspectés",
+   "result": "PASS",
+   "detail": "{'inspections': 3}"
+  },
+  {
+   "check": "alertes : ≥5 alertes visibles",
+   "result": "PASS",
+   "detail": "{'alertes': 9}"
   },
   {
    "check": "amendes : payée + ouverte + contestée présentes (en retard dérivée du délai)",
@@ -38,7 +63,7 @@
   {
    "check": "coûts/factures : plusieurs catégories présentes (entretien/pneus/réparation/assurance/leasing/énergie)",
    "result": "PASS",
-   "detail": "{'items': 46, 'categories': ['AMENDE', 'ASSURANCE', 'CARBURANT', 'ENERGIE_ELECTRIQUE', 'ENTRETIEN', 'LEASING', 'PNEUS', 'REPARATION']}"
+   "detail": "{'items': 50, 'categories': ['AMENDE', 'ASSURANCE', 'CARBURANT', 'ENERGIE_ELECTRIQUE', 'ENTRETIEN', 'LEASING', 'PNEUS', 'REPARATION']}"
   },
   {
    "check": "dashboard : KPIs calculés (véhicules + échéances)",
@@ -48,7 +73,7 @@
   {
    "check": "échéances documentaires : ≥1 expirée et ≥1 urgente (<30j)",
    "result": "PASS",
-   "detail": "{'doc_deadlines': 60, 'expirees': 4, 'urgentes': 4}"
+   "detail": "{'doc_deadlines': 64, 'expirees': 4, 'urgentes': 4}"
   },
   {
    "check": "vue chauffeur : ≥1 véhicule, ≥1 plein, ≥1 amende visibles",

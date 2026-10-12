@@ -50,7 +50,8 @@ TENANT_NAME = "Démo LogiTrak"
 MARKERS = {"demo_seed": True, "demo_seed_version": "2026-10", "demo_seed_group": "commercial-demo"}
 MARK_COLLECTIONS = ("users", "vehicles", "drivers", "driver_assignments", "fuel_cards",
                     "fuel_card_assignments", "fuel_transactions", "documents", "inspections",
-                    "fuel_anomalies", "tenant_settings", "doc_categories", "doc_requirements")
+                    "fuel_anomalies", "tenant_settings", "doc_categories", "doc_requirements",
+                    "fuel_import_jobs", "fuel_import_rows", "fuel_import_mappings", "fuel_statements", "fuel_statement_lines")
 
 REP = Path(os.environ.get("DEMO_ARTIFACT_DIR", "/app/test_reports"))
 MEM = Path(os.environ.get("DEMO_MEMORY_DIR", "/app/memory"))
@@ -147,10 +148,16 @@ def save_result(res):
 
 
 # --- credentials -----------------------------------------------------------------------------------------------------
-def load_or_make_passwords():
+def load_or_make_passwords(existing_emails=()):
     if CREDS.exists():
         return json.loads(CREDS.read_text())
-    pw = {k: (os.environ.get(f"DEMO_PW_{k}") or f"Demo-{secrets.token_urlsafe(9)}") for k in ACCOUNTS}
+    pw = {k: os.environ.get(f"DEMO_PW_{k}") for k in ACCOUNTS}
+    missing = [k for k, (email, _, _) in ACCOUNTS.items() if email in existing_emails and not pw[k]]
+    if missing:
+        die("Comptes démo déjà existants mais mots de passe inconnus ici (pas de fichier credentials, pas de variables "
+            f"DEMO_PW_{'/'.join(missing)}). Fournissez les mots de passe ACTUELS via DEMO_PW_ADMIN / DEMO_PW_DRIVER / "
+            "DEMO_PW_READONLY pour ne pas les écraser — ex. `-e DEMO_PW_ADMIN='…'` sur `docker compose exec`.")
+    pw = {k: v or f"Demo-{secrets.token_urlsafe(9)}" for k, v in pw.items()}
     CREDS.write_text(json.dumps(pw, indent=1))
     return pw
 
@@ -395,8 +402,8 @@ DRIVERS = [
 def ensure_tenant_and_users(res, ids):
     sa = sa_headers()
     ok(api(sa, "POST", "/admin/tenants", {"name": TENANT_NAME, "id": T}), 200, 409)
-    pw = load_or_make_passwords()
     users = {u["email"]: u for u in ok(api(sa, "GET", f"/admin/tenants/{T}/users"))}
+    pw = load_or_make_passwords(existing_emails=set(users))
     for key, (email, role, name) in ACCOUNTS.items():
         if email not in users:
             users[email] = ok(api(sa, "POST", f"/admin/tenants/{T}/users",
@@ -502,6 +509,57 @@ def ensure_invoice(h, key, vid, filename, fournisseur, numero, montant, category
                                              "frequence": frequence, "fournisseur": fournisseur, "numero": numero,
                                              "date_debut": day}))
     return did
+
+
+IMPORT_FILENAME = "migrol_releve_carburant.csv"
+
+
+def ensure_fuel_import(h, V, ids):
+    """Relevé fournisseur Migrol : 3 lignes résolues par carte (••1182 → Octavia / ••4473 → Passat), 1 écart montant
+    (anomalie visible), 1 carte inconnue sans plaque (mise de côté : véhicule non résolu) et 1 doublon intra-fichier (mis de côté)."""
+    job = db.fuel_import_jobs.find_one({"tenant_id": T, "filename": IMPORT_FILENAME}, {"_id": 0, "id": 1, "status": 1})
+    if job and job.get("status") == "confirmed":
+        ids["import_migrol"] = job["id"]
+        return
+    octavia = db.vehicles.find_one({"id": V["octavia"]}, {"_id": 0, "plaque": 1})["plaque"]
+    passat = db.vehicles.find_one({"id": V["passat"]}, {"_id": 0, "plaque": 1})["plaque"]
+    rows = [
+        ("Date transaction", "Carte", "Immatriculation", "Produit", "Litres", "Prix/L", "Montant TTC", "Station", "Référence"),
+        (f"{D(-16)} 07:52", "7000 1234 5678 1182", octavia, "Diesel", "47.20", "1.84", "86.85", "Migrol Genève-Carouge", "MG-55012"),
+        (f"{D(-23)} 12:10", "7000 1234 5678 1182", octavia, "Diesel", "44.80", "1.83", "81.98", "Migrol Nyon", "MG-55873"),
+        (f"{D(-19)} 18:05", "7000 9876 5432 4473", passat, "Essence 95", "52.30", "1.91", "99.89", "Migrol Lausanne-Malley", "MG-56120"),
+        (f"{D(-11)} 09:30", "7000 1234 5678 1182", octavia, "Diesel", "40.00", "1.85", "79.00", "Migrol Genève-Carouge", "MG-57001"),  # 40×1.85=74.00 ≠ 79.00
+        (f"{D(-14)} 16:45", "7000 0000 0000 9999", "", "Diesel", "38.50", "1.86", "71.61", "Migrol Fribourg", "MG-57455"),  # carte inconnue → véhicule non résolu
+        (f"{D(-16)} 07:52", "7000 1234 5678 1182", octavia, "Diesel", "47.20", "1.84", "86.85", "Migrol Genève-Carouge", "MG-55012"),  # doublon intra-fichier
+    ]
+    csv_blob = ("\n".join(";".join(r) for r in rows) + "\n").encode("utf-8")
+    if not job:
+        job = ok(requests.post(f"{BASE}/api/fuel/imports", files={"file": (IMPORT_FILENAME, io.BytesIO(csv_blob), "text/csv")},
+                               data={"fournisseur": "Migrol"}, headers=h, timeout=120))
+    jid = job["id"]
+    mapping = {"tx_datetime": "Date transaction", "card_last4": "Carte", "vehicle_hint": "Immatriculation", "product_type": "Produit",
+               "quantity": "Litres", "unit_price": "Prix/L", "amount_total": "Montant TTC", "station_name": "Station",
+               "external_transaction_id": "Référence"}
+    ok(api(h, "POST", f"/fuel/imports/{jid}/mapping", {"mapping": mapping, "fournisseur": "Migrol", "save_mapping": True}))
+    ok(api(h, "POST", f"/fuel/imports/{jid}/confirm"))
+    ids["import_migrol"] = jid
+
+
+def _month(day_iso):
+    return day_iso[:7]
+
+
+def ensure_statements(h):
+    """Décompte régulier du mois précédent (clôturé si 0 blocker, sinon laissé en brouillon) + brouillon du mois courant."""
+    prev, cur = _month(D(-34)), _month(D(0))
+    for period in (prev, cur):
+        st = db.fuel_statements.find_one({"tenant_id": T, "period_month": period, "type": "regulier", "scope.type": "tenant"}, {"_id": 0, "id": 1, "status": 1})
+        if not st:
+            st = ok(api(h, "POST", "/fuel/statements", {"period_month": period, "scope_type": "tenant", "type": "regulier"}))
+        if period == prev and st.get("status") != "cloture":
+            r = api(h, "POST", f"/fuel/statements/{st['id']}/close")
+            if r.status_code not in (200, 409):
+                die(f"close statement {period} → {r.status_code} {r.text[:200]}")
 
 
 def seed():
@@ -639,6 +697,20 @@ def seed():
         ok(api(hA, "POST", f"/vehicles/{V['sprinter']}/inspections",
                {"date": D(-30), "responsable": "Luca Moretti", "kilometrage": 117800,
                 "commentaire": "État général bon. Rayure latérale droite signalée.", "photos": []}))
+    if not db.inspections.find_one({"tenant_id": T, "vehicle_id": V["tesla"]}):
+        ok(api(hA, "POST", f"/vehicles/{V['tesla']}/inspections",
+               {"date": D(-12), "responsable": "Marc Rochat", "kilometrage": 41000,
+                "commentaire": "Restitution contrôle semestriel : impact pare-brise côté passager (à surveiller).", "photos": []}))
+    if not db.inspections.find_one({"tenant_id": T, "vehicle_id": V["passat"]}):
+        ok(api(hA, "POST", f"/vehicles/{V['passat']}/inspections",
+               {"date": D(-70), "responsable": "Sophie Berger", "kilometrage": 52900,
+                "commentaire": "Pneus été montés, pression OK, intérieur propre.", "photos": []}))
+
+    # --- Énergie → Imports : relevé fournisseur Migrol (CSV) importé via le flux complet upload → mapping → confirm ---
+    ensure_fuel_import(hA, V, ids)
+
+    # --- Énergie → Relevés / Décomptes : décompte clôturé (mois précédent) + brouillon (mois courant) ---
+    ensure_statements(hA)
 
     # --- liaison compte driver → conducteur actif Marc Rochat ---
     ok(api(sa, "PUT", f"/admin/users/{ids['user_DRIVER']}", {"driver_id": ids["d_marc"]}))
@@ -666,7 +738,7 @@ def mark():
 #  VERIFY (API + isolation)
 # =====================================================================================================================
 def verify():
-    pw = load_or_make_passwords()
+    pw = load_or_make_passwords(existing_emails={e for e, _, _ in ACCOUNTS.values()})
     hA = login(ACCOUNTS["ADMIN"][0], pw["ADMIN"])
     hD = login(ACCOUNTS["DRIVER"][0], pw["DRIVER"])
     hR = login(ACCOUNTS["READONLY"][0], pw["READONLY"])
@@ -710,6 +782,29 @@ def verify():
     chk("énergie : ≥4 recharges EV + ≥1 transaction non rapprochée (sans carte)",
         len(ev_tx) >= 4 and len(no_card) >= 1 and energy["totals"]["transactions"] >= 15,
         {"transactions": energy["totals"]["transactions"], "recharges_ev": len(ev_tx), "sans_carte": len(no_card)})
+
+    imports = ok(api(hA, "GET", "/fuel/imports"))
+    confirmed = [j for j in imports.get("items", []) if j.get("status") == "confirmed"]
+    chk("énergie → imports : ≥1 relevé fournisseur importé (confirmé, ≥4 lignes importées, doublon + véhicule non résolu mis de côté)",
+        len(confirmed) >= 1 and confirmed[0].get("imported_count", 0) >= 4 and (confirmed[0].get("counts") or {}).get("duplicate", 0) >= 1
+        and (confirmed[0].get("counts") or {}).get("unknown_vehicle", 0) >= 1,
+        {"jobs": len(imports.get("items", [])), "confirmes": len(confirmed),
+         "counts": (confirmed[0].get("counts") if confirmed else None)})
+
+    anomalies = ok(api(hA, "GET", "/fuel/anomalies"))
+    chk("énergie → anomalies : ≥2 anomalies ouvertes (écart montant / non rapproché)",
+        anomalies.get("total", 0) >= 2, {"total": anomalies.get("total")})
+
+    statements = ok(api(hA, "GET", "/fuel/statements"))
+    st_items = statements.get("items", [])
+    chk("énergie → relevés / décomptes : ≥2 décomptes (mois précédent + mois courant)",
+        len(st_items) >= 2, {"total": len(st_items), "statuts": sorted({s.get("status") for s in st_items})})
+
+    insp = db.inspections.count_documents({"tenant_id": T})
+    chk("états des lieux : ≥3 véhicules inspectés", insp >= 3, {"inspections": insp})
+
+    alerts = ok(api(hA, "GET", "/alerts"))
+    chk("alertes : ≥5 alertes visibles", len(alerts.get("items", [])) >= 5, {"alertes": len(alerts.get("items", []))})
 
     fines = ok(api(hA, "GET", "/fines"))
     fstatuses = {}
@@ -859,7 +954,7 @@ def reset():
 
 def snapshot():
     """Contrôle de santé LECTURE SEULE, exécutable à tout moment : santé du tenant démo + isolation default/autres."""
-    pw = load_or_make_passwords()
+    pw = load_or_make_passwords(existing_emails={e for e, _, _ in ACCOUNTS.values()})
     hA = login(ACCOUNTS["ADMIN"][0], pw["ADMIN"])
     hD = login(ACCOUNTS["DRIVER"][0], pw["DRIVER"])
     hR = login(ACCOUNTS["READONLY"][0], pw["READONLY"])
