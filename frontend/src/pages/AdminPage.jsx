@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Loader2, Plus, Building2, ChevronDown, ChevronRight, Truck, FileText, Users, Wifi, WifiOff, Eye } from "lucide-react";
+import { Loader2, Plus, Building2, ChevronDown, ChevronRight, Truck, FileText, Users, Wifi, WifiOff, LifeBuoy } from "lucide-react";
 import { adminOverview, adminUpdateTenant, setActingTenant } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -12,8 +12,7 @@ import { cn } from "@/lib/utils";
 import NewClientDialog from "@/components/admin/NewClientDialog";
 import ClientUsers from "@/components/admin/ClientUsers";
 import ClientIntegration from "@/components/admin/ClientIntegration";
-import TransfersHistory from "@/components/admin/TransfersHistory";
-import LegacyTenantMap from "@/components/admin/LegacyTenantMap";
+import ClientModules, { ModulesBadge } from "@/components/admin/ClientModules";
 
 function ClientCard({ tenant, expanded, onToggle }) {
   const qc = useQueryClient();
@@ -26,7 +25,6 @@ function ClientCard({ tenant, expanded, onToggle }) {
       toast.error(String(e?.response?.data?.detail || "Échec de la mise à jour"));
     }
   };
-  const docsModule = tenant.modules?.documents !== false;
   return (
     <div className={cn("rounded-2xl border bg-white transition-colors",
       tenant.disabled ? "border-red-200 opacity-70" : "border-slate-200")}
@@ -44,6 +42,7 @@ function ClientCard({ tenant, expanded, onToggle }) {
             <span className="flex items-center gap-1.5" title="Documents"><FileText className="h-4 w-4 text-slate-400" />{tenant.documents}</span>
             <span className="flex items-center gap-1.5" title="Utilisateurs"><Users className="h-4 w-4 text-slate-400" />{tenant.users}</span>
           </div>
+          <ModulesBadge tenant={tenant} />
           {tenant.integration?.configured ? (
             <Badge variant="outline" className={cn("gap-1", tenant.integration.enabled ? "border-emerald-300 text-emerald-700" : "border-slate-300 text-slate-500")}
               data-testid={`admin-client-integration-badge-${tenant.id}`}>
@@ -58,24 +57,19 @@ function ClientCard({ tenant, expanded, onToggle }) {
         </button>
         <Button size="sm" variant="outline" data-testid={`admin-view-client-btn-${tenant.id}`}
           className="shrink-0 gap-1.5"
+          title="Ouvrir l'application de ce client en mode assistance (modules actifs du client, droits administrateur)"
           onClick={() => { setActingTenant({ id: tenant.id, name: tenant.name }); window.location.assign("/"); }}>
-          <Eye className="h-3.5 w-3.5" /> Voir ce client
+          <LifeBuoy className="h-3.5 w-3.5" /> Se connecter
         </Button>
       </div>
       {expanded && (
         <div className="space-y-6 border-t border-slate-100 px-5 py-5">
-          <div className="flex flex-wrap items-center gap-8">
-            <label className="flex items-center gap-3 text-sm font-medium text-slate-700">
-              <Switch checked={!tenant.disabled} data-testid={`admin-client-active-switch-${tenant.id}`}
-                onCheckedChange={(v) => update({ disabled: !v }, v ? "Client réactivé" : "Client désactivé")} />
-              Client actif
-            </label>
-            <label className="flex items-center gap-3 text-sm font-medium text-slate-700">
-              <Switch checked={docsModule} data-testid={`admin-client-module-docs-switch-${tenant.id}`}
-                onCheckedChange={(v) => update({ modules: { documents: v } }, v ? "Module Documents activé" : "Module Documents désactivé")} />
-              Module Documents
-            </label>
-          </div>
+          <label className="flex items-center gap-3 text-sm font-medium text-slate-700">
+            <Switch checked={!tenant.disabled} data-testid={`admin-client-active-switch-${tenant.id}`}
+              onCheckedChange={(v) => update({ disabled: !v }, v ? "Client réactivé" : "Client désactivé")} />
+            Client actif
+          </label>
+          <ClientModules tenant={tenant} />
           <ClientUsers tenantId={tenant.id} />
           <ClientIntegration tenantId={tenant.id} />
         </div>
@@ -103,7 +97,7 @@ export default function AdminPage() {
             Administration des clients
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            {tenants.length} client(s) · création de comptes, intégration télématique et modules par client.
+            {tenants.length} client(s) · comptes, modules activés et intégration télématique par client.
           </p>
         </div>
         <Button data-testid="admin-new-client-btn" onClick={() => setNewOpen(true)} className="gap-2 bg-slate-900 hover:bg-slate-800">
@@ -124,8 +118,6 @@ export default function AdminPage() {
           ))}
         </div>
       )}
-      <TransfersHistory />
-      <LegacyTenantMap />
       <NewClientDialog open={newOpen} onOpenChange={setNewOpen} />
     </div>
   );

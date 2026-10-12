@@ -7,12 +7,12 @@ import {
 } from "@/components/ui/dialog";
 import { aiStatus } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { can } from "@/lib/rbac";
+import { can, moduleOn } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
 
 export function useAiAvailable() {
   const { user } = useAuth();
-  const allowed = can(user, "ai.use");
+  const allowed = can(user, "ai.use") && moduleOn(user, "ai");
   const { data } = useQuery({
     queryKey: ["ai-status"],
     queryFn: aiStatus,

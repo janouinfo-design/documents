@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutDashboard, Truck, CalendarClock, Bell, Layers3, UserCircle2, KeyRound, LogOut, ShieldCheck, Building2, Eye, FolderOpen, Wallet, Fuel, GitMerge, Users, Gavel, FlaskConical, Sparkles } from "lucide-react";
+import { LayoutDashboard, Truck, CalendarClock, Bell, Layers3, UserCircle2, KeyRound, LogOut, ShieldCheck, Building2, FolderOpen, Wallet, Fuel, GitMerge, Users, Gavel, FlaskConical, Sparkles, Wrench, LifeBuoy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getActingTenant, setActingTenant, getPendingReviewCount } from "@/lib/api";
 import {
@@ -10,37 +10,43 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/context/AuthContext";
 import ChangePasswordDialog from "@/components/ChangePasswordDialog";
-import { can, isDriver, ROLE_LABELS } from "@/lib/rbac";
+import { can, isDriver, isConsoleMode, isAssistMode, moduleOn, ROLE_LABELS } from "@/lib/rbac";
 import { driverErrorCode, useMyProfile } from "@/components/me/DriverShell";
 
 const NAV = [
   { to: "/", label: "Tableau de bord", icon: LayoutDashboard, testId: "nav-dashboard" },
-  { to: "/vehicules", label: "Véhicules", icon: Truck, testId: "nav-vehicles" },
-  { to: "/documents", label: "Documents", icon: FolderOpen, testId: "nav-documents" },
-  { to: "/timeline", label: "Échéances", icon: CalendarClock, testId: "nav-timeline" },
-  { to: "/couts", label: "Coûts", icon: Wallet, testId: "nav-costs" },
-  { to: "/energie", label: "Énergie", icon: Fuel, testId: "nav-energy" },
-  { to: "/conducteurs", label: "Conducteurs", icon: Users, testId: "nav-drivers" },
-  { to: "/amendes", label: "Amendes", icon: Gavel, testId: "nav-fines" },
-  { to: "/assistant", label: "Assistant IA", icon: Sparkles, testId: "nav-ai", cap: "ai.use" },
-  { to: "/alertes", label: "Alertes", icon: Bell, testId: "nav-alerts" },
-  { to: "/integrite", label: "Intégrité", icon: ShieldCheck, testId: "nav-integrity", cap: "pages.integrity" },
+  { to: "/vehicules", label: "Véhicules", icon: Truck, testId: "nav-vehicles", module: "vehicles" },
+  { to: "/documents", label: "Documents", icon: FolderOpen, testId: "nav-documents", module: "documents" },
+  { to: "/timeline", label: "Échéances", icon: CalendarClock, testId: "nav-timeline", module: "deadlines" },
+  { to: "/couts", label: "Coûts", icon: Wallet, testId: "nav-costs", module: "costs" },
+  { to: "/energie", label: "Énergie", icon: Fuel, testId: "nav-energy", module: "energy" },
+  { to: "/conducteurs", label: "Conducteurs", icon: Users, testId: "nav-drivers", module: "drivers" },
+  { to: "/amendes", label: "Amendes", icon: Gavel, testId: "nav-fines", module: "fines" },
+  { to: "/assistant", label: "Assistant IA", icon: Sparkles, testId: "nav-ai", cap: "ai.use", module: "ai" },
+  { to: "/alertes", label: "Alertes", icon: Bell, testId: "nav-alerts", module: "alerts" },
+  { to: "/integrite", label: "Intégrité", icon: ShieldCheck, testId: "nav-integrity", cap: "pages.integrity", module: "integrity" },
   { to: "/admin/correspondances", label: "Correspondances", icon: GitMerge, testId: "nav-legacy", cap: "pages.legacy" },
+];
+
+// Console Super Admin (hors mode assistance) : aucune navigation métier, uniquement l'administration plateforme.
+const SUPERADMIN_NAV = [
+  { to: "/admin", label: "Administration des clients", icon: Building2, testId: "nav-admin" },
+  { to: "/admin/outils", label: "Outils techniques", icon: Wrench, testId: "nav-admin-tools" },
 ];
 
 // Lot H — navigation chauffeur : exactement 3 entrées (+ déconnexion dans le menu compte), même Layout, même charte.
 const DRIVER_NAV = [
-  { to: "/mes-pleins", label: "Mes pleins", icon: Fuel, testId: "nav-me-fuel" },
-  { to: "/mes-amendes", label: "Mes amendes", icon: Gavel, testId: "nav-me-fines" },
+  { to: "/mes-pleins", label: "Mes pleins", icon: Fuel, testId: "nav-me-fuel", module: "energy" },
+  { to: "/mes-amendes", label: "Mes amendes", icon: Gavel, testId: "nav-me-fines", module: "fines" },
   { to: "/mes-vehicules", label: "Mes véhicules", icon: Truck, testId: "nav-me-vehicles" },
 ];
 
 function useNavItems(user) {
   const driver = isDriver(user);
   const profile = useMyProfile({ enabled: driver });
-  if (driver) return profile.isError && driverErrorCode(profile.error) ? [] : DRIVER_NAV;
-  const items = NAV.filter((i) => !i.cap || can(user, i.cap));
-  return can(user, "console") ? [...items, { to: "/admin", label: "Administration", icon: Building2, testId: "nav-admin" }] : items;
+  if (driver) return profile.isError && driverErrorCode(profile.error) ? [] : DRIVER_NAV.filter((i) => moduleOn(user, i.module));
+  if (isConsoleMode(user)) return SUPERADMIN_NAV;
+  return NAV.filter((i) => (!i.cap || can(user, i.cap)) && moduleOn(user, i.module));
 }
 
 function Brand() {
@@ -61,7 +67,7 @@ function TopTabs() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const canValidate = can(user, "documents.write");
+  const canValidate = can(user, "documents.write") && moduleOn(user, "documents") && !isConsoleMode(user);
   const { data: pending } = useQuery({
     queryKey: ["documents", "pending-review-count"],
     queryFn: getPendingReviewCount,
@@ -161,20 +167,33 @@ function DemoBanner() {
 function ActingTenantBanner() {
   const { user } = useAuth();
   const acting = getActingTenant();
-  if (user?.role !== "superadmin" || !acting?.id) return null;
+  if (!isAssistMode(user)) return null;
+  const name = user?.acting_tenant?.name || acting.name || acting.id;
+  const mods = user?.tenant_modules ? Object.values(user.tenant_modules).filter(Boolean).length : null;
   return (
     <div data-testid="acting-tenant-banner"
       className="flex flex-wrap items-center justify-between gap-2 bg-indigo-700 px-4 py-2 text-sm text-white sm:px-6 lg:px-8">
-      <span className="flex items-center gap-2 font-medium">
-        <Eye className="h-4 w-4" /> Vue client : {acting.name || acting.id} — lecture + écriture
+      <span className="flex flex-wrap items-center gap-2 font-medium">
+        <LifeBuoy className="h-4 w-4" />
+        <span data-testid="acting-tenant-label">Mode assistance · {name}</span>
+        <span className="text-xs font-normal text-indigo-100">
+          — droits administrateur du client{mods != null ? ` · ${mods}/10 modules actifs` : ""}
+        </span>
       </span>
       <button data-testid="acting-tenant-exit-btn"
         onClick={() => { setActingTenant(null); window.location.assign("/admin"); }}
-        className="rounded-md bg-white/15 px-3 py-1 text-xs font-semibold transition-colors hover:bg-white/25">
-        Revenir à la console
+        className="flex items-center gap-1.5 rounded-md bg-white/15 px-3 py-1 text-xs font-semibold transition-colors hover:bg-white/25">
+        <LogOut className="h-3.5 w-3.5" /> Quitter le compte
       </button>
     </div>
   );
+}
+
+function moduleLabel(user) {
+  if (isDriver(user)) return "Espace chauffeur";
+  if (isConsoleMode(user)) return "Console Super Admin";
+  if (isAssistMode(user)) return "Mode assistance";
+  return "Gestion administrative de flotte";
 }
 
 export default function Layout({ children }) {
@@ -190,7 +209,7 @@ export default function Layout({ children }) {
             <div className="hidden flex-col text-right sm:flex">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Module</p>
               <p className="font-display text-sm font-bold leading-none tracking-tight text-slate-900" data-testid="layout-module-label">
-                {isDriver(user) ? "Espace chauffeur" : "Gestion administrative de flotte"}
+                {moduleLabel(user)}
               </p>
             </div>
             <UserMenu />

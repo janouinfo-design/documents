@@ -46,6 +46,7 @@ from drivers import DriverCreate, DriverUpdate, AssignmentCreate, AssignmentClos
 import fines as fin
 from fines import FineStatusChange, FinePaid
 import ai_assistant as ai
+import tenant_modules as tmod
 from reports import build_fines_csv, build_fines_xlsx, build_fines_pdf
 
 ROOT_DIR = Path(__file__).parent
@@ -92,17 +93,22 @@ async def require_auth(request: Request) -> dict:
     if role == "superadmin":
         acting = request.headers.get("X-Acting-Tenant")
         if acting and not path.startswith(("/api/auth", "/api/admin")):
-            if not await db.tenants.find_one({"id": acting}):
+            t = await db.tenants.find_one({"id": acting}, {"_id": 0, "modules": 1})
+            if not t:
                 raise HTTPException(status_code=404, detail="Client introuvable")
             tenant_id = acting
+            # Mode assistance : les modules désactivés du client restent inaccessibles, même pour le superadmin
+            off = tmod.disabled_module_for(t, path)
+            if off:
+                raise HTTPException(status_code=403, detail=tmod.disabled_detail(off))
     else:
         t = await db.tenants.find_one({"id": tenant_id}, {"_id": 0, "disabled": 1, "modules": 1})
         if t and t.get("disabled"):
             raise HTTPException(status_code=401, detail="Compte client désactivé")
-        if (not path.startswith("/api/auth")
-                and t and isinstance(t.get("modules"), dict)
-                and t["modules"].get("documents") is False):
-            raise HTTPException(status_code=403, detail="Module Documents non activé pour ce compte")
+        if not path.startswith("/api/auth"):
+            off = tmod.disabled_module_for(t, path)
+            if off:
+                raise HTTPException(status_code=403, detail=tmod.disabled_detail(off))
         if (role == "read_only"
                 and request.method not in ("GET", "HEAD", "OPTIONS")
                 and not path.startswith("/api/auth")):
@@ -134,17 +140,24 @@ class ChangePasswordPayload(BaseModel):
     new_password: str
 
 
-async def _enrich_tenant_demo(user: dict) -> dict:
-    """Ajoute, à la charge utilisateur renvoyée (login / me), un drapeau d'affichage `tenant_demo`
-    dérivé du marquage `demo_seed` du tenant (bandeau « Données de démonstration »). Lecture seule,
-    aucune incidence sur l'authentification."""
+async def _enrich_tenant_demo(user: dict, acting_tenant_id: Optional[str] = None) -> dict:
+    """Ajoute, à la charge utilisateur renvoyée (login / me), le contexte tenant d'affichage :
+    `tenant_demo` (bandeau démo), `tenant_name`, `tenant_modules` (modules activés par le Super Admin) et,
+    pour un superadmin en mode assistance, `acting_tenant`. Lecture seule, aucune incidence sur l'authentification."""
     if user.get("role") == "superadmin":
         user["tenant_demo"] = False
-        return user
-    t = await db.tenants.find_one({"id": user.get("tenant_id") or "default"},
-                                  {"_id": 0, "demo_seed": 1, "name": 1})
+        if not acting_tenant_id:
+            return user
+        t = await db.tenants.find_one({"id": acting_tenant_id}, {"_id": 0, "id": 1, "demo_seed": 1, "name": 1, "modules": 1})
+        if not t:
+            return user
+        user["acting_tenant"] = {"id": t["id"], "name": t.get("name") or t["id"]}
+    else:
+        t = await db.tenants.find_one({"id": user.get("tenant_id") or "default"},
+                                      {"_id": 0, "demo_seed": 1, "name": 1, "modules": 1})
     user["tenant_demo"] = bool(t and t.get("demo_seed"))
     user["tenant_name"] = (t or {}).get("name")
+    user["tenant_modules"] = tmod.resolve_modules(t)
     return user
 
 
@@ -250,8 +263,6 @@ async def auth_navixy_exchange(payload: NavixyExchangePayload, request: Request)
                             detail="Aucun compte Documents associé à ce compte Navixy — contactez votre administrateur")
     if tenant.get("disabled"):
         raise HTTPException(status_code=401, detail="Compte client désactivé")
-    if isinstance(tenant.get("modules"), dict) and tenant["modules"].get("documents") is False:
-        raise HTTPException(status_code=403, detail="Module Documents non activé pour ce compte")
     tid = tenant["id"]
     now = datetime.now(timezone.utc).isoformat()
     user = await db.users.find_one(
@@ -288,8 +299,9 @@ async def auth_navixy_exchange(payload: NavixyExchangePayload, request: Request)
 
 
 @auth_router.get("/me")
-async def auth_me(user: dict = Depends(require_auth)):
-    return await _enrich_tenant_demo(dict(user))
+async def auth_me(request: Request, user: dict = Depends(require_auth)):
+    acting = request.headers.get("X-Acting-Tenant") if user.get("role") == "superadmin" else None
+    return await _enrich_tenant_demo(dict(user), acting)
 
 
 @auth_router.post("/change-password")
@@ -2538,6 +2550,10 @@ async def collect_deadlines(tenant_id: str, th: dict = None, vehicle_ids: Option
                   "modele": v.get("modele"), "type": "carte_carburant", "category": "Carte carburant",
                   "label": f"Carte carburant {fc.display_label(c)} — expiration", "card_statut": c.get("statut"),
                   "date": c["expire_le"][:10], "days_remaining": days_until(c["expire_le"]), "responsable": None})
+
+    # Modules désactivés par le Super Admin : leurs échéances ne sont jamais exposées (données conservées en base)
+    mods = tmod.resolve_modules(await db.tenants.find_one({"id": tenant_id}, {"_id": 0, "modules": 1}))
+    items = [i for i in items if mods.get(tmod.deadline_module(i) or "vehicles", True)]
 
     # Urgent d'abord, puis chronologique
     items.sort(key=lambda i: (_DL_RANK[i["statut"]], i.get("date") or "9999-12-31",
@@ -6735,6 +6751,8 @@ async def run_alerts(tenant_id: Optional[str] = None) -> dict:
     upcoming = []
 
     for t_id in tenant_ids:
+        if not tmod.resolve_modules(await db.tenants.find_one({"id": t_id}, {"_id": 0, "modules": 1}))["alerts"]:
+            continue  # module Alertes désactivé : rien de créé ni envoyé pour ce client
         th = await deadline_settings(t_id)
         data = await collect_deadlines(t_id, th)
         doc_thresholds = sorted({th["urgent_days"], th["warning_days"]})
@@ -8629,7 +8647,7 @@ async def admin_overview():
         out.append({
             "id": tid, "name": t.get("name") or tid,
             "disabled": bool(t.get("disabled")),
-            "modules": t.get("modules") or {"documents": True},
+            "modules": tmod.resolve_modules(t),
             "created_at": t.get("created_at"),
             "vehicles": await db.vehicles.count_documents({"tenant_id": tid}),
             "documents": await db.documents.count_documents({"tenant_id": tid, "is_deleted": False}),
@@ -8641,7 +8659,7 @@ async def admin_overview():
                 "last_sync_at": integ.get("last_sync_at"),
             },
         })
-    return {"tenants": out}
+    return {"tenants": out, "module_catalog": [{"key": k, "label": lbl, "core": k == tmod.CORE_MODULE} for k, lbl in tmod.MODULES]}
 
 
 @admin_router.post("/tenants")
@@ -8656,7 +8674,7 @@ async def admin_create_tenant(payload: TenantCreate, request: Request):
         raise HTTPException(status_code=409, detail="Un client avec cet identifiant existe déjà")
     now = datetime.now(timezone.utc).isoformat()
     doc = {"id": tid, "name": name, "disabled": False,
-           "modules": {"documents": True}, "created_at": now}
+           "modules": {k: True for k in tmod.MODULE_KEYS}, "created_at": now}
     await db.tenants.insert_one(dict(doc))
     await audit("admin_tenant_create", "tenant", request, tid, None,
                 f"Client créé: {name} ({tid})", tenant_id=tid)
@@ -8676,18 +8694,32 @@ async def admin_update_tenant(tid: str, payload: TenantUpdate, request: Request)
         updates["disabled"] = bool(payload.disabled)
         notes.append("client désactivé" if payload.disabled else "client réactivé")
     if payload.modules is not None:
-        if not isinstance(payload.modules, dict) or not all(isinstance(v, bool) for v in payload.modules.values()):
+        if (not isinstance(payload.modules, dict) or not payload.modules
+                or not all(isinstance(v, bool) for v in payload.modules.values())):
             raise HTTPException(status_code=422, detail="Format modules invalide")
-        merged = dict(t.get("modules") or {"documents": True})
-        merged.update(payload.modules)
+        unknown = [k for k in payload.modules if k not in tmod.MODULE_KEYS]
+        if unknown:
+            raise HTTPException(status_code=422, detail=f"Module(s) inconnu(s) : {', '.join(unknown)}")
+        before = tmod.resolve_modules(t)
+        merged = {**before, **payload.modules}
         updates["modules"] = merged
-        notes.append(f"modules → {merged}")
+        actor = getattr(request.state, "user", None) or {}
+        for key, new_val in payload.modules.items():
+            if before[key] == new_val:
+                continue
+            notes.append(f"module {tmod.MODULE_LABELS[key]} → {'activé' if new_val else 'désactivé'}")
+            await audit("admin_module_toggle", "tenant_module", request, f"{tid}:{key}", None,
+                        f"Module {tmod.MODULE_LABELS[key]} {'activé' if new_val else 'désactivé'} pour le client {tid}",
+                        tenant_id=tid,
+                        extra={"module": key, "old_value": before[key], "new_value": new_val,
+                               "superadmin_id": actor.get("id"), "superadmin_email": actor.get("email")})
     if not updates:
-        return t
+        return {**t, "modules": tmod.resolve_modules(t)}
     updates["updated_at"] = datetime.now(timezone.utc).isoformat()
     await db.tenants.update_one({"id": tid}, {"$set": updates})
-    await audit("admin_tenant_update", "tenant", request, tid, None, "; ".join(notes), tenant_id=tid)
-    return {**t, **updates}
+    if notes:
+        await audit("admin_tenant_update", "tenant", request, tid, None, "; ".join(notes), tenant_id=tid)
+    return {**t, **updates, "modules": tmod.resolve_modules({**t, **updates})}
 
 
 @admin_router.get("/tenants/{tid}/users")

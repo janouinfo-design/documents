@@ -21,6 +21,8 @@ import QueryErrorState from "@/components/QueryErrorState";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EVENT_TYPES, DEADLINE_STATUT_META } from "@/lib/status";
 import { useVehicleDrawer } from "@/context/VehicleDrawerContext";
+import { useAuth } from "@/context/AuthContext";
+import { moduleOn } from "@/lib/rbac";
 
 const tabForType = (t) =>
   ["leasing", "assurance", "controle"].includes(t) ? t : ["document", "amende"].includes(t) ? "documents" : "general";
@@ -104,14 +106,18 @@ function SecondaryFinesCard({ stats, onClick }) {
   );
 }
 
+const GRID_COLS = { 1: "lg:grid-cols-1", 2: "lg:grid-cols-2", 3: "lg:grid-cols-3", 4: "lg:grid-cols-4" };
+
 export default function Dashboard() {
   const { openVehicle } = useVehicleDrawer();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const on = (key) => moduleOn(user, key);
   const go = (path) => () => navigate(path);
   const { data: kpi, isLoading, isError, error } = useQuery({ queryKey: ["dashboard"], queryFn: getDashboard });
-  const { data: dl, isError: dlIsError, error: dlError } = useQuery({ queryKey: ["deadlines"], queryFn: () => getDeadlines() });
-  const { data: costs } = useQuery({ queryKey: ["costs"], queryFn: () => getCosts() });
-  const { data: finesStats } = useQuery({ queryKey: ["fines-stats"], queryFn: getFinesStats });
+  const { data: dl, isError: dlIsError, error: dlError } = useQuery({ queryKey: ["deadlines"], queryFn: () => getDeadlines(), enabled: on("deadlines") });
+  const { data: costs } = useQuery({ queryKey: ["costs"], queryFn: () => getCosts(), enabled: on("costs") });
+  const { data: finesStats } = useQuery({ queryKey: ["fines-stats"], queryFn: getFinesStats, enabled: on("fines") });
 
   const th = kpi?.deadline_thresholds || { urgent_days: 30, warning_days: 90 };
   const summary = dl?.summary;
@@ -124,14 +130,36 @@ export default function Dashboard() {
   const total = kpi?.total_vehicles || 0;
   const conformes = kpi?.vehicles_conformes || 0;
 
+  // Le tableau de bord se recompose selon les modules actifs du client : aucune carte vide, aucun KPI à zéro artificiel.
+  const primary = [
+    on("deadlines") && <KpiCard key="expired" testId="kpi-expired" label="Éléments expirés"
+      value={!summary ? "—" : summary.expired} accent="red" icon={FileX}
+      sub="Documents & contrats, toutes catégories" onClick={go("/timeline?statut=EXPIRE")} />,
+    on("deadlines") && <KpiCard key="urgent" testId="kpi-urgent" label={`À traiter ≤ ${th.urgent_days} jours`}
+      value={!summary ? "—" : summary.urgent} accent="amber" icon={FileClock}
+      sub="Toutes catégories, seuil du compte" onClick={go("/timeline?statut=URGENT")} />,
+    on("documents") && <KpiCard key="missing" testId="kpi-docs-manquants" label="Documents manquants"
+      value={!kpi ? "—" : kpi.documents_missing ?? 0} accent="red" icon={FileStack}
+      sub="Véhicules avec documents requis absents" onClick={go("/documents")} />,
+    on("documents") && <KpiCard key="review" testId="kpi-docs-a-verifier" label="Documents à vérifier"
+      value={!kpi ? "—" : kpi.docs_a_verifier ?? 0} accent="slate" icon={FileSearch}
+      sub="Validation en attente" onClick={go("/documents?statut=A_VERIFIER")} />,
+  ].filter(Boolean);
+  const secondary = [
+    <SecondaryConformityCard key="conf" conformes={conformes} total={total} onClick={go(on("integrity") ? "/integrite" : "/vehicules")} />,
+    on("costs") && <SecondaryCostCard key="costs" costs={costs} onClick={go("/couts")} />,
+    on("fines") && <SecondaryFinesCard key="fines" stats={finesStats} onClick={go("/amendes?view=late")} />,
+  ].filter(Boolean);
+  const detailPages = [on("deadlines") && "Échéances", on("documents") && "Documents", on("costs") && "Coûts"].filter(Boolean);
+
   return (
     <div className="space-y-8 animate-fade-in" data-testid="dashboard-page">
       <div className="flex flex-col gap-2">
         <h2 className="font-display text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
           Tableau de bord administratif
         </h2>
-        <p className="text-sm text-slate-500">
-          Pilotage rapide — le détail vit dans Échéances, Documents et Coûts.
+        <p className="text-sm text-slate-500" data-testid="dashboard-subtitle">
+          {detailPages.length ? `Pilotage rapide — le détail vit dans ${detailPages.join(", ")}.` : "Pilotage rapide de la flotte."}
         </p>
       </div>
 
@@ -139,33 +167,19 @@ export default function Dashboard() {
       {dlIsError && <QueryErrorState error={dlError} testId="dashboard-deadlines-error" />}
 
       {/* KPI prioritaires — y a-t-il un problème, que traiter maintenant ? */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard testId="kpi-expired" label="Éléments expirés"
-                 value={!summary ? "—" : summary.expired} accent="red" icon={FileX}
-                 sub="Documents & contrats, toutes catégories"
-                 onClick={go("/timeline?statut=EXPIRE")} />
-        <KpiCard testId="kpi-urgent" label={`À traiter ≤ ${th.urgent_days} jours`}
-                 value={!summary ? "—" : summary.urgent} accent="amber" icon={FileClock}
-                 sub="Toutes catégories, seuil du compte"
-                 onClick={go("/timeline?statut=URGENT")} />
-        <KpiCard testId="kpi-docs-manquants" label="Documents manquants"
-                 value={!kpi ? "—" : kpi.documents_missing ?? 0} accent="red" icon={FileStack}
-                 sub="Véhicules avec documents requis absents"
-                 onClick={go("/documents")} />
-        <KpiCard testId="kpi-docs-a-verifier" label="Documents à vérifier"
-                 value={!kpi ? "—" : kpi.docs_a_verifier ?? 0} accent="slate" icon={FileSearch}
-                 sub="Validation en attente"
-                 onClick={go("/documents?statut=A_VERIFIER")} />
-      </div>
+      {primary.length > 0 && (
+        <div className={cn("grid grid-cols-1 gap-4 sm:grid-cols-2", GRID_COLS[primary.length])} data-testid="dashboard-primary-kpis">
+          {primary}
+        </div>
+      )}
 
       {/* KPI secondaires — conformité & finance */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <SecondaryConformityCard conformes={conformes} total={total} onClick={go("/integrite")} />
-        <SecondaryCostCard costs={costs} onClick={go("/couts")} />
-        <SecondaryFinesCard stats={finesStats} onClick={go("/amendes?view=late")} />
+      <div className={cn("grid grid-cols-1 gap-4", GRID_COLS[secondary.length])} data-testid="dashboard-secondary-kpis">
+        {secondary}
       </div>
 
       {/* Prochaines actions — les plus urgentes d'abord, puis chronologique */}
+      {on("deadlines") && (
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" data-testid="next-actions">
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <h3 className="font-display text-lg font-semibold tracking-tight text-slate-900">
@@ -249,6 +263,7 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

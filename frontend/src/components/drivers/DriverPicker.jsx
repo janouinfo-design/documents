@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Check, ChevronsUpDown, UserRound, X } from "lucide-react";
 import { getDrivers } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/context/AuthContext";
+import { moduleOn } from "@/lib/rbac";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
@@ -12,7 +14,9 @@ export const driverLabel = (d) => d?.display || [d?.prenom, d?.nom].filter(Boole
 // Combobox conducteur : liste du tenant courant uniquement, recherche nom/matricule, JAMAIS d'auto-sélection.
 export default function DriverPicker({ value, onChange, disabled = false, testId = "driver-picker", allowEmpty = true, placeholder = "Non identifié" }) {
   const [open, setOpen] = useState(false);
-  const { data: drivers = [] } = useQuery({ queryKey: ["drivers", "picker"], queryFn: () => getDrivers({ include_archived: "1" }) });
+  const { user } = useAuth();
+  const driversOn = moduleOn(user, "drivers");
+  const { data: drivers = [] } = useQuery({ queryKey: ["drivers", "picker"], queryFn: () => getDrivers({ include_archived: "1" }), enabled: driversOn });
   const selectable = useMemo(() => drivers.filter((d) => !d.is_deleted && d.actif !== false), [drivers]);
   const current = drivers.find((d) => d.id === value);
 
@@ -20,11 +24,12 @@ export default function DriverPicker({ value, onChange, disabled = false, testId
     <div className="flex items-center gap-1">
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <Button type="button" variant="outline" role="combobox" aria-expanded={open} disabled={disabled} data-testid={`${testId}-trigger`}
+          <Button type="button" variant="outline" role="combobox" aria-expanded={open} disabled={disabled || !driversOn} data-testid={`${testId}-trigger`}
+            title={driversOn ? undefined : "Module Conducteurs désactivé pour ce client"}
             className={cn("h-9 w-full justify-between font-normal", !current && "text-slate-400")}>
             <span className="flex min-w-0 items-center gap-2">
               <UserRound className="h-4 w-4 shrink-0 text-slate-400" />
-              <span className="truncate">{current ? driverLabel(current) : placeholder}{current?.is_deleted ? " (archivé)" : current && current.actif === false ? " (inactif)" : ""}</span>
+              <span className="truncate">{!driversOn ? "Module Conducteurs désactivé" : current ? driverLabel(current) : placeholder}{current?.is_deleted ? " (archivé)" : current && current.actif === false ? " (inactif)" : ""}</span>
             </span>
             <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
           </Button>

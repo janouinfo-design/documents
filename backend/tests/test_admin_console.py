@@ -71,7 +71,8 @@ class TestTenants:
         assert r.status_code == 200, r.text
         body = r.json()
         assert body["id"] == TENANT_ID
-        assert body["modules"] == {"documents": True}
+        assert body["modules"] == {k: True for k in (
+            "vehicles", "documents", "deadlines", "costs", "energy", "drivers", "fines", "ai", "alerts", "integrity")}
 
     def test_duplicate_tenant_409(self):
         r = requests.post(f"{_BASE}/api/admin/tenants",
@@ -205,17 +206,30 @@ class TestIntegration:
 
 
 class TestModulesAndDisable:
-    def test_module_documents_disable_blocks_business_api(self):
+    def test_module_documents_disable_blocks_only_documents_api(self):
         h = _headers(TestUsers.EMAIL, TestUsers.PASSWORD)
         r = requests.put(f"{_BASE}/api/admin/tenants/{TENANT_ID}",
                          json={"modules": {"documents": False}}, headers=sa_headers(), timeout=30)
         assert r.status_code == 200
-        assert requests.get(f"{_BASE}/api/vehicles", headers=h, timeout=30).status_code == 403
-        assert requests.get(f"{_BASE}/api/auth/me", headers=h, timeout=30).status_code == 200
+        r = requests.get(f"{_BASE}/api/documents", headers=h, timeout=30)
+        assert r.status_code == 403
+        assert r.json()["detail"]["code"] == "MODULE_DISABLED"
+        assert r.json()["detail"]["module"] == "documents"
+        # Les autres modules restent accessibles : Documents n'est plus un verrou global
+        assert requests.get(f"{_BASE}/api/vehicles", headers=h, timeout=30).status_code == 200
+        me = requests.get(f"{_BASE}/api/auth/me", headers=h, timeout=30)
+        assert me.status_code == 200
+        assert me.json()["tenant_modules"]["documents"] is False
+        assert me.json()["tenant_modules"]["vehicles"] is True
         r = requests.put(f"{_BASE}/api/admin/tenants/{TENANT_ID}",
                          json={"modules": {"documents": True}}, headers=sa_headers(), timeout=30)
         assert r.status_code == 200
-        assert requests.get(f"{_BASE}/api/vehicles", headers=h, timeout=30).status_code == 200
+        assert requests.get(f"{_BASE}/api/documents", headers=h, timeout=30).status_code == 200
+
+    def test_unknown_module_422(self):
+        r = requests.put(f"{_BASE}/api/admin/tenants/{TENANT_ID}",
+                         json={"modules": {"telepathie": False}}, headers=sa_headers(), timeout=30)
+        assert r.status_code == 422
 
     def test_tenant_disable_blocks_everything(self):
         h = _headers(TestUsers.EMAIL, TestUsers.PASSWORD)

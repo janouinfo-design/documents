@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
-import { authLogin, authLogout, authMe, clearFileToken, exchangeNavixy, getToken, refreshFileToken, setToken } from "@/lib/api";
+import { authLogin, authLogout, authMe, clearFileToken, exchangeNavixy, getToken, refreshFileToken, setActingTenant, setToken } from "@/lib/api";
 
 const AuthContext = createContext(null);
 
@@ -28,7 +28,8 @@ export function AuthProvider({ children }) {
           setToken(data.token);
           await refreshFileToken().catch(() => {});
           setSsoError(null);
-          setUser(data.user);
+          // Charge utilisateur complète (tenant_modules, bandeau démo) : l'échange SSO ne renvoie qu'un profil minimal
+          setUser(await authMe().catch(() => data.user));
         })
         .catch((err) => {
           setToken(null);
@@ -64,6 +65,7 @@ export function AuthProvider({ children }) {
       .catch(() => {})
       .finally(() => {
         clearFileToken();
+        setActingTenant(null);
         setToken(null);
         setUser(null);
         window.location.assign("/login");

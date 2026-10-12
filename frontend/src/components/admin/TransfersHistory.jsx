@@ -4,12 +4,19 @@ import { adminListTransfers } from "@/lib/api";
 import { dateFr } from "@/lib/format";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-export default function TransfersHistory() {
+export default function TransfersHistory({ emptyState = false }) {
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["admin-transfers"],
     queryFn: adminListTransfers,
   });
-  if (isLoading || rows.length === 0) return null;
+  if (isLoading) return null;
+  if (rows.length === 0) {
+    return emptyState ? (
+      <p className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-6 text-sm text-slate-400" data-testid="admin-transfers-empty">
+        Aucun transfert de documents entre clients enregistré.
+      </p>
+    ) : null;
+  }
   return (
     <div className="space-y-3" data-testid="admin-transfers-section">
       <h2 className="flex items-center gap-2 font-display text-lg font-bold text-slate-900">

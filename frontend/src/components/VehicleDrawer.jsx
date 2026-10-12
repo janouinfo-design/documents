@@ -15,7 +15,7 @@ import VehiclePhotoMenu from "@/components/VehiclePhotoMenu";
 import DeleteVehicleButton from "@/components/DeleteVehicleButton";
 import AiActionButton from "@/components/ai/AiActionButton";
 import { useAuth } from "@/context/AuthContext";
-import { can } from "@/lib/rbac";
+import { can, moduleOn } from "@/lib/rbac";
 import GeneralTab from "@/components/tabs/GeneralTab";
 import LeasingTab from "@/components/tabs/LeasingTab";
 import AssuranceTab from "@/components/tabs/AssuranceTab";
@@ -34,10 +34,10 @@ const TABS = [
   { key: "carte-grise", label: "Carte grise", icon: ScrollText },
   { key: "etat-des-lieux", label: "État des lieux", icon: Images },
   { key: "controle", label: "Contrôles", icon: ClipboardCheck },
-  { key: "documents", label: "Documents", icon: FolderTree },
-  { key: "couts", label: "Coûts", icon: Wallet },
-  { key: "energie", label: "Énergie", icon: Fuel },
-  { key: "conducteur", label: "Conducteur", icon: User },
+  { key: "documents", label: "Documents", icon: FolderTree, module: "documents" },
+  { key: "couts", label: "Coûts", icon: Wallet, module: "costs" },
+  { key: "energie", label: "Énergie", icon: Fuel, module: "energy" },
+  { key: "conducteur", label: "Conducteur", icon: User, module: "drivers" },
 ];
 
 function Chip({ icon: Icon, children }) {
@@ -70,10 +70,13 @@ export default function VehicleDrawer({ open, onOpenChange, vehicleId, initialTa
   const { user } = useAuth();
   const canPhoto = can(user, "photo.write");
   const canDelete = can(user, "vehicles.delete");
+  const docsOn = moduleOn(user, "documents");
+  const tabs = TABS.filter((t) => moduleOn(user, t.module));
   const [tab, setTab] = useState(initialTab);
 
   useEffect(() => {
-    if (open) setTab(initialTab);
+    if (open) setTab(tabs.some((t) => t.key === initialTab) ? initialTab : "general");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialTab, vehicleId]);
 
   const { data: vehicle, isLoading } = useQuery({
@@ -85,7 +88,7 @@ export default function VehicleDrawer({ open, onOpenChange, vehicleId, initialTa
   const { data: docs = [], refetch: refetchDocs } = useQuery({
     queryKey: ["documents", vehicleId],
     queryFn: () => getDocuments(vehicleId),
-    enabled: open && !!vehicleId,
+    enabled: open && !!vehicleId && docsOn,
   });
 
   const refresh = () => {
@@ -181,7 +184,7 @@ export default function VehicleDrawer({ open, onOpenChange, vehicleId, initialTa
             <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
               <div className="shrink-0 overflow-x-auto border-b border-slate-200 bg-white">
                 <TabsList className="h-auto w-max justify-start gap-1 rounded-none bg-transparent px-4 py-0">
-                  {TABS.map((t) => {
+                  {tabs.map((t) => {
                     const Icon = t.icon;
                     return (
                       <TabsTrigger

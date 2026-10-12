@@ -103,14 +103,15 @@ class TestFailClosed:
         await server_mod.db.tenants.update_one({"id": TENANT_ID}, {"$set": {"disabled": False}})
         assert r.status_code == 401
 
-    async def test_module_documents_disabled_403(self, aclient, monkeypatch):
+    async def test_module_documents_disabled_login_still_allowed(self, aclient, monkeypatch):
+        """Documents est un module parmi dix : son arrêt ne bloque plus la connexion SSO (seule l'API Documents répond 403)."""
         monkeypatch.setattr(server_mod, "navixy_get_user_info", _nav_ok())
         await server_mod.db.tenants.update_one(
             {"id": TENANT_ID}, {"$set": {"modules": {"documents": False}}})
         r = await _exchange(aclient)
         await server_mod.db.tenants.update_one(
             {"id": TENANT_ID}, {"$set": {"modules": {"documents": True}}})
-        assert r.status_code == 403
+        assert r.status_code == 200
 
 
 @pytest.mark.asyncio
