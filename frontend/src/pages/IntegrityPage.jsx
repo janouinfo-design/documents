@@ -236,6 +236,11 @@ export default function IntegrityPage() {
 
       {mainError && <QueryErrorState error={mainErrorObj} testId="integrity-error" />}
 
+      {data?.demo && (
+        <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-700" data-testid="integration-demo-banner">
+          Télématique de <strong>démonstration</strong> — positions et appariements fictifs, générés à partir des véhicules de la démo. Aucune connexion à un service réel.
+        </div>
+      )}
       {data?.navixy_status === "not_configured" && (
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600" data-testid="integration-absent-banner">
           Aucune intégration télématique configurée pour ce compte — la synchronisation est NON DISPONIBLE.

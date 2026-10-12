@@ -949,3 +949,15 @@ VPS DEPLOYMENT       = NOT AUTHORIZED
 - Marquage `demo_seed` étendu aux collections import/décompte. Mots de passe : fail-safe — comptes existants sans fichier credentials ⇒ `DEMO_PW_ADMIN/DRIVER/READONLY` obligatoires (jamais d'écrasement silencieux). Preview : 3 comptes démo = `DemoPreview2026!` (test_credentials §6).
 - Intégrité : reste « INTEGRATION_ABSENTE » (démo sans clé Navixy, invariant conservé) — simulation télématique = backlog. Diff `default` observé pendant un reset = sync Navixy de démarrage (hot reload), pas le seed (re-baseline → PASS).
 - Walkthrough §5/§5bis mis à jour. Procédure VPS : `docker compose cp` du script dans `backend` puis `baseline` + `reset` avec `-e DEMO_PW_*`.
+
+## Télématique de DÉMONSTRATION (2026-06) — fictive, cosmétique, tenant demo_seed uniquement
+- `backend/demo_telematics.py` : miroir télématique fictif DÉTERMINISTE (hash de l'id véhicule), 0 écriture, 0 appel réseau. Actif quand `tenant.demo_seed` ET pas de vraie intégration → jamais `default`, jamais la vraie sync.
+- **Intégrité** : `/api/fleet/integrity` renvoie `demo:true`, provider `navixy-demo`, statut `ok` → 8 liés/identiques · 1 divergence plaque (avant-dernier véhicule) · 1 non lié (dernier). Bandeau indigo « Télématique de démonstration » (`integration-demo-banner`). Branche réelle inchangée.
+- **Fiche véhicule** : `GET /api/vehicles/{id}/telematics` (démo = données fictives : état moteur, vitesse, « vu il y a X min », position CH, odomètre, contact, traceur ; sinon `available:false`). Encart `TelematicsCard` « Suivi télématique · Données de démonstration » dans l'onglet Général.
+- **Console** : badge « Télématique (démo) » pour les tenants de démo (`admin_overview.integration.demo`).
+- `default` vérifié non affecté (`demo:false`, Navixy réel). `Dockerfile` COPY += `demo_telematics.py`. Résidus de tenants `pytest-*` purgés de la base (24).
+
+### Lien Navixy à configurer (application externe / plugin)
+- Format SSO : `https://<DOMAINE_VPS>/?session_key={{session_key}}` (Navixy substitue le jeton de session). Variante hash acceptée : `?hash={{...}}`.
+- Démo : master Navixy `121349` → `demo-logitrak` (déjà mappé). Compte pilote : master du compte `default`.
+- Le domaine public du VPS reste à confirmer par l'utilisateur pour fournir l'URL exacte.

@@ -48,7 +48,7 @@ function ClientCard({ tenant, expanded, onToggle }) {
           {tenant.integration?.configured ? (
             <Badge variant="outline" className={cn("gap-1", tenant.integration.enabled ? "border-emerald-300 text-emerald-700" : "border-slate-300 text-slate-500")}
               data-testid={`admin-client-integration-badge-${tenant.id}`}>
-              <Wifi className="h-3 w-3" /> Télématique {tenant.integration.enabled ? "active" : "inactive"}
+              <Wifi className="h-3 w-3" /> {tenant.integration.demo ? "Télématique (démo)" : `Télématique ${tenant.integration.enabled ? "active" : "inactive"}`}
             </Badge>
           ) : (
             <Badge variant="outline" className="gap-1 border-slate-200 text-slate-400">

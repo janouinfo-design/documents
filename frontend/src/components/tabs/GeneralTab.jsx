@@ -10,6 +10,7 @@ import { Stat, SectionCard, FormRow } from "@/components/Field";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import ProvenanceSection from "@/components/ProvenanceSection";
+import TelematicsCard from "@/components/tabs/TelematicsCard";
 
 const GEN_FIELDS = ["plaque", "marque", "modele", "annee", "vin", "kilometrage", "groupe", "base", "responsable", "tracker_gps", "prochaine_maintenance", "prochaine_expertise"];
 const pick = (v) => Object.fromEntries(GEN_FIELDS.map((k) => [k, v[k] ?? ""]));
@@ -95,6 +96,7 @@ export default function GeneralTab({ vehicle, onSaved }) {
         <Stat label="Prochaine expertise" value={dateFr(vehicle.prochaine_expertise)} icon={ClipboardList} />
       </div>
       </SectionCard>
+      <TelematicsCard vehicleId={vehicle.id} />
       <ProvenanceSection vehicleId={vehicle.id} />
     </div>
   );

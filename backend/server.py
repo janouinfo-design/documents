@@ -48,6 +48,7 @@ import fines as fin
 from fines import FineStatusChange, FinePaid
 import ai_assistant as ai
 import tenant_modules as tmod
+import demo_telematics as dtl
 from reports import build_fines_csv, build_fines_xlsx, build_fines_pdf
 
 ROOT_DIR = Path(__file__).parent
@@ -7935,6 +7936,33 @@ async def enrich_technical_batch(request: Request):
     return {"total": len(out), "found": found, "results": out}
 
 
+@api_router.get("/vehicles/{vehicle_id}/telematics")
+async def vehicle_telematics(vehicle_id: str, request: Request):
+    """Suivi télématique. Pour les tenants de DÉMONSTRATION (demo_seed) sans vraie intégration : données fictives
+    déterministes (lecture seule, aucun appel réseau). Sinon : `available: false` (aucune donnée inventée)."""
+    v = await find_tenant_vehicle(request, vehicle_id)
+    integ = await get_navixy_integration(tid(request))
+    t_doc = await db.tenants.find_one({"id": tid(request)}, {"_id": 0, "demo_seed": 1})
+    if integ or not (t_doc and t_doc.get("demo_seed")):
+        return {"available": False, "demo": False,
+                "provider": "navixy" if integ else None,
+                "note": ("Suivi temps réel disponible dans la console télématique" if integ
+                         else "Aucune intégration télématique configurée pour ce compte")}
+    vehicles = await db.vehicles.find({"tenant_id": tid(request)}, {"_id": 0}).to_list(None)
+    sim = dtl.simulate(vehicles)
+    data = dtl.tracking(v)
+    data["available"] = True
+    if sim["nvid"].get(vehicle_id) is None:
+        data.update({"linked": False, "link_status": "NON_LIE",
+                     "note": "Véhicule non apparié à un traceur télématique (démo)"})
+    elif sim["diverg_id"] == vehicle_id:
+        data.update({"linked": True, "link_status": "DIVERGENCE",
+                     "note": "Divergence plaque Documents ↔ télématique à vérifier (démo)"})
+    else:
+        data.update({"linked": True, "link_status": "LIE"})
+    return data
+
+
 @api_router.get("/fleet/integrity")
 async def fleet_integrity(request: Request,
                           vehicle_id: Optional[str] = None,
@@ -7953,7 +7981,11 @@ async def fleet_integrity(request: Request,
         vfilter["groupe"] = groupe
     vehicles = await db.vehicles.find(vfilter, {"_id": 0}).sort("plaque", 1).to_list(None)
     integ = await get_navixy_integration(tid(request))
-    remote_by_id, navixy_status = {}, "not_configured"
+    # Télématique de DÉMONSTRATION (cosmétique, lecture seule) : tenants marqués demo_seed sans vraie intégration.
+    t_doc = await db.tenants.find_one({"id": tid(request)}, {"_id": 0, "demo_seed": 1})
+    demo = bool(t_doc and t_doc.get("demo_seed")) and not integ
+    sim = dtl.simulate(vehicles) if demo else None
+    remote_by_id, navixy_status = (sim["remote_by_id"] if demo else {}), ("ok" if demo else "not_configured")
     if integ:
         try:
             remote_by_id = {rv["id"]: rv for rv in navixy_post(integ, "/vehicle/list").get("list", [])}
@@ -7970,12 +8002,12 @@ async def fleet_integrity(request: Request,
 
     out, total_div, linked_count = [], 0, 0
     for v in vehicles:
-        nvid = v.get("navixy_vehicle_id")
+        nvid = sim["nvid"].get(v["id"]) if demo else v.get("navixy_vehicle_id")
         vc = vin_check(v.get("vin"))
         entry = {"vehicle_id": v["id"], "plaque": v.get("plaque"),
-                 "navixy_vehicle_id": nvid, "provider": provider,
+                 "navixy_vehicle_id": nvid, "provider": dtl.PROVIDER if demo else provider,
                  "vin_check": vc}
-        if not integ:
+        if not integ and not demo:
             entry["link_status"] = "INTEGRATION_ABSENTE"
             entry["fields"] = None
             entry["note"] = "Aucune intégration télématique configurée pour ce compte — sync NON_DISPONIBLE"
@@ -8044,7 +8076,7 @@ async def fleet_integrity(request: Request,
     await audit("integrity_check", "fleet", request, "fleet", None,
                 f"Contrôle d'intégrité flotte — {total_div} divergence(s) sur "
                 f"{linked_count} véhicule(s) lié(s)")
-    return {"navixy_status": navixy_status, "provider": provider,
+    return {"navixy_status": navixy_status, "provider": dtl.PROVIDER if demo else provider, "demo": demo,
             "write_enabled": bool(integ and integ.get("write_enabled", NAVIXY_WRITE_ENABLED)),
             "canonical_note": ("Documents et Dashboard lisent le même véhicule canonique "
                                "(collection vehicles) — identité structurelle"),
@@ -8696,6 +8728,7 @@ async def admin_overview():
     for t in sorted(tenants, key=lambda x: x.get("created_at") or ""):
         tid = t["id"]
         integ = integs.get(tid) or {}
+        demo_tel = bool(t.get("demo_seed")) and not integ.get("api_hash")
         out.append({
             "id": tid, "name": t.get("name") or tid,
             "disabled": bool(t.get("disabled")),
@@ -8705,9 +8738,10 @@ async def admin_overview():
             "documents": await db.documents.count_documents({"tenant_id": tid, "is_deleted": False}),
             "users": await db.users.count_documents({"tenant_id": tid}),
             "integration": {
-                "configured": bool(integ.get("api_hash")),
-                "enabled": bool(integ.get("enabled")),
+                "configured": bool(integ.get("api_hash")) or demo_tel,
+                "enabled": bool(integ.get("enabled")) or demo_tel,
                 "write_enabled": bool(integ.get("write_enabled")),
+                "demo": demo_tel,
                 "last_sync_at": integ.get("last_sync_at"),
             },
         })

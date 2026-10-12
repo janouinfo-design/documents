@@ -302,6 +302,7 @@ export const getConsumptionRanking = () =>
   http.get("/fleet/consumption-ranking").then((r) => r.data);
 export const getIntegrity = (params = {}) =>
   http.get("/fleet/integrity", { params }).then((r) => r.data);
+export const getVehicleTelematics = (id) => http.get(`/vehicles/${id}/telematics`).then((r) => r.data);
 export const getLinkSuggestions = () =>
   http.get("/integrations/navixy/link-suggestions").then((r) => r.data);
 export const linkNavixyVehicle = (vehicleId, externalVehicleId) =>
