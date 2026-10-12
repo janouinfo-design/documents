@@ -1,0 +1,26 @@
+# HTTPS automatique (Let's Encrypt) pour le SSO Navixy.
+# Reverse-proxy devant le conteneur `web`. S'active en AJOUTANT ce fichier au compose :
+#   docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d caddy
+# Prérequis : DNS demo-documents.logitrak.ch -> IP du VPS + ports 80 et 443 ouverts au pare-feu.
+services:
+  caddy:
+    image: caddy:2
+    container_name: logitrak-fleet_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+    networks:
+      - internal
+
+volumes:
+  caddy_data:
+    name: logitrak-fleet_caddy_data
+  caddy_config:
+    name: logitrak-fleet_caddy_config

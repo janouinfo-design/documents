@@ -961,3 +961,8 @@ VPS DEPLOYMENT       = NOT AUTHORIZED
 - Format SSO : `https://<DOMAINE_VPS>/?session_key={{session_key}}` (Navixy substitue le jeton de session). Variante hash acceptée : `?hash={{...}}`.
 - Démo : master Navixy `121349` → `demo-logitrak` (déjà mappé). Compte pilote : master du compte `default`.
 - Le domaine public du VPS reste à confirmer par l'utilisateur pour fournir l'URL exacte.
+
+## HTTPS Caddy pour SSO Navixy (2026-06)
+- `deploy/docker-compose.caddy.yml` + `deploy/Caddyfile` : reverse-proxy Caddy (Let's Encrypt auto) devant `web:80`, domaine `demo-documents.logitrak.ch` (A → 83.228.207.198). Additif (override compose), ne modifie pas la stack existante.
+- Démarrage VPS : `docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d caddy` (ports 80/443 ouverts requis).
+- Lien Navixy (app externe) : `https://demo-documents.logitrak.ch/?session_key={session_key}` → SSO master 121349 → demo-logitrak.
