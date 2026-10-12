@@ -1,0 +1,23 @@
+{
+  "summary": "Full E2E testing of Super Admin console + per-client functional MODULES toggles. 6 backend pytest tests (test_tenant_modules_e2e.py) passed. UI flows passed: superadmin lands on /admin with only [nav-admin, nav-admin-tools] + layout-module-label 'Console Super Admin'; /vehicules redirects to /admin; /admin page shows per-client Modules n/10 badge + 10-switch module panel + 'Client actif' + Utilisateurs + Intégration sections, and no 'Correspondance tenant Journal' section; /admin/outils shows admin-tools-page with admin-tools-transfers and 'Migration Journal' section. Module OFF confirm dialog (admin-module-confirm-dialog + admin-module-confirm-note) works — Cancel keeps module ON (badge stays 10/10), Confirm switches to 9/10 and state icon changes. Vehicles core dialog correctly shows 'socle' label (verified via text check, cancelled as instructed). Mode assistance: 'Se connecter' reloads to / with acting-tenant-banner 'Mode assistance · Démo LogiTrak', layout label 'Mode assistance', business nav visible but WITHOUT 'nav-fines' (fines OFF) and without admin nav; kpi-amendes hidden, dashboard-secondary-kpis has 2 children; /amendes direct URL redirects to /; 'Quitter le compte' returns to /admin. With deadlines OFF: no kpi-expired/kpi-urgent, no next-actions, primary KPIs = 2, subtitle no longer mentions 'Échéances'. Vehicle drawer with drivers OFF: tab-conducteur absent, tab-documents present. Default tenant admin regression: full nav (13 items incl. nav-fines) + 4 primary + 3 secondary KPIs. ALL demo-logitrak modules restored to 10/10 at end.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_tenant_modules_e2e.py",
+    "/app/test_reports/pytest/tenant_modules_e2e.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is very large (>8700 lines); consider splitting admin/tenant/modules routes into separate routers for maintainability.",
+    "The confirmation dialog note is static per module; a future enhancement could show real dependency impact counts (e.g. '15 amendes seront masquées')."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_tenant_modules_e2e.py (new)"
+  ],
+  "success_rate": {"backend": "100% (6/6 pytest + prior suites passing)", "frontend": "100% (10/10 UI checks)"},
+  "test_credentials": "SUPERADMIN_EMAIL/SUPERADMIN_PASSWORD from backend/.env, admin@demo-logitrak.ch/DemoPreview2026! from memory/test_credentials.md §6, ADMIN_EMAIL/ADMIN_PASSWORD from backend/.env — all used.",
+  "seed_data_creation": "None. No test tenants created. demo-logitrak modules toggled OFF→ON for fines, deadlines and drivers during testing and fully restored to 10/10 at end. 'default' tenant never modified.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All tenant_modules feature flows (backend + UI) are green on preview. Key testids verified: top-nav, nav-admin, nav-admin-tools, layout-module-label, admin-client-modules-count-<tid>, admin-client-toggle-<tid>, admin-client-modules-<tid>, admin-client-module-<key>-switch-<tid>, admin-client-module-state-<key>-<tid>, admin-module-confirm-dialog, admin-module-confirm-note, admin-module-confirm-btn, admin-module-cancel-btn, admin-view-client-btn-<tid>, acting-tenant-banner, acting-tenant-exit-btn, dashboard-primary-kpis/secondary-kpis/subtitle, kpi-amendes/kpi-expired/kpi-urgent, next-actions, tab-conducteur, tab-documents, admin-tools-page, admin-tools-transfers. Backend 403 payload shape: {'detail': {'code': 'MODULE_DISABLED', ...}} (code is nested under detail). The acting-tenant mode is driven by localStorage 'lt_acting_tenant' + header X-Acting-Tenant and the backend honors it in require_auth."
+}

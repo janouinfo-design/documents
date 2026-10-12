@@ -31,7 +31,7 @@ Inspirations: Fleetio, Motive, Samsara, Geotab.
 - Gestionnaire de flotte (admin): suit échéances, coûts, conformité, documents.
 - Responsable de base/site: consulte les véhicules de sa base, ajoute états des lieux.
 - Lecteur (read_only) : consultation seule, aucune mutation (UI masquée + 403 serveur).
-- Super Admin plateforme : console clients/tenants, vue client.
+- Super Admin plateforme : console épurée `/admin` (clients, utilisateurs, intégration, **modules activables par client**) + `/admin/outils` ; « Se connecter » = mode assistance sur un client (modules actifs du client respectés).
 
 ## Core Requirements (static)
 1. Fiche véhicule administrative (drawer) avec infos générales + photo.
@@ -93,6 +93,10 @@ Jeu de démonstration réaliste et cohérent, créé via l'API du compte admin d
 - Blockers : `pending_fx · matched_review · unmatched · open_anomaly · forced_duplicate` ; close normal ⇔ intégrité PASS et 0 blocker (sinon 409 `CLOSE_BLOCKED` détaillé) ; `close_exception` = motif + confirmation explicite, snapshot des blockers conservé et visible.
 - Verrou (`locked`, `statement_id`, `locked_at` = `closed_at`) **uniquement** à la clôture (normale ou exception) ; brouillon = 0 lock, recalcul admin ; mutation source verrouillée → 409 `STATEMENT_LOCKED` (patch mixte notes+montant rejeté intégralement ; notes/tags seuls autorisés) ; matching ignore les transactions verrouillées ; décisions d'anomalie non destructives autorisées après lock ; **aucun endpoint/UI de réouverture** — corrections tardives = décompte `correctif` (parent requis, même période/scope, transactions non verrouillées uniquement, parent immuable).
 - Exports CSV/XLSX/PDF (décompte, rapprochements, transactions période) = audit `fuel_export/download` tenant-scopé avec acteur, type, format, filtres, `statement_id`, taille, SHA-256 des octets finaux (`X-Content-SHA256`). read_only : lectures + exports 200, toute mutation 403.
+
+## Modules par client (2026-06) — invariants
+- Registre unique `backend/tenant_modules.py` (10 modules, `vehicles` = socle) ; clé absente = activé ; OFF = 403 `MODULE_DISABLED` + onglet/route masqués + échéances/alertes/KPI du module masqués ; jamais de suppression de données ; chaque bascule auditée (`admin_module_toggle`). Tout nouveau module backend `.py` → ligne `COPY` du Dockerfile.
+- Mode assistance superadmin (`X-Acting-Tenant`) : mêmes règles modules que le client ; sortie via « Quitter le compte ». Impersonation par UTILISATEUR (rôle/vehicle_scope d'un compte précis) = non livrée (backlog).
 
 ## Dette acceptée (hors lots)
 - Overlay dev CRA « ResizeObserver loop » (dev only, build PASS, 0 bug fonctionnel).
